@@ -11,15 +11,17 @@ export default function Admin() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations' | 'equipment'>('add');
   const [reports, setReports] = useState<any>(null);
   const [reportPeriod, setReportPeriod] = useState('day');
   const [reportFilterName, setReportFilterName] = useState('');
   const [reportFilterSupervisor, setReportFilterSupervisor] = useState('');
   const [loadingReports, setLoadingReports] = useState(false);
   const [reservations, setReservations] = useState<any[]>([]);
+  const [equipmentList, setEquipmentList] = useState<any[]>([]);
+  const [editingEquipment, setEditingEquipment] = useState<any>(null);
 
-  // Add Equipment Form State
+  // Add/Edit Equipment Form State
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -28,33 +30,39 @@ export default function Admin() {
     price: 0,
     consumable_fee: 0,
     whitelist_enabled: false,
-    whitelist_data: ''
+    whitelist_data: '',
+    advanceDays: 7,
+    maxDurationMinutes: 60,
+    minDurationMinutes: 30,
+    rules: [] as { day: number, start: string, end: string }[]
   });
 
-  // Cron UI State
-  const [isAdvancedCron, setIsAdvancedCron] = useState(false);
-  const [customCron, setCustomCron] = useState('0 8-18 * * 1,2,3,4,5');
-  const [cronDays, setCronDays] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [cronStartHour, setCronStartHour] = useState(8);
-  const [cronEndHour, setCronEndHour] = useState(18);
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
-  const getGeneratedCron = () => {
-    if (isAdvancedCron) return customCron;
-    const daysStr = cronDays.length > 0 ? cronDays.sort().join(',') : '*';
-    
-    let hourPart = `${cronStartHour}-${cronEndHour}`;
-    if (cronStartHour === cronEndHour) {
-      hourPart = `${cronStartHour}`;
+  const daysOfWeek = [
+    { label: '周日', value: 0 },
+    { label: '周一', value: 1 },
+    { label: '周二', value: 2 },
+    { label: '周三', value: 3 },
+    { label: '周四', value: 4 },
+    { label: '周五', value: 5 },
+    { label: '周六', value: 6 },
+  ];
+
+  useEffect(() => {
+    if (token) {
+      fetchReservations();
+      fetchEquipment();
     }
-    
-    return `0 ${hourPart} * * ${daysStr}`;
-  };
+  }, [token]);
 
-  const getCronDescription = (expr: string) => {
+  const fetchEquipment = async () => {
     try {
-      return cronstrue.toString(expr, { locale: 'zh_CN' });
-    } catch (e) {
-      return '无效的Cron表达式';
+      const res = await fetch('/api/equipment');
+      const data = await res.json();
+      setEquipmentList(data);
+    } catch (err) {
+      toast.error('获取仪器列表失败');
     }
   };
 
@@ -87,34 +95,29 @@ export default function Admin() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    let cron_availability = '';
-
-    if (isAdvancedCron) {
-      cron_availability = customCron;
-    } else {
-      if (cronDays.length === 0) {
-        return toast.error('请至少选择一天');
-      }
-      if (cronStartHour > cronEndHour) {
-        return toast.error('结束时间必须晚于开始时间');
-      }
-      cron_availability = getGeneratedCron();
-    }
+    const availability_json = JSON.stringify({
+      rules: formData.rules,
+      advanceDays: formData.advanceDays,
+      maxDurationMinutes: formData.maxDurationMinutes
+    });
 
     try {
-      const res = await fetch('/api/admin/equipment', {
-        method: 'POST',
+      const url = editingEquipment ? `/api/admin/equipment/${editingEquipment.id}` : '/api/admin/equipment';
+      const method = editingEquipment ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ ...formData, cron_availability })
+        body: JSON.stringify({ ...formData, availability_json })
       });
       const data = await res.json();
       if (data.error) {
         toast.error(data.error);
       } else {
-        toast.success('仪器添加成功！');
+        toast.success(editingEquipment ? '仪器更新成功！' : '仪器添加成功！');
         setFormData({
           name: '',
           description: '',
@@ -123,11 +126,58 @@ export default function Admin() {
           price: 0,
           consumable_fee: 0,
           whitelist_enabled: false,
-          whitelist_data: ''
+          whitelist_data: '',
+          advanceDays: 7,
+          maxDurationMinutes: 60,
+          minDurationMinutes: 30,
+          rules: []
         });
+        setEditingEquipment(null);
+        setActiveTab('equipment');
+        fetchEquipment();
       }
     } catch (err) {
-      toast.error('添加仪器失败');
+      toast.error('保存仪器失败');
+    }
+  };
+
+  const startEdit = (eq: any) => {
+    let availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
+    try {
+      availability = JSON.parse(eq.availability_json || '{}');
+    } catch (e) {}
+
+    setEditingEquipment(eq);
+    setFormData({
+      name: eq.name,
+      description: eq.description,
+      auto_approve: eq.auto_approve === 1,
+      price_type: eq.price_type,
+      price: eq.price,
+      consumable_fee: eq.consumable_fee,
+      whitelist_enabled: eq.whitelist_enabled === 1,
+      whitelist_data: eq.whitelist_data || '',
+      advanceDays: availability.advanceDays || 7,
+      maxDurationMinutes: availability.maxDurationMinutes || 60,
+      minDurationMinutes: availability.minDurationMinutes || 30,
+      rules: availability.rules || []
+    });
+    setActiveTab('add');
+  };
+
+  const deleteEquipment = async (id: number) => {
+    if (!confirm('确定要删除该仪器吗？')) return;
+    try {
+      const res = await fetch(`/api/admin/equipment/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success('删除成功');
+        fetchEquipment();
+      }
+    } catch (err) {
+      toast.error('删除失败');
     }
   };
 
@@ -221,16 +271,6 @@ export default function Admin() {
     );
   }
 
-  const daysOfWeek = [
-    { value: 1, label: '周一' },
-    { value: 2, label: '周二' },
-    { value: 3, label: '周三' },
-    { value: 4, label: '周四' },
-    { value: 5, label: '周五' },
-    { value: 6, label: '周六' },
-    { value: 0, label: '周日' }
-  ];
-
   const statusMap: Record<string, string> = {
     pending: '待审批',
     approved: '已通过',
@@ -249,17 +289,24 @@ export default function Admin() {
         <div className="flex items-center gap-4">
           <div className="flex gap-2 bg-neutral-100 p-1 rounded-xl">
             <button
-              onClick={() => setActiveTab('add')}
+              onClick={() => { setActiveTab('add'); setEditingEquipment(null); setFormData({ name: '', description: '', auto_approve: true, price_type: 'hour', price: 0, consumable_fee: 0, whitelist_enabled: false, whitelist_data: '', advanceDays: 7, maxDurationMinutes: 60, rules: [] }); }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <PlusCircle className="w-4 h-4" />
-              添加仪器
+              {editingEquipment ? '编辑仪器' : '添加仪器'}
+            </button>
+            <button
+              onClick={() => setActiveTab('equipment')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'equipment' ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+            >
+              <List className="w-4 h-4" />
+              仪器管理
             </button>
             <button
               onClick={() => setActiveTab('reservations')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reservations' ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
-              <List className="w-4 h-4" />
+              <CalendarDays className="w-4 h-4" />
               预约管理
             </button>
             <button
@@ -276,94 +323,99 @@ export default function Admin() {
 
       {activeTab === 'add' && (
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-neutral-200 max-w-2xl mx-auto">
-          <h2 className="text-xl font-bold mb-6">添加新仪器</h2>
+          <h2 className="text-xl font-bold mb-6">{editingEquipment ? '编辑仪器' : '添加新仪器'}</h2>
           <form onSubmit={handleAddSubmit} className="space-y-6">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">仪器名称</label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all" placeholder="例如：电子显微镜" />
+                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all" placeholder="例如：扫描电子显微镜" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">描述</label>
-                <textarea required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all" rows={3} placeholder="仪器的简要描述..." />
+                <label className="block text-sm font-medium text-neutral-700 mb-1">仪器描述</label>
+                <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all" rows={3} placeholder="简要介绍仪器的功能和用途..." />
               </div>
               
-              <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 space-y-4">
+              <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-neutral-700">可预约时间段</h3>
-                  <button
-                    type="button"
-                    onClick={() => setIsAdvancedCron(!isAdvancedCron)}
-                    className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium"
-                  >
-                    <Settings2 className="w-3 h-3" />
-                    {isAdvancedCron ? '切换到基础模式' : '切换到高级模式'}
-                  </button>
+                  <h3 className="text-sm font-bold text-neutral-900">开放时间设置</h3>
                 </div>
                 
-                {!isAdvancedCron ? (
-                  <>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-xs text-neutral-500 mb-2">开放星期</label>
-                      <div className="flex flex-wrap gap-2">
-                        {daysOfWeek.map(day => (
-                          <button
-                            key={day.value}
+                      <label className="block text-xs text-neutral-500 mb-1">可提前预约天数</label>
+                      <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-neutral-500 mb-1">单次最小预约时长 (分钟)</label>
+                      <input type="number" min="1" value={formData.minDurationMinutes} onChange={e => setFormData({...formData, minDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-neutral-500 mb-1">单次最大预约时长 (分钟)</label>
+                      <input type="number" min="1" value={formData.maxDurationMinutes} onChange={e => setFormData({...formData, maxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-2">开放规则</label>
+                    <div className="space-y-2">
+                      {formData.rules.sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map((rule, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-neutral-200">
+                          <span className="text-xs font-medium w-12">{daysOfWeek.find(d => d.value === rule.day)?.label}</span>
+                          <span className="text-xs text-neutral-500">{rule.start} - {rule.end}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setFormData({...formData, rules: formData.rules.filter((_, i) => i !== idx)})}
+                            className="ml-auto text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      
+                      <div className="p-3 bg-white rounded-xl border border-neutral-200 space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          {daysOfWeek.map(d => (
+                            <button
+                              key={d.value}
+                              type="button"
+                              onClick={() => {
+                                if (selectedDays.includes(d.value)) {
+                                  setSelectedDays(selectedDays.filter(v => v !== d.value));
+                                } else {
+                                  setSelectedDays([...selectedDays, d.value]);
+                                }
+                              }}
+                              className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-indigo-300'}`}
+                            >
+                              {d.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input id="new-rule-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
+                          <span className="text-xs">至</span>
+                          <input id="new-rule-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
+                          <button 
                             type="button"
                             onClick={() => {
-                              if (cronDays.includes(day.value)) {
-                                setCronDays(cronDays.filter(d => d !== day.value));
-                              } else {
-                                setCronDays([...cronDays, day.value]);
-                              }
+                              if (selectedDays.length === 0) return toast.error('请至少选择一天');
+                              const start = (document.getElementById('new-rule-start') as HTMLInputElement).value;
+                              const end = (document.getElementById('new-rule-end') as HTMLInputElement).value;
+                              if (start >= end) return toast.error('结束时间必须晚于开始时间');
+                              
+                              const newRules = selectedDays.map(day => ({ day, start, end }));
+                              setFormData({...formData, rules: [...formData.rules, ...newRules]});
+                              setSelectedDays([]);
                             }}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${cronDays.includes(day.value) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
+                            className="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
                           >
-                            {day.label}
+                            批量添加
                           </button>
-                        ))}
+                        </div>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">开始时间</label>
-                        <select value={cronStartHour} onChange={e => setCronStartHour(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
-                          {Array.from({length: 24}).map((_, i) => (
-                            <option key={i} value={i}>{i.toString().padStart(2, '0')} 时</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">结束时间</label>
-                        <select value={cronEndHour} onChange={e => setCronEndHour(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
-                          {Array.from({length: 24}).map((_, i) => (
-                            <option key={i} value={i}>{i.toString().padStart(2, '0')} 时</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <label className="block text-xs text-neutral-500 mb-1">Cron 表达式</label>
-                    <input 
-                      type="text" 
-                      value={customCron} 
-                      onChange={e => setCustomCron(e.target.value)} 
-                      className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-mono text-sm" 
-                      placeholder="例如：0 8-18 * * 1-5" 
-                    />
-                    <p className="text-xs text-neutral-500 mt-2">
-                      支持标准的 Cron 语法。例如：<code className="bg-neutral-200 px-1 rounded">0 8-18 * * 1-5</code> 表示周一至周五的 8:00 到 18:00。
-                    </p>
                   </div>
-                )}
-
-                <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                  <p className="text-xs text-indigo-600 font-medium mb-1">当前设置解析：</p>
-                  <p className="text-sm text-indigo-900 font-mono mb-1">{getGeneratedCron()}</p>
-                  <p className="text-sm text-indigo-800">{getCronDescription(getGeneratedCron().replace(/^\*/, '0'))}</p>
                 </div>
 
                 <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
@@ -424,9 +476,62 @@ export default function Admin() {
             </div>
 
             <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors">
-              保存仪器
+              {editingEquipment ? '更新仪器' : '保存仪器'}
             </button>
           </form>
+        </div>
+      )}
+
+      {activeTab === 'equipment' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                <tr>
+                  <th className="px-6 py-4 font-medium">仪器名称</th>
+                  <th className="px-6 py-4 font-medium">计费</th>
+                  <th className="px-6 py-4 font-medium">白名单</th>
+                  <th className="px-6 py-4 font-medium">自动审批</th>
+                  <th className="px-6 py-4 font-medium text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {equipmentList.map(eq => (
+                  <tr key={eq.id} className="hover:bg-neutral-50/50">
+                    <td className="px-6 py-4 font-medium">{eq.name}</td>
+                    <td className="px-6 py-4">¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}</td>
+                    <td className="px-6 py-4">
+                      {eq.whitelist_enabled ? (
+                        <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs">已开启</span>
+                      ) : (
+                        <span className="px-2 py-1 bg-neutral-100 text-neutral-500 rounded-full text-xs">未开启</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {eq.auto_approve ? (
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">是</span>
+                      ) : (
+                        <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">否</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-2">
+                      <button onClick={() => startEdit(eq)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                        <Settings2 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => deleteEquipment(eq.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {equipmentList.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-neutral-500">暂无仪器记录</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

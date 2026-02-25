@@ -48,14 +48,21 @@ export default function MyReservations() {
     }
   };
 
+  const [consumableQty, setConsumableQty] = useState<number>(1);
+
   const handleAction = async (action: 'checkin' | 'checkout' | 'cancel') => {
     if (!reservation) return;
     
     try {
+      const body: any = { booking_code: reservation.booking_code };
+      if (action === 'checkin' && reservation.consumable_fee > 0) {
+        body.consumable_quantity = consumableQty;
+      }
+
       const res = await fetch(`/api/reservations/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ booking_code: reservation.booking_code })
+        body: JSON.stringify(body)
       });
       
       const data = await res.json();
@@ -149,6 +156,22 @@ export default function MyReservations() {
                 )}
               </div>
             </div>
+
+            {reservation.status === 'approved' && reservation.consumable_fee > 0 && (
+              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                <label className="block text-xs font-bold text-indigo-600 uppercase mb-2">消耗耗材数量</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={consumableQty} 
+                    onChange={e => setConsumableQty(Number(e.target.value))}
+                    className="w-24 px-3 py-2 rounded-lg border border-indigo-200 focus:ring-2 focus:ring-indigo-600 outline-none text-sm"
+                  />
+                  <span className="text-sm text-indigo-800">单位 (单价: ¥{reservation.consumable_fee})</span>
+                </div>
+              </div>
+            )}
 
             {(reservation.actual_start_time || reservation.actual_end_time) && (
               <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 grid grid-cols-2 gap-4">

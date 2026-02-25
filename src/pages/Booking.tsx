@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { format, addDays, startOfToday } from 'date-fns';
-import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight } from 'lucide-react';
+import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter, startOfDay, endOfDay } from 'date-fns';
+import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -11,6 +11,7 @@ interface Equipment {
   price_type: string;
   price: number;
   consumable_fee: number;
+  availability_json: string;
 }
 
 interface Slot {
@@ -18,15 +19,28 @@ interface Slot {
   end: string;
 }
 
+interface Reservation {
+  start_time: string;
+  end_time: string;
+  student_name?: string;
+  status: string;
+}
+
 export default function Booking() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
-  const [availableSlots, setAvailableSlots] = useState<Slot[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
+  const [availableRanges, setAvailableRanges] = useState<Slot[]>([]);
+  const [existingReservations, setExistingReservations] = useState<Reservation[]>([]);
+  const [maxDuration, setMaxDuration] = useState(60);
+  const [minDuration, setMinDuration] = useState(30);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [advanceDays, setAdvanceDays] = useState(7);
   
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
+
   const [formData, setFormData] = useState({
     student_id: '',
     student_name: '',
@@ -43,10 +57,15 @@ export default function Booking() {
       .then(res => res.json())
       .then(data => {
         const eq = data.find((e: any) => e.id === Number(id));
-        if (eq) setEquipment(eq);
+        if (eq) {
+          setEquipment(eq);
+          try {
+            const avail = JSON.parse(eq.availability_json);
+            setAdvanceDays(avail.advanceDays || 7);
+          } catch (e) {}
+        }
       });
 
-    // Load user info from cookie
     const cookieValue = document.cookie
       .split('; ')
       .find(row => row.startsWith('lab_user_info='))
@@ -54,7 +73,7 @@ export default function Booking() {
       
     if (cookieValue) {
       try {
-        const decoded = JSON.parse(atob(cookieValue));
+        const decoded = JSON.parse(decodeURIComponent(cookieValue));
         setFormData(decoded);
       } catch (e) {
         console.error('Failed to parse cookie', e);
@@ -68,9 +87,11 @@ export default function Booking() {
     fetch(`/api/equipment/${id}/availability?date=${format(selectedDate, 'yyyy-MM-dd')}`)
       .then(res => res.json())
       .then(data => {
-        setAvailableSlots(data);
+        setAvailableRanges(data.availableSlots || []);
+        setExistingReservations(data.reservations || []);
+        setMaxDuration(data.maxDurationMinutes || 60);
+        setMinDuration(data.minDurationMinutes || 30);
         setLoadingSlots(false);
-        setSelectedSlot(null);
       });
   }, [id, selectedDate]);
 
@@ -78,38 +99,125 @@ export default function Booking() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSlot) return toast.error('请选择一个时间段');
-
-    // Save to cookie
-    const encoded = btoa(JSON.stringify(formData));
-    document.cookie = `lab_user_info=${encoded}; max-age=31536000; path=/`;
-
-    const res = await fetch('/api/reservations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        equipment_id: id,
-        ...formData,
-        start_time: selectedSlot.start,
-        end_time: selectedSlot.end
-      })
-    });
-
-    const data = await res.json();
-    if (data.error) {
-      toast.error(data.error);
-    } else {
-      setBookingCode(data.booking_code);
-      setBookingStatus(data.status);
+  const handleStartTimeChange = (val: string) => {
+    setStartTime(val);
+    if (val) {
+      const [h, m] = val.split(':').map(Number);
+      const start = new Date();
+      start.setHours(h, m, 0, 0);
+      const end = addMinutes(start, maxDuration);
+      setEndTime(format(end, 'HH:mm'));
     }
   };
 
-  const statusMap: Record<string, string> = {
-    pending: '待审批',
-    approved: '已通过'
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!startTime || !endTime) return toast.error('请选择预约时间');
+
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const start = new Date(`${dateStr}T${startTime}`);
+    const end = new Date(`${dateStr}T${endTime}`);
+
+    if (isBefore(end, start)) return toast.error('结束时间必须晚于开始时间');
+    
+    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+    if (durationMinutes > maxDuration) return toast.error(`预约时长不能超过 ${maxDuration} 分钟`);
+    if (durationMinutes < minDuration) return toast.error(`预约时长不能少于 ${minDuration} 分钟`);
+
+    // Check if within available ranges
+    const inRange = availableRanges.some(range => {
+      const rStart = new Date(range.start);
+      const rEnd = new Date(range.end);
+      return (start >= rStart && end <= rEnd);
+    });
+    if (!inRange) return toast.error('所选时间不在仪器开放范围内');
+
+    // Check conflicts
+    const conflict = existingReservations.some(res => {
+      const rStart = new Date(res.start_time);
+      const rEnd = new Date(res.end_time);
+      return (start < rEnd && end > rStart);
+    });
+    if (conflict) return toast.error('所选时间段已有其他预约');
+
+    // Safe cookie storage for non-Latin1 characters
+    const encoded = encodeURIComponent(JSON.stringify(formData));
+    document.cookie = `lab_user_info=${encoded}; max-age=31536000; path=/`;
+
+    try {
+      const res = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          equipment_id: id,
+          ...formData,
+          start_time: start.toISOString(),
+          end_time: end.toISOString()
+        })
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+      } else {
+        setBookingCode(data.booking_code);
+        setBookingStatus(data.status);
+      }
+    } catch (err) {
+      toast.error('预约失败，请重试');
+    }
   };
+
+  const daysMap: Record<string, string> = {
+    Mon: '周一', Tue: '周二', Wed: '周三', Thu: '周四', Fri: '周五', Sat: '周六', Sun: '周日'
+  };
+
+  const [allAvailability, setAllAvailability] = useState<any[]>([]);
+  const [loadingAll, setLoadingAll] = useState(false);
+
+  useEffect(() => {
+    if (!id || !equipment) return;
+    setLoadingAll(true);
+    const fetchAll = async () => {
+      const dates = Array.from({ length: advanceDays + 1 }).map((_, i) => format(addDays(startOfToday(), i), 'yyyy-MM-dd'));
+      const results = await Promise.all(dates.map(d => fetch(`/api/equipment/${id}/availability?date=${d}`).then(r => r.json())));
+      setAllAvailability(results.map((r, i) => ({ date: dates[i], ...r })));
+      setLoadingAll(false);
+    };
+    fetchAll();
+  }, [id, equipment, advanceDays]);
+
+  // Transform allAvailability into a format for a multi-day heat-map grid
+  // X-axis: Time (08:00 to 22:00, 30min steps)
+  const timeSteps = Array.from({ length: (22 - 8) * 2 }).map((_, i) => {
+    const h = 8 + Math.floor(i / 2);
+    const m = (i % 2) * 30;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  });
+
+  const gridData = allAvailability.map(dayData => {
+    const dateStr = dayData.date;
+    const slots = dayData.availableSlots || [];
+    const resvs = dayData.reservations || [];
+    
+    return {
+      date: dateStr,
+      times: timeSteps.map(t => {
+        const timeDate = new Date(`${dateStr}T${t}`);
+        const isAvailable = slots.some((s: any) => {
+          const start = new Date(s.start);
+          const end = new Date(s.end);
+          return timeDate >= start && timeDate < end;
+        });
+        const isBooked = resvs.some((r: any) => {
+          const start = new Date(r.start_time);
+          const end = new Date(r.end_time);
+          return timeDate >= start && timeDate < end;
+        });
+        return { time: t, isAvailable, isBooked };
+      })
+    };
+  });
 
   if (bookingCode) {
     return (
@@ -118,7 +226,7 @@ export default function Booking() {
           <CheckCircle2 className="w-8 h-8 text-emerald-600" />
         </div>
         <h2 className="text-2xl font-bold text-neutral-900 mb-2">预约成功！</h2>
-        <p className="text-neutral-500 mb-8">您的预约状态为 {statusMap[bookingStatus || ''] || bookingStatus}。</p>
+        <p className="text-neutral-500 mb-8">您的预约状态为 {bookingStatus === 'approved' ? '已通过' : '待审批'}。</p>
         
         <div className="bg-neutral-50 rounded-xl p-6 mb-8 border border-neutral-200">
           <p className="text-sm text-neutral-500 mb-2 uppercase tracking-wider font-semibold">您的预约码</p>
@@ -136,81 +244,137 @@ export default function Booking() {
     );
   }
 
-  const daysMap: Record<string, string> = {
-    Mon: '周一', Tue: '周二', Wed: '周三', Thu: '周四', Fri: '周五', Sat: '周六', Sun: '周日'
-  };
-
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-neutral-900">预约仪器</h1>
         {equipment && <p className="text-neutral-500 mt-2">正在预约：{equipment.name}</p>}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="lg:col-span-3 space-y-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
               <CalendarIcon className="w-5 h-5 text-indigo-600" />
-              选择日期
+              全周期预约概览 (X轴: 时间, Y轴: 日期)
             </h3>
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {[0, 1, 2, 3, 4, 5, 6].map(offset => {
-                const date = addDays(startOfToday(), offset);
-                const isSelected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-                const dayStr = format(date, 'EEE');
-                return (
-                  <button
-                    key={offset}
-                    onClick={() => setSelectedDate(date)}
-                    className={clsx(
-                      "flex flex-col items-center justify-center min-w-[4rem] p-3 rounded-xl border transition-colors",
-                      isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-neutral-200 text-neutral-600 hover:border-indigo-300"
-                    )}
-                  >
-                    <span className="text-xs font-medium uppercase">{daysMap[dayStr] || dayStr}</span>
-                    <span className="text-lg font-bold">{format(date, 'd')}</span>
-                  </button>
-                );
-              })}
+            
+            {loadingAll ? (
+              <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="min-w-[800px]">
+                  {/* Time Header */}
+                  <div className="flex border-b border-neutral-100 pb-2 mb-2">
+                    <div className="w-24 shrink-0"></div>
+                    <div className="flex-1 flex justify-between px-2 text-[10px] text-neutral-400 font-mono">
+                      {timeSteps.filter((_, i) => i % 2 === 0).map(t => (
+                        <span key={t}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Date Rows */}
+                  <div className="space-y-1">
+                    {gridData.map((row, idx) => {
+                      const date = parseISO(row.date);
+                      const isSelected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+                      const dayStr = format(date, 'EEE');
+                      
+                      return (
+                        <div key={idx} className="flex items-center group">
+                          <button 
+                            onClick={() => setSelectedDate(date)}
+                            className={clsx(
+                              "w-24 shrink-0 text-left px-2 py-1 rounded-lg transition-colors",
+                              isSelected ? "bg-indigo-600 text-white" : "hover:bg-neutral-50"
+                            )}
+                          >
+                            <p className="text-[10px] font-bold uppercase opacity-70">{daysMap[dayStr] || dayStr}</p>
+                            <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
+                          </button>
+                          
+                          <div className="flex-1 flex gap-px h-8 bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                            {row.times.map((t, i) => (
+                              <div 
+                                key={i}
+                                title={`${row.date} ${t.time}`}
+                                className={clsx(
+                                  "flex-1 transition-all",
+                                  t.isBooked ? "bg-red-500" : (t.isAvailable ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200")
+                                )}
+                                onClick={() => {
+                                  if (t.isAvailable && !t.isBooked) {
+                                    setSelectedDate(date);
+                                    handleStartTimeChange(t.time);
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
+                <span>可预约 (点击色块快速选择)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
+                <span>已被预约</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-neutral-200 rounded-sm"></div>
+                <span>未开放</span>
+              </div>
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
               <Clock className="w-5 h-5 text-indigo-600" />
-              可选时间段
+              设置预约时间 ({format(selectedDate, 'yyyy-MM-dd')})
             </h3>
-            
-            {loadingSlots ? (
-              <div className="text-center py-8 text-neutral-400">加载中...</div>
-            ) : availableSlots.length === 0 ? (
-              <div className="text-center py-8 text-neutral-400 bg-neutral-50 rounded-xl">该日期无可用时间段。</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {availableSlots.map((slot, i) => {
-                  const isSelected = selectedSlot?.start === slot.start;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => setSelectedSlot(slot)}
-                      className={clsx(
-                        "py-2.5 px-4 rounded-xl border text-sm font-medium transition-all",
-                        isSelected 
-                          ? "bg-indigo-50 border-indigo-600 text-indigo-700 ring-1 ring-indigo-600" 
-                          : "bg-white border-neutral-200 text-neutral-700 hover:border-indigo-300"
-                      )}
-                    >
-                      {format(new Date(slot.start), 'HH:mm')} - {format(new Date(slot.end), 'HH:mm')}
-                    </button>
-                  );
-                })}
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">开始时间</label>
+                <input 
+                  type="time" 
+                  step="300"
+                  value={startTime} 
+                  onChange={e => handleStartTimeChange(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-mono text-lg"
+                />
               </div>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">结束时间</label>
+                <input 
+                  type="time" 
+                  step="300"
+                  value={endTime} 
+                  onChange={e => setEndTime(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-mono text-lg"
+                />
+              </div>
+            </div>
+            <div className="mt-6 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-start gap-3">
+              <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-indigo-800 space-y-1.5">
+                <p>• 最小预约时长：<span className="font-bold">{minDuration} 分钟</span></p>
+                <p>• 最大预约时长：<span className="font-bold">{maxDuration} 分钟</span></p>
+                <p>• 步进单位：<span className="font-bold">5 分钟</span></p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 h-fit">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 h-fit sticky top-8">
           <h3 className="text-lg font-semibold mb-6">您的信息</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -234,14 +398,14 @@ export default function Booking() {
               <input required type="email" name="email" value={formData.email} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all" placeholder="zhangsan@university.edu" />
             </div>
 
-            <div className="pt-4">
+            <div className="pt-6">
               <button 
                 type="submit" 
-                disabled={!selectedSlot}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!startTime || !endTime}
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 确认预约
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </form>

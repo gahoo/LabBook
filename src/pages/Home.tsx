@@ -7,7 +7,7 @@ interface Equipment {
   id: number;
   name: string;
   description: string;
-  cron_availability: string;
+  availability_json: string;
   auto_approve: number;
   price_type: string;
   price: number;
@@ -27,6 +27,19 @@ export default function Home() {
         setLoading(false);
       });
   }, []);
+
+  const getAvailabilitySummary = (jsonStr: string) => {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (!data.rules || data.rules.length === 0) return '未设置开放时间';
+      
+      const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      const summary = data.rules.map((r: any) => `${days[r.day]} ${r.start}-${r.end}`).join(', ');
+      return summary.length > 30 ? summary.substring(0, 30) + '...' : summary;
+    } catch (e) {
+      return '无效的开放时间设置';
+    }
+  };
 
   if (loading) {
     return <div className="flex justify-center py-12"><div className="animate-pulse flex space-x-4"><div className="rounded-full bg-neutral-200 h-10 w-10"></div></div></div>;
@@ -65,7 +78,7 @@ export default function Home() {
               <div className="space-y-2 mb-6">
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                   <Clock className="w-4 h-4" />
-                  <span>可预约时间: {eq.cron_availability}</span>
+                  <span className="truncate">开放时间: {getAvailabilitySummary(eq.availability_json)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                   <DollarSign className="w-4 h-4" />

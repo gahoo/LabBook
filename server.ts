@@ -17,7 +17,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
-    cron_availability TEXT NOT NULL,
+    cron_availability TEXT,
+    availability_json TEXT, -- New JSON structure
     auto_approve INTEGER DEFAULT 1,
     price_type TEXT NOT NULL,
     price REAL NOT NULL,
@@ -41,11 +42,16 @@ db.exec(`
     actual_start_time TEXT,
     actual_end_time TEXT,
     total_cost REAL,
+    consumable_quantity REAL DEFAULT 0, -- New field
     FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
 `);
 
-// Migration: Add whitelist columns if they don't exist
+// Migration: Add new columns if they don't exist
+try {
+  db.exec(`ALTER TABLE equipment ADD COLUMN availability_json TEXT`);
+  db.exec(`ALTER TABLE reservations ADD COLUMN consumable_quantity REAL DEFAULT 0`);
+} catch (e) {}
 try {
   db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_enabled INTEGER DEFAULT 0`);
   db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_data TEXT`);
@@ -82,27 +88,30 @@ app.post('/api/admin/login', (req, res) => {
 
 // 2. Add equipment (Admin)
 app.post('/api/admin/equipment', adminAuth, (req, res) => {
-  const { name, description, cron_availability, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
+  const { name, description, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
   
-  // Validate cron
-  try {
-    const parser = (cronParser as any).parse || (cronParser as any).default?.parse || (cronParser as any).parseExpression || (cronParser as any).default?.parseExpression || (typeof cronParser === 'function' ? cronParser : null);
-    if (typeof parser !== 'function') {
-      console.error('Cron parser method not found', typeof cronParser, Object.keys(cronParser));
-      throw new Error('Parser not found');
-    }
-    parser(cron_availability);
-  } catch (err) {
-    return res.status(400).json({ error: '无效的Cron表达式' });
-  }
-
   const stmt = db.prepare(`
-    INSERT INTO equipment (name, description, cron_availability, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data)
+    INSERT INTO equipment (name, description, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const info = stmt.run(name, description, cron_availability, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '');
+  const info = stmt.run(name, description, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '');
   
   res.json({ id: info.lastInsertRowid });
+});
+
+// Update equipment (Admin)
+app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const { name, description, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
+  
+  const stmt = db.prepare(`
+    UPDATE equipment 
+    SET name = ?, description = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?
+    WHERE id = ?
+  `);
+  stmt.run(name, description, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', id);
+  
+  res.json({ success: true });
 });
 
 // 3. Get availability for an equipment on a specific date
@@ -120,58 +129,68 @@ app.get('/api/equipment/:id/availability', (req, res) => {
   }
 
   const targetDate = parseISO(date);
-  const start = startOfDay(targetDate);
-  const end = endOfDay(targetDate);
-
-  const options = {
-    currentDate: start,
-    endDate: end,
-    iterator: true
-  };
-
-  let interval;
+  const dayOfWeek = targetDate.getDay(); // 0 (Sun) to 6 (Sat)
+  
+  let availability;
   try {
-    const parser = (cronParser as any).parse || (cronParser as any).default?.parse || (cronParser as any).parseExpression || (cronParser as any).default?.parseExpression || (typeof cronParser === 'function' ? cronParser : null);
-    interval = parser(equipment.cron_availability, options);
-  } catch (err) {
-    return res.status(500).json({ error: '解析Cron失败' });
+    availability = JSON.parse(equipment.availability_json || '{"rules":[], "advanceDays": 7, "maxDurationMinutes": 60, "minDurationMinutes": 30}');
+  } catch (e) {
+    availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
   }
 
-  const availableSlots: { start: string, end: string }[] = [];
-  while (true) {
-    try {
-      const obj = interval.next();
-      const slotStart = obj.value.toDate();
-      // Assuming 1-hour slots for simplicity based on cron start times
-      const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
-      
-      if (isAfter(slotStart, end)) break;
-      
-      availableSlots.push({
-        start: slotStart.toISOString(),
-        end: slotEnd.toISOString()
-      });
-    } catch (e) {
-      break;
-    }
+  // Check if date is within advance booking range
+  const today = startOfDay(new Date());
+  const maxDate = addDays(today, availability.advanceDays || 7);
+  if (isAfter(targetDate, maxDate)) {
+    return res.json({ availableSlots: [], message: `仅支持提前 ${availability.advanceDays} 天预约` });
   }
+
+  const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
+  const availableSlots: { start: string, end: string }[] = [];
+
+  rules.forEach((rule: any) => {
+    const [startH, startM] = rule.start.split(':').map(Number);
+    const [endH, endM] = rule.end.split(':').map(Number);
+    
+    const slotStart = new Date(targetDate);
+    slotStart.setHours(startH, startM, 0, 0);
+    
+    const slotEnd = new Date(targetDate);
+    slotEnd.setHours(endH, endM, 0, 0);
+
+    availableSlots.push({
+      start: slotStart.toISOString(),
+      end: slotEnd.toISOString()
+    });
+  });
 
   // Fetch existing reservations for this date
   const reservations = db.prepare(`
     SELECT start_time, end_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-    AND start_time >= ? AND start_time <= ?
-  `).all(id, start.toISOString(), end.toISOString()) as any[];
+    AND date(start_time) = date(?)
+  `).all(id, date);
 
-  // Filter out booked slots
-  const freeSlots = availableSlots.filter(slot => {
-    return !reservations.some(res => 
-      (slot.start >= res.start_time && slot.start < res.end_time) ||
-      (slot.end > res.start_time && slot.end <= res.end_time)
-    );
+  res.json({ 
+    availableSlots, 
+    reservations, 
+    maxDurationMinutes: availability.maxDurationMinutes,
+    minDurationMinutes: availability.minDurationMinutes || 30
   });
+});
 
-  res.json(freeSlots);
+// Get all reservations for an equipment in a date range (for chart)
+app.get('/api/equipment/:id/reservations', (req, res) => {
+  const { id } = req.params;
+  const { start, end } = req.query;
+  
+  const reservations = db.prepare(`
+    SELECT start_time, end_time, student_name, status FROM reservations 
+    WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active', 'completed')
+    AND start_time >= ? AND end_time <= ?
+  `).all(id, start, end);
+  
+  res.json(reservations);
 });
 
 // 4. Create reservation
@@ -243,7 +262,7 @@ app.post('/api/reservations/cancel', (req, res) => {
 
 // 7. Check-in
 app.post('/api/reservations/checkin', (req, res) => {
-  const { booking_code } = req.body;
+  const { booking_code, consumable_quantity } = req.body;
   const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
   
   if (!reservation) return res.status(404).json({ error: '未找到该预约' });
@@ -252,7 +271,7 @@ app.post('/api/reservations/checkin', (req, res) => {
   }
 
   const now = new Date().toISOString();
-  db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ? WHERE booking_code = ?").run(now, booking_code);
+  db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ?, consumable_quantity = ? WHERE booking_code = ?").run(now, consumable_quantity || 0, booking_code);
   res.json({ success: true, actual_start_time: now });
 });
 
@@ -276,7 +295,7 @@ app.post('/api/reservations/checkout', (req, res) => {
   const actualEnd = new Date(now);
   const durationHours = (actualEnd.getTime() - actualStart.getTime()) / (1000 * 60 * 60);
   
-  let total_cost = reservation.consumable_fee;
+  let total_cost = (reservation.consumable_quantity || 0) * (reservation.consumable_fee || 0);
   if (reservation.price_type === 'hour') {
     total_cost += Math.ceil(durationHours) * reservation.price;
   } else {
