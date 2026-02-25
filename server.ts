@@ -21,7 +21,9 @@ db.exec(`
     auto_approve INTEGER DEFAULT 1,
     price_type TEXT NOT NULL,
     price REAL NOT NULL,
-    consumable_fee REAL DEFAULT 0
+    consumable_fee REAL DEFAULT 0,
+    whitelist_enabled INTEGER DEFAULT 0,
+    whitelist_data TEXT
   );
 
   CREATE TABLE IF NOT EXISTS reservations (
@@ -42,6 +44,14 @@ db.exec(`
     FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
 `);
+
+// Migration: Add whitelist columns if they don't exist
+try {
+  db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_enabled INTEGER DEFAULT 0`);
+  db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_data TEXT`);
+} catch (e) {
+  // Columns likely already exist
+}
 
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
@@ -72,21 +82,25 @@ app.post('/api/admin/login', (req, res) => {
 
 // 2. Add equipment (Admin)
 app.post('/api/admin/equipment', adminAuth, (req, res) => {
-  const { name, description, cron_availability, auto_approve, price_type, price, consumable_fee } = req.body;
+  const { name, description, cron_availability, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
   
   // Validate cron
   try {
-    // @ts-ignore
-    cronParser.parse(cron_availability);
+    const parser = (cronParser as any).parse || (cronParser as any).default?.parse || (cronParser as any).parseExpression || (cronParser as any).default?.parseExpression || (typeof cronParser === 'function' ? cronParser : null);
+    if (typeof parser !== 'function') {
+      console.error('Cron parser method not found', typeof cronParser, Object.keys(cronParser));
+      throw new Error('Parser not found');
+    }
+    parser(cron_availability);
   } catch (err) {
     return res.status(400).json({ error: '无效的Cron表达式' });
   }
 
   const stmt = db.prepare(`
-    INSERT INTO equipment (name, description, cron_availability, auto_approve, price_type, price, consumable_fee)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO equipment (name, description, cron_availability, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const info = stmt.run(name, description, cron_availability, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0);
+  const info = stmt.run(name, description, cron_availability, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '');
   
   res.json({ id: info.lastInsertRowid });
 });
@@ -117,8 +131,8 @@ app.get('/api/equipment/:id/availability', (req, res) => {
 
   let interval;
   try {
-    // @ts-ignore
-    interval = cronParser.parse(equipment.cron_availability, options);
+    const parser = (cronParser as any).parse || (cronParser as any).default?.parse || (cronParser as any).parseExpression || (cronParser as any).default?.parseExpression || (typeof cronParser === 'function' ? cronParser : null);
+    interval = parser(equipment.cron_availability, options);
   } catch (err) {
     return res.status(500).json({ error: '解析Cron失败' });
   }
@@ -166,6 +180,14 @@ app.post('/api/reservations', (req, res) => {
   
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
+
+  // Whitelist check
+  if (equipment.whitelist_enabled) {
+    const whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
+    if (!whitelist.includes(student_name.trim())) {
+      return res.status(403).json({ error: '您不在该仪器的预约白名单中，请联系管理员。' });
+    }
+  }
 
   // Check if slot is already booked
   const existing = db.prepare(`

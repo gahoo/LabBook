@@ -26,7 +26,9 @@ export default function Admin() {
     auto_approve: true,
     price_type: 'hour',
     price: 0,
-    consumable_fee: 0
+    consumable_fee: 0,
+    whitelist_enabled: false,
+    whitelist_data: ''
   });
 
   // Cron UI State
@@ -34,29 +36,18 @@ export default function Admin() {
   const [customCron, setCustomCron] = useState('0 8-18 * * 1,2,3,4,5');
   const [cronDays, setCronDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [cronStartHour, setCronStartHour] = useState(8);
-  const [cronStartMinute, setCronStartMinute] = useState(0);
   const [cronEndHour, setCronEndHour] = useState(18);
-  const [cronEndMinute, setCronEndMinute] = useState(0);
 
   const getGeneratedCron = () => {
     if (isAdvancedCron) return customCron;
     const daysStr = cronDays.length > 0 ? cronDays.sort().join(',') : '*';
-    
-    // If start and end are the same, it's a specific time.
-    // If we want a range, cron-parser supports ranges like 8-18.
-    // However, cron doesn't natively support "8:30 to 18:45" easily in a single expression.
-    // We will use a simplified approach for the UI:
-    // We'll generate a cron that runs every hour between startHour and endHour.
-    // For exact minute control in a range, it's complex. Let's just use the start minute.
-    // E.g., "30 8-18 * * 1-5" means every hour at 30 minutes past the hour, from 8 to 18.
-    // If they need complex rules, they can use advanced mode.
     
     let hourPart = `${cronStartHour}-${cronEndHour}`;
     if (cronStartHour === cronEndHour) {
       hourPart = `${cronStartHour}`;
     }
     
-    return `${cronStartMinute} ${hourPart} * * ${daysStr}`;
+    return `0 ${hourPart} * * ${daysStr}`;
   };
 
   const getCronDescription = (expr: string) => {
@@ -104,17 +95,10 @@ export default function Admin() {
       if (cronDays.length === 0) {
         return toast.error('请至少选择一天');
       }
-      if (cronStartHour > cronEndHour || (cronStartHour === cronEndHour && cronStartMinute >= cronEndMinute)) {
+      if (cronStartHour > cronEndHour) {
         return toast.error('结束时间必须晚于开始时间');
       }
       cron_availability = getGeneratedCron();
-    }
-
-    try {
-      // Test if cronstrue can parse it as a basic validation
-      cronstrue.toString(cron_availability);
-    } catch (e) {
-      return toast.error('无效的Cron表达式，请检查');
     }
 
     try {
@@ -137,7 +121,9 @@ export default function Admin() {
           auto_approve: true,
           price_type: 'hour',
           price: 0,
-          consumable_fee: 0
+          consumable_fee: 0,
+          whitelist_enabled: false,
+          whitelist_data: ''
         });
       }
     } catch (err) {
@@ -342,33 +328,19 @@ export default function Admin() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs text-neutral-500 mb-1">开始时间</label>
-                        <div className="flex gap-2">
-                          <select value={cronStartHour} onChange={e => setCronStartHour(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
-                            {Array.from({length: 24}).map((_, i) => (
-                              <option key={i} value={i}>{i.toString().padStart(2, '0')} 时</option>
-                            ))}
-                          </select>
-                          <select value={cronStartMinute} onChange={e => setCronStartMinute(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
-                            {[0, 15, 30, 45].map(m => (
-                              <option key={m} value={m}>{m.toString().padStart(2, '0')} 分</option>
-                            ))}
-                          </select>
-                        </div>
+                        <select value={cronStartHour} onChange={e => setCronStartHour(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
+                          {Array.from({length: 24}).map((_, i) => (
+                            <option key={i} value={i}>{i.toString().padStart(2, '0')} 时</option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="block text-xs text-neutral-500 mb-1">结束时间</label>
-                        <div className="flex gap-2">
-                          <select value={cronEndHour} onChange={e => setCronEndHour(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
-                            {Array.from({length: 24}).map((_, i) => (
-                              <option key={i} value={i}>{i.toString().padStart(2, '0')} 时</option>
-                            ))}
-                          </select>
-                          <select value={cronEndMinute} onChange={e => setCronEndMinute(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
-                            {[0, 15, 30, 45].map(m => (
-                              <option key={m} value={m}>{m.toString().padStart(2, '0')} 分</option>
-                            ))}
-                          </select>
-                        </div>
+                        <select value={cronEndHour} onChange={e => setCronEndHour(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm">
+                          {Array.from({length: 24}).map((_, i) => (
+                            <option key={i} value={i}>{i.toString().padStart(2, '0')} 时</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </>
@@ -391,10 +363,39 @@ export default function Admin() {
                 <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
                   <p className="text-xs text-indigo-600 font-medium mb-1">当前设置解析：</p>
                   <p className="text-sm text-indigo-900 font-mono mb-1">{getGeneratedCron()}</p>
-                  <p className="text-sm text-indigo-800">{getCronDescription(getGeneratedCron())}</p>
+                  <p className="text-sm text-indigo-800">{getCronDescription(getGeneratedCron().replace(/^\*/, '0'))}</p>
                 </div>
 
-                <div className="pt-2 border-t border-neutral-200 mt-4">
+                <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-neutral-700">人员白名单</h3>
+                      <p className="text-xs text-neutral-500">仅允许白名单内的人员预约此仪器</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, whitelist_enabled: !formData.whitelist_enabled})}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-indigo-600' : 'bg-neutral-200'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.whitelist_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                  
+                  {formData.whitelist_enabled && (
+                    <div>
+                      <label className="block text-xs text-neutral-500 mb-1">白名单人员名单 (按姓名，逗号或换行分隔)</label>
+                      <textarea
+                        value={formData.whitelist_data}
+                        onChange={e => setFormData({...formData, whitelist_data: e.target.value})}
+                        className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all text-sm"
+                        rows={3}
+                        placeholder="例如：张三, 李四, 王五"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-neutral-200 mt-4">
                   <div className="flex items-center gap-2">
                     <input type="checkbox" id="auto_approve" checked={formData.auto_approve} onChange={e => setFormData({...formData, auto_approve: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded border-neutral-300 focus:ring-indigo-600" />
                     <label htmlFor="auto_approve" className="text-sm font-medium text-neutral-700">自动审批预约</label>
