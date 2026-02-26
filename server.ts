@@ -17,6 +17,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
+    image_url TEXT, -- New field
+    location TEXT, -- New field
     cron_availability TEXT,
     availability_json TEXT, -- New JSON structure
     auto_approve INTEGER DEFAULT 1,
@@ -25,6 +27,19 @@ db.exec(`
     consumable_fee REAL DEFAULT 0,
     whitelist_enabled INTEGER DEFAULT 0,
     whitelist_data TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS whitelist_applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    equipment_id INTEGER NOT NULL,
+    student_id TEXT NOT NULL,
+    student_name TEXT NOT NULL,
+    supervisor TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    email TEXT NOT NULL,
+    status TEXT DEFAULT 'pending', -- pending, approved, rejected
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
 
   CREATE TABLE IF NOT EXISTS reservations (
@@ -42,7 +57,8 @@ db.exec(`
     actual_start_time TEXT,
     actual_end_time TEXT,
     total_cost REAL,
-    consumable_quantity REAL DEFAULT 0, -- New field
+    consumable_quantity REAL DEFAULT 0,
+    modified_count INTEGER DEFAULT 0, -- New field
     FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
 `);
@@ -55,9 +71,26 @@ try {
 try {
   db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_enabled INTEGER DEFAULT 0`);
   db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_data TEXT`);
-} catch (e) {
-  // Columns likely already exist
-}
+} catch (e) {}
+try {
+  db.exec(`ALTER TABLE reservations ADD COLUMN modified_count INTEGER DEFAULT 0`);
+} catch (e) {}
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS whitelist_applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      equipment_id INTEGER NOT NULL,
+      student_id TEXT NOT NULL,
+      student_name TEXT NOT NULL,
+      supervisor TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (equipment_id) REFERENCES equipment(id)
+    )
+  `);
+} catch (e) {}
 
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
@@ -88,13 +121,13 @@ app.post('/api/admin/login', (req, res) => {
 
 // 2. Add equipment (Admin)
 app.post('/api/admin/equipment', adminAuth, (req, res) => {
-  const { name, description, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
+  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
   
   const stmt = db.prepare(`
-    INSERT INTO equipment (name, description, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO equipment (name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const info = stmt.run(name, description, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '');
+  const info = stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '');
   
   res.json({ id: info.lastInsertRowid });
 });
@@ -102,14 +135,14 @@ app.post('/api/admin/equipment', adminAuth, (req, res) => {
 // Update equipment (Admin)
 app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
   const { id } = req.params;
-  const { name, description, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
+  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
   
   const stmt = db.prepare(`
     UPDATE equipment 
-    SET name = ?, description = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?
+    SET name = ?, description = ?, image_url = ?, location = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?
     WHERE id = ?
   `);
-  stmt.run(name, description, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', id);
+  stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', id);
   
   res.json({ success: true });
 });
@@ -204,8 +237,18 @@ app.post('/api/reservations', (req, res) => {
   if (equipment.whitelist_enabled) {
     const whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
     if (!whitelist.includes(student_name.trim())) {
-      return res.status(403).json({ error: '您不在该仪器的预约白名单中，请联系管理员。' });
+      return res.status(403).json({ 
+        error: '您不在该仪器的预约白名单中，请先申请加入白名单。',
+        needs_whitelist_application: true 
+      });
     }
+  }
+
+  // Check if slot is in the past
+  const now = new Date();
+  const start = new Date(start_time);
+  if (isBefore(start, now)) {
+    return res.status(400).json({ error: '不能预约已经开始或过去的时间' });
   }
 
   // Check if slot is already booked
@@ -230,6 +273,57 @@ app.post('/api/reservations', (req, res) => {
   const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
 
   res.json({ id: info.lastInsertRowid, booking_code, status });
+});
+
+// Whitelist Application
+app.post('/api/whitelist/apply', (req, res) => {
+  const { equipment_id, student_id, student_name, supervisor, phone, email } = req.body;
+  
+  const stmt = db.prepare(`
+    INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(equipment_id, student_id, student_name, supervisor, phone, email);
+  
+  res.json({ success: true });
+});
+
+// Admin get whitelist applications
+app.get('/api/admin/whitelist/applications', adminAuth, (req, res) => {
+  const apps = db.prepare(`
+    SELECT wa.*, e.name as equipment_name 
+    FROM whitelist_applications wa
+    JOIN equipment e ON wa.equipment_id = e.id
+    ORDER BY wa.created_at DESC
+  `).all();
+  res.json(apps);
+});
+
+// Admin approve whitelist application
+app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const app = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
+  if (!app) return res.status(404).json({ error: '未找到申请' });
+
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(app.equipment_id) as any;
+  if (!equipment) return res.status(404).json({ error: '未找到仪器' });
+
+  let whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
+  if (!whitelist.includes(app.student_name.trim())) {
+    whitelist.push(app.student_name.trim());
+  }
+  
+  db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run(whitelist.join('\n'), app.equipment_id);
+  db.prepare("UPDATE whitelist_applications SET status = 'approved' WHERE id = ?").run(id);
+  
+  res.json({ success: true });
+});
+
+// Admin reject whitelist application
+app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) => {
+  const { id } = req.params;
+  db.prepare("UPDATE whitelist_applications SET status = 'rejected' WHERE id = ?").run(id);
+  res.json({ success: true });
 });
 
 // 5. Get reservation by code
@@ -260,6 +354,40 @@ app.post('/api/reservations/cancel', (req, res) => {
   res.json({ success: true });
 });
 
+// Update reservation (User)
+app.post('/api/reservations/update', (req, res) => {
+  const { booking_code, student_name, student_id, supervisor, phone, email, start_time, end_time } = req.body;
+  const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
+  
+  if (!reservation) return res.status(404).json({ error: '未找到该预约' });
+  if (reservation.status !== 'pending' && reservation.status !== 'approved') {
+    return res.status(400).json({ error: '无法修改进行中或已完成的预约' });
+  }
+  if (reservation.modified_count >= 1) {
+    return res.status(400).json({ error: '每个预约仅允许修改一次时间，请取消后重新预约' });
+  }
+
+  // Check conflicts (excluding self)
+  const conflict = db.prepare(`
+    SELECT id FROM reservations 
+    WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
+    AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))
+  `).get(reservation.equipment_id, reservation.id, start_time, start_time, end_time, end_time);
+
+  if (conflict) {
+    return res.status(400).json({ error: '所选时间段已有其他预约' });
+  }
+
+  const stmt = db.prepare(`
+    UPDATE reservations 
+    SET student_name = ?, student_id = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, modified_count = modified_count + 1
+    WHERE id = ?
+  `);
+  stmt.run(student_name, student_id, supervisor, phone, email, start_time, end_time, reservation.id);
+  
+  res.json({ success: true });
+});
+
 // 7. Check-in
 app.post('/api/reservations/checkin', (req, res) => {
   const { booking_code, consumable_quantity } = req.body;
@@ -270,9 +398,18 @@ app.post('/api/reservations/checkin', (req, res) => {
     return res.status(400).json({ error: '预约未通过审批或已开始' });
   }
 
-  const now = new Date().toISOString();
-  db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ?, consumable_quantity = ? WHERE booking_code = ?").run(now, consumable_quantity || 0, booking_code);
-  res.json({ success: true, actual_start_time: now });
+  const now = new Date();
+  const scheduledStart = new Date(reservation.start_time);
+  
+  // Only allow check-in 30 minutes before scheduled start
+  const earliestCheckin = new Date(scheduledStart.getTime() - 30 * 60 * 1000);
+  if (isBefore(now, earliestCheckin)) {
+    return res.status(400).json({ error: `只能在预约开始前 30 分钟内上机。您的预约开始时间为 ${format(scheduledStart, 'HH:mm')}，请在 ${format(earliestCheckin, 'HH:mm')} 后重试。` });
+  }
+
+  const nowStr = now.toISOString();
+  db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ?, consumable_quantity = ? WHERE booking_code = ?").run(nowStr, consumable_quantity || 0, booking_code);
+  res.json({ success: true, actual_start_time: nowStr });
 });
 
 // 8. Check-out
@@ -317,6 +454,21 @@ app.get('/api/admin/reservations', adminAuth, (req, res) => {
   res.json(reservations);
 });
 
+// Admin update reservation
+app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const { student_id, student_name, supervisor, phone, email, start_time, end_time, status } = req.body;
+  
+  const stmt = db.prepare(`
+    UPDATE reservations 
+    SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, status = ?
+    WHERE id = ?
+  `);
+  stmt.run(student_id, student_name, supervisor, phone, email, start_time, end_time, status, id);
+  
+  res.json({ success: true });
+});
+
 // Admin delete reservation
 app.delete('/api/admin/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
@@ -333,7 +485,7 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
 
 // 9. Admin Reports
 app.get('/api/admin/reports', adminAuth, (req, res) => {
-  const { period, student_name, supervisor } = req.query; // 'day', 'week', 'month', 'quarter', 'year'
+  const { period, student_name, supervisor, startDate, endDate } = req.query;
   
   let dateFormat = "'%Y-%m-%d'";
   if (period === 'week') dateFormat = "'%Y-%W'";
@@ -343,7 +495,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   
   const periodExpr = period === 'quarter' ? dateFormat : `strftime(${dateFormat}, actual_start_time)`;
 
-  let whereClause = "WHERE status = 'completed'";
+  let whereClause = "WHERE 1=1";
   const params: any[] = [];
   
   if (student_name) {
@@ -354,41 +506,102 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     whereClause += " AND supervisor LIKE ?";
     params.push(`%${supervisor}%`);
   }
+  if (startDate) {
+    whereClause += " AND date(start_time) >= date(?)";
+    params.push(startDate);
+  }
+  if (endDate) {
+    whereClause += " AND date(start_time) <= date(?)";
+    params.push(endDate);
+  }
+
+  // Helper to calculate report status
+  const calculateStatus = (res: any, prevRes: any) => {
+    if (res.status === 'cancelled') return '已取消';
+    if (!res.actual_start_time) return '爽约';
+    
+    const start = new Date(res.start_time);
+    const end = new Date(res.end_time);
+    const actualStart = new Date(res.actual_start_time);
+    const actualEnd = res.actual_end_time ? new Date(res.actual_end_time) : null;
+
+    let isDelayCausedByPrev = false;
+    if (prevRes && prevRes.actual_end_time) {
+      const prevActualEnd = new Date(prevRes.actual_end_time);
+      if (isAfter(prevActualEnd, start)) {
+        isDelayCausedByPrev = true;
+      }
+    }
+
+    const lateThreshold = 15 * 60 * 1000;
+    const overtimeThreshold = 30 * 60 * 1000;
+    const normalThreshold = 30 * 60 * 1000;
+
+    if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
+      return '迟到';
+    }
+    if (actualEnd && actualEnd.getTime() > end.getTime() + overtimeThreshold) {
+      return '超时';
+    }
+    
+    return '正常';
+  };
+
+  const allReservationsRaw = db.prepare(`
+    SELECT r.*, e.name as equipment_name 
+    FROM reservations r
+    JOIN equipment e ON r.equipment_id = e.id
+    ${whereClause}
+    ORDER BY r.equipment_id, r.start_time ASC
+  `).all(...params);
+
+  const allReservations = allReservationsRaw.map((res: any, idx: number) => {
+    const prevRes = idx > 0 && (allReservationsRaw[idx-1] as any).equipment_id === res.equipment_id ? (allReservationsRaw[idx-1] as any) : null;
+    const reportStatus = calculateStatus(res, prevRes);
+    return { ...res, reportStatus };
+  });
+
+  // Filter for stats: exclude no-shows and cancelled
+  const statsReservations = allReservations.filter(r => r.actual_start_time && r.status === 'completed');
 
   const usageByTime = db.prepare(`
     SELECT ${periodExpr} as period, 
            SUM((julianday(actual_end_time) - julianday(actual_start_time)) * 24) as total_hours,
            SUM(total_cost) as total_revenue
     FROM reservations
-    ${whereClause}
+    ${whereClause} AND status = 'completed' AND actual_start_time IS NOT NULL
     GROUP BY period
-    ORDER BY period DESC
-    LIMIT 30
+    ORDER BY period ASC
   `).all(...params);
 
-  const usageByPerson = db.prepare(`
-    SELECT student_name, student_id,
-           SUM((julianday(actual_end_time) - julianday(actual_start_time)) * 24) as total_hours,
-           SUM(total_cost) as total_revenue
-    FROM reservations
-    ${whereClause}
-    GROUP BY student_id, student_name
-    ORDER BY total_revenue DESC
-    LIMIT 20
-  `).all(...params);
+  // Grouping by person and supervisor manually to ensure correct sorting and filtering
+  const personMap = new Map();
+  const supervisorMap = new Map();
 
-  const usageBySupervisor = db.prepare(`
-    SELECT supervisor,
-           SUM((julianday(actual_end_time) - julianday(actual_start_time)) * 24) as total_hours,
-           SUM(total_cost) as total_revenue
-    FROM reservations
-    ${whereClause}
-    GROUP BY supervisor
-    ORDER BY total_revenue DESC
-    LIMIT 20
-  `).all(...params);
+  statsReservations.forEach(r => {
+    const hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+    const revenue = r.total_cost || 0;
 
-  res.json({ usageByTime, usageByPerson, usageBySupervisor });
+    const personKey = `${r.student_id}_${r.student_name}`;
+    if (!personMap.has(personKey)) {
+      personMap.set(personKey, { student_name: r.student_name, student_id: r.student_id, supervisor: r.supervisor, total_hours: 0, total_revenue: 0 });
+    }
+    const p = personMap.get(personKey);
+    p.total_hours += hours;
+    p.total_revenue += revenue;
+
+    if (!supervisorMap.has(r.supervisor)) {
+      supervisorMap.set(r.supervisor, { supervisor: r.supervisor, total_hours: 0, total_revenue: 0 });
+    }
+    const s = supervisorMap.get(r.supervisor);
+    s.total_hours += hours;
+    s.total_revenue += revenue;
+  });
+
+  const usageByPerson = Array.from(personMap.values()).sort((a, b) => b.total_hours - a.total_hours);
+  const usageBySupervisor = Array.from(supervisorMap.values()).sort((a, b) => b.total_hours - a.total_hours);
+
+  res.json({ usageByTime, usageByPerson, usageBySupervisor, allReservations });
 });
 
 async function startServer() {
