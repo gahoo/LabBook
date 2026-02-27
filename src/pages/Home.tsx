@@ -70,7 +70,7 @@ export default function Home() {
             <div className="p-6 flex-1 flex flex-col">
               <button 
                 onClick={() => setQrModal(eq)}
-                className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 z-10"
+                className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 z-10"
                 title="显示二维码"
               >
                 <QrCode className="w-5 h-5" />
@@ -111,7 +111,7 @@ export default function Home() {
               
               <Link 
                 to={`/book/${eq.id}`}
-                className="w-full inline-flex justify-center items-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+                className="w-full inline-flex justify-center items-center px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors"
               >
                 立即预约
               </Link>

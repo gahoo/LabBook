@@ -48,11 +48,26 @@ export default function MyReservations() {
       );
       const validResults = results.filter(Boolean);
       
-      // Sort: active first, then newest first
+      // Sort: active, approved, pending, completed, cancelled, then closest to now
       const sorted = validResults.sort((a, b) => {
-        if (a.status === 'active' && b.status !== 'active') return -1;
-        if (a.status !== 'active' && b.status === 'active') return 1;
-        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
+        const statusOrder: Record<string, number> = {
+          'active': 1,
+          'approved': 2,
+          'pending': 3,
+          'completed': 4,
+          'cancelled': 5
+        };
+        
+        const orderA = statusOrder[a.status] || 99;
+        const orderB = statusOrder[b.status] || 99;
+        
+        if (orderA !== orderB) return orderA - orderB;
+        
+        const now = Date.now();
+        const diffA = Math.abs(new Date(a.start_time).getTime() - now);
+        const diffB = Math.abs(new Date(b.start_time).getTime() - now);
+        
+        return diffA - diffB;
       });
       
       setMyReservations(sorted);
@@ -134,13 +149,22 @@ export default function MyReservations() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Convert local time back to UTC for server safely
+      const toUTC = (localStr: string) => {
+        const [datePart, timePart] = localStr.split('T');
+        const [y, m, d] = datePart.split('-').map(Number);
+        const [h, min] = timePart.split(':').map(Number);
+        return new Date(y, m - 1, d, h, min).toISOString();
+      };
+      
       const res = await fetch(`/api/reservations/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reservation_id: editingId,
           booking_code: myReservations.find(r => r.id === editingId)?.booking_code,
-          ...editData
+          start_time: toUTC(editData.start_time),
+          end_time: toUTC(editData.end_time),
         })
       });
       if (res.ok) {
@@ -158,13 +182,20 @@ export default function MyReservations() {
 
   const startEdit = (resv: Reservation) => {
     setEditingId(resv.id);
+    // Convert UTC to local for datetime-local input safely
+    const toLocalISO = (utcStr: string) => {
+      const date = new Date(utcStr);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const h = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${d}T${h}:${min}`;
+    };
+    
     setEditData({
-      student_name: resv.student_name,
-      student_id: resv.student_id,
-      supervisor: resv.supervisor,
-      start_time: resv.start_time,
-      end_time: resv.end_time,
-      status: resv.status
+      start_time: toLocalISO(resv.start_time),
+      end_time: toLocalISO(resv.end_time),
     });
   };
 
@@ -255,22 +286,24 @@ export default function MyReservations() {
                     <form onSubmit={handleUpdate} className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-neutral-400 mb-1">姓名</label>
-                          <input type="text" value={editData.student_name} onChange={e => setEditData({...editData, student_name: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-neutral-400 mb-1">学号</label>
-                          <input type="text" value={editData.student_id} onChange={e => setEditData({...editData, student_id: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
                           <label className="block text-xs font-bold text-neutral-400 mb-1">开始时间</label>
-                          <input type="datetime-local" value={editData.start_time.slice(0, 16)} onChange={e => setEditData({...editData, start_time: new Date(e.target.value).toISOString()})} className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" />
+                          <input 
+                            type="datetime-local" 
+                            step="300"
+                            value={editData.start_time} 
+                            onChange={e => setEditData({...editData, start_time: e.target.value})} 
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
+                          />
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-neutral-400 mb-1">结束时间</label>
-                          <input type="datetime-local" value={editData.end_time.slice(0, 16)} onChange={e => setEditData({...editData, end_time: new Date(e.target.value).toISOString()})} className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" />
+                          <input 
+                            type="datetime-local" 
+                            step="300"
+                            value={editData.end_time} 
+                            onChange={e => setEditData({...editData, end_time: e.target.value})} 
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
+                          />
                         </div>
                       </div>
                       <div className="flex gap-2">

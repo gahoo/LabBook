@@ -46,6 +46,25 @@ export default function Admin() {
 
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
+  const startEditReservation = (res: any) => {
+    // Convert UTC to local for datetime-local input safely
+    const toLocalISO = (utcStr: string) => {
+      const date = new Date(utcStr);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const h = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${d}T${h}:${min}`;
+    };
+
+    setEditingReservation({
+      ...res,
+      start_time: toLocalISO(res.start_time),
+      end_time: toLocalISO(res.end_time),
+    });
+  };
+
   const daysOfWeek = [
     { label: '周日', value: 0 },
     { label: '周一', value: 1 },
@@ -373,14 +392,28 @@ export default function Admin() {
 
   const handleUpdateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingReservation) return;
+    
     try {
+      // Convert local time back to UTC for server safely
+      const toUTC = (localStr: string) => {
+        const [datePart, timePart] = localStr.split('T');
+        const [y, m, d] = datePart.split('-').map(Number);
+        const [h, min] = timePart.split(':').map(Number);
+        return new Date(y, m - 1, d, h, min).toISOString();
+      };
+      
       const res = await fetch(`/api/admin/reservations/${editingReservation.id}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(editingReservation)
+        body: JSON.stringify({
+          ...editingReservation,
+          start_time: toUTC(editingReservation.start_time),
+          end_time: toUTC(editingReservation.end_time),
+        })
       });
       if (res.ok) {
         toast.success('预约更新成功');
@@ -797,7 +830,7 @@ export default function Admin() {
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
                       <button 
-                        onClick={() => setEditingReservation(res)}
+                        onClick={() => startEditReservation(res)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="修改预约"
                       >
@@ -839,11 +872,23 @@ export default function Admin() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">开始时间</label>
-                      <input type="datetime-local" value={editingReservation.start_time.slice(0, 16)} onChange={e => setEditingReservation({...editingReservation, start_time: new Date(e.target.value).toISOString()})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
+                      <input 
+                        type="datetime-local" 
+                        step="300"
+                        value={editingReservation.start_time} 
+                        onChange={e => setEditingReservation({...editingReservation, start_time: e.target.value})} 
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">结束时间</label>
-                      <input type="datetime-local" value={editingReservation.end_time.slice(0, 16)} onChange={e => setEditingReservation({...editingReservation, end_time: new Date(e.target.value).toISOString()})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
+                      <input 
+                        type="datetime-local" 
+                        step="300"
+                        value={editingReservation.end_time} 
+                        onChange={e => setEditingReservation({...editingReservation, end_time: e.target.value})} 
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
+                      />
                     </div>
                   </div>
                   <div>
@@ -963,29 +1008,6 @@ export default function Admin() {
               >
                 查询
               </button>
-              <div className="flex gap-2">
-                <button 
-                  onClick={exportDetailedReport}
-                  className="px-4 py-2 border border-neutral-300 text-neutral-700 rounded-xl text-xs font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2"
-                >
-                  <Download className="w-3 h-3" />
-                  导出记录
-                </button>
-                <button 
-                  onClick={exportUserStats}
-                  className="px-4 py-2 border border-neutral-300 text-neutral-700 rounded-xl text-xs font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2"
-                >
-                  <Download className="w-3 h-3" />
-                  导出用户
-                </button>
-                <button 
-                  onClick={exportSupervisorStats}
-                  className="px-4 py-2 border border-neutral-300 text-neutral-700 rounded-xl text-xs font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2"
-                >
-                  <Download className="w-3 h-3" />
-                  导出导师
-                </button>
-              </div>
             </div>
 
             <div className="flex flex-wrap gap-4">
@@ -1077,6 +1099,13 @@ export default function Admin() {
                     <FileText className="w-5 h-5 text-red-600" />
                     详细预约记录
                   </h3>
+                  <button 
+                    onClick={exportDetailedReport}
+                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                    title="导出记录"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
@@ -1145,8 +1174,15 @@ export default function Admin() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Top Users Table */}
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                  <div className="p-6 border-b border-neutral-100">
+                  <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
                     <h3 className="font-bold">用户排行</h3>
+                    <button 
+                      onClick={exportUserStats}
+                      className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      title="导出用户"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
@@ -1174,8 +1210,15 @@ export default function Admin() {
                 </div>
                 {/* Top Supervisors Table */}
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                  <div className="p-6 border-b border-neutral-100">
+                  <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
                     <h3 className="font-bold">导师排行</h3>
+                    <button 
+                      onClick={exportSupervisorStats}
+                      className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      title="导出导师"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">

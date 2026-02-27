@@ -356,7 +356,7 @@ app.post('/api/reservations/cancel', (req, res) => {
 
 // Update reservation (User)
 app.post('/api/reservations/update', (req, res) => {
-  const { booking_code, student_name, student_id, supervisor, phone, email, start_time, end_time } = req.body;
+  const { booking_code, start_time, end_time } = req.body;
   const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
   
   if (!reservation) return res.status(404).json({ error: '未找到该预约' });
@@ -365,6 +365,59 @@ app.post('/api/reservations/update', (req, res) => {
   }
   if (reservation.modified_count >= 1) {
     return res.status(400).json({ error: '每个预约仅允许修改一次时间，请取消后重新预约' });
+  }
+
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
+  const start = new Date(start_time);
+  const end = new Date(end_time);
+  
+  if (end <= start) {
+    return res.status(400).json({ error: '结束时间必须晚于开始时间' });
+  }
+
+  const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+  
+  let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
+  try {
+    if (equipment.availability_json) {
+      availability = JSON.parse(equipment.availability_json);
+    }
+  } catch (e) {}
+
+  const maxDuration = availability.maxDurationMinutes || 60;
+  const minDuration = availability.minDurationMinutes || 30;
+
+  if (durationMinutes > maxDuration) return res.status(400).json({ error: `预约时长不能超过 ${maxDuration} 分钟` });
+  if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
+
+  const now = new Date();
+  const maxDate = new Date(now);
+  maxDate.setDate(maxDate.getDate() + (availability.advanceDays || 7));
+  maxDate.setHours(23, 59, 59, 999);
+  
+  if (start > maxDate) {
+    return res.status(400).json({ error: `只能提前 ${availability.advanceDays || 7} 天预约` });
+  }
+  if (start < now) {
+    return res.status(400).json({ error: '不能预约过去的时间' });
+  }
+
+  const dayOfWeek = start.getDay();
+  const rule = availability.rules.find((r: any) => r.day === dayOfWeek);
+  if (!rule) {
+    return res.status(400).json({ error: '所选日期仪器不开放' });
+  }
+
+  const ruleStart = new Date(start);
+  const [rsH, rsM] = rule.start.split(':').map(Number);
+  ruleStart.setHours(rsH, rsM, 0, 0);
+
+  const ruleEnd = new Date(start);
+  const [reH, reM] = rule.end.split(':').map(Number);
+  ruleEnd.setHours(reH, reM, 0, 0);
+
+  if (start < ruleStart || end > ruleEnd) {
+    return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${rule.start}-${rule.end})` });
   }
 
   // Check conflicts (excluding self)
@@ -380,10 +433,10 @@ app.post('/api/reservations/update', (req, res) => {
 
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET student_name = ?, student_id = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, modified_count = modified_count + 1
+    SET start_time = ?, end_time = ?, modified_count = modified_count + 1
     WHERE id = ?
   `);
-  stmt.run(student_name, student_id, supervisor, phone, email, start_time, end_time, reservation.id);
+  stmt.run(start_time, end_time, reservation.id);
   
   res.json({ success: true });
 });

@@ -18,20 +18,20 @@ export default function App() {
         <Toaster position="top-center" />
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-10">
           <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2 text-indigo-600 font-semibold text-lg tracking-tight">
+            <Link to="/" className="flex items-center gap-2 text-red-600 font-semibold text-lg tracking-tight">
               <Beaker className="w-6 h-6" />
               <span>LabBook</span>
             </Link>
             <nav className="flex items-center gap-6 text-sm font-medium text-neutral-600">
-              <Link to="/" className="hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+              <Link to="/" className="hover:text-red-600 transition-colors flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" />
                 <span className="hidden sm:inline">仪器列表</span>
               </Link>
-              <Link to="/my-reservations" className="hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+              <Link to="/my-reservations" className="hover:text-red-600 transition-colors flex items-center gap-1.5">
                 <User className="w-4 h-4" />
                 <span className="hidden sm:inline">我的预约</span>
               </Link>
-              <Link to="/admin" className="hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+              <Link to="/admin" className="hover:text-red-600 transition-colors flex items-center gap-1.5">
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">管理后台</span>
               </Link>
