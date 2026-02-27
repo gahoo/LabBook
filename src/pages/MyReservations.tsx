@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Play, Square, XCircle, CheckCircle2, Clock, Calendar, ChevronDown, ChevronUp, Edit3, Save, X } from 'lucide-react';
-import { format, isBefore, addMinutes } from 'date-fns';
+import { format, isBefore, addMinutes, parseISO } from 'date-fns';
+import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
 interface Reservation {
   id: number;
+  equipment_id: number;
   equipment_name: string;
   student_name: string;
   student_id: string;
@@ -32,6 +34,8 @@ export default function MyReservations() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState<any>(null);
+  const [availabilityData, setAvailabilityData] = useState<any[]>([]);
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
 
   const fetchMyReservations = useCallback(async () => {
     const codesStr = document.cookie
@@ -180,7 +184,7 @@ export default function MyReservations() {
     }
   };
 
-  const startEdit = (resv: Reservation) => {
+  const startEdit = async (resv: Reservation) => {
     setEditingId(resv.id);
     // Convert UTC to local for datetime-local input safely
     const toLocalISO = (utcStr: string) => {
@@ -197,6 +201,72 @@ export default function MyReservations() {
       start_time: toLocalISO(resv.start_time),
       end_time: toLocalISO(resv.end_time),
     });
+
+    setLoadingAvailability(true);
+    try {
+      const eqRes = await fetch(`/api/equipment`);
+      const eqData = await eqRes.json();
+      const eq = eqData.find((e: any) => e.id === resv.equipment_id);
+      let advanceDays = 7;
+      if (eq) {
+        try {
+          const avail = JSON.parse(eq.availability_json);
+          advanceDays = avail.advanceDays || 7;
+        } catch (e) {}
+      }
+
+      const today = new Date();
+      const dates = Array.from({ length: advanceDays + 1 }).map((_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + i);
+        return format(d, 'yyyy-MM-dd');
+      });
+
+      const results = await Promise.all(
+        dates.map(d => fetch(`/api/equipment/${resv.equipment_id}/availability?date=${d}`).then(r => r.json()))
+      );
+      setAvailabilityData(results.map((r, i) => ({ date: dates[i], ...r })));
+    } catch (err) {
+      console.error('Failed to fetch availability', err);
+    } finally {
+      setLoadingAvailability(false);
+    }
+  };
+
+  const timeSteps = Array.from({ length: (22 - 8) * 2 }).map((_, i) => {
+    const h = 8 + Math.floor(i / 2);
+    const m = (i % 2) * 30;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  });
+
+  const gridData = availabilityData.map(dayData => {
+    const dateStr = dayData.date;
+    const slots = dayData.availableSlots || [];
+    const resvs = dayData.reservations || [];
+    
+    return {
+      date: dateStr,
+      times: timeSteps.map(t => {
+        const timeDate = new Date(`${dateStr}T${t}`);
+        const isAvailable = slots.some((s: any) => {
+          const start = new Date(s.start);
+          const end = new Date(s.end);
+          return timeDate >= start && timeDate < end;
+        });
+        const isBooked = resvs.some((r: any) => {
+          const start = new Date(r.start_time);
+          const end = new Date(r.end_time);
+          // Don't count the current reservation as booked
+          if (r.id === editingId) return false;
+          return timeDate >= start && timeDate < end;
+        });
+        return { time: t, isAvailable, isBooked };
+      })
+    };
+  });
+
+  const daysMap: Record<string, string> = {
+    'Mon': '周一', 'Tue': '周二', 'Wed': '周三', 'Thu': '周四', 'Fri': '周五', 'Sat': '周六', 'Sun': '周日'
   };
 
   const statusMap: Record<string, string> = {
@@ -283,34 +353,98 @@ export default function MyReservations() {
               {expandedId === resv.id && (
                 <div className="px-6 pb-6 pt-2 border-t border-neutral-50 space-y-6">
                   {editingId === resv.id ? (
-                    <form onSubmit={handleUpdate} className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-neutral-400 mb-1">开始时间</label>
-                          <input 
-                            type="datetime-local" 
-                            step="300"
-                            value={editData.start_time} 
-                            onChange={e => setEditData({...editData, start_time: e.target.value})} 
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-neutral-400 mb-1">结束时间</label>
-                          <input 
-                            type="datetime-local" 
-                            step="300"
-                            value={editData.end_time} 
-                            onChange={e => setEditData({...editData, end_time: e.target.value})} 
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
-                          />
-                        </div>
+                    <div className="space-y-6">
+                      {/* Timeline */}
+                      <div className="bg-white p-4 rounded-xl border border-neutral-200">
+                        <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-red-600" />
+                          可用时间概览
+                        </h4>
+                        {loadingAvailability ? (
+                          <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div></div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <div className="min-w-[600px]">
+                              <div className="flex border-b border-neutral-100 pb-2 mb-2">
+                                <div className="w-20 shrink-0"></div>
+                                <div className="flex-1 flex justify-between px-2 text-[10px] text-neutral-400 font-mono">
+                                  {timeSteps.filter((_, i) => i % 2 === 0).map(t => (
+                                    <span key={t}>{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                {gridData.map((row, idx) => {
+                                  const date = parseISO(row.date);
+                                  const dayStr = format(date, 'EEE');
+                                  return (
+                                    <div key={idx} className="flex items-center group">
+                                      <div className="w-20 shrink-0 text-left px-2 py-1">
+                                        <p className="text-[10px] font-bold uppercase opacity-70">{daysMap[dayStr] || dayStr}</p>
+                                        <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
+                                      </div>
+                                      <div className="flex-1 flex gap-px h-6 bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                                        {row.times.map((t, i) => {
+                                          const timeDate = new Date(`${row.date}T${t.time}`);
+                                          const isPast = timeDate < new Date();
+                                          return (
+                                            <div 
+                                              key={i}
+                                              title={`${row.date} ${t.time}`}
+                                              className={clsx(
+                                                "flex-1 transition-all",
+                                                t.isBooked ? "bg-red-500" : (t.isAvailable && !isPast ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200")
+                                              )}
+                                              onClick={() => {
+                                                if (t.isAvailable && !t.isBooked && !isPast) {
+                                                  setEditData({
+                                                    ...editData,
+                                                    start_time: `${row.date}T${t.time}`
+                                                  });
+                                                }
+                                              }}
+                                            />
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex gap-2">
-                        <button type="submit" className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 保存</button>
-                        <button type="button" onClick={() => setEditingId(null)} className="flex-1 py-2 border border-neutral-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2"><X className="w-4 h-4" /> 取消</button>
-                      </div>
-                    </form>
+
+                      <form onSubmit={handleUpdate} className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-neutral-400 mb-1">开始时间</label>
+                            <input 
+                              type="datetime-local" 
+                              step="300"
+                              value={editData.start_time} 
+                              onChange={e => setEditData({...editData, start_time: e.target.value})} 
+                              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-neutral-400 mb-1">结束时间</label>
+                            <input 
+                              type="datetime-local" 
+                              step="300"
+                              value={editData.end_time} 
+                              onChange={e => setEditData({...editData, end_time: e.target.value})} 
+                              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="submit" className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 保存</button>
+                          <button type="button" onClick={() => setEditingId(null)} className="flex-1 py-2 border border-neutral-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2"><X className="w-4 h-4" /> 取消</button>
+                        </div>
+                      </form>
+                    </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-4">
@@ -350,12 +484,12 @@ export default function MyReservations() {
                         <Edit3 className="w-4 h-4" /> {resv.modified_count >= 1 ? '已修改过' : '修改信息'}
                       </button>
                     )}
-                    {(resv.status === 'pending' || resv.status === 'approved') && (
+                    {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (
                       <button onClick={() => handleAction(resv, 'cancel')} className="flex-1 min-w-[120px] py-2.5 border border-red-100 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 flex items-center justify-center gap-2">
                         <XCircle className="w-4 h-4" /> 取消预约
                       </button>
                     )}
-                    {resv.status === 'approved' && (
+                    {resv.status === 'approved' && !editingId && (
                       <div className="flex-1 min-w-[240px] flex gap-2">
                         {resv.consumable_fee > 0 && (
                           <input 
@@ -372,7 +506,7 @@ export default function MyReservations() {
                         </button>
                       </div>
                     )}
-                    {resv.status === 'active' && (
+                    {resv.status === 'active' && !editingId && (
                       <button onClick={() => handleAction(resv, 'checkout')} className="flex-1 min-w-[120px] py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 flex items-center justify-center gap-2">
                         <Square className="w-4 h-4" /> 下机
                       </button>

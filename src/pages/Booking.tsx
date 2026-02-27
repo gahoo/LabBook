@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter, startOfDay, endOfDay } from 'date-fns';
 import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -33,6 +33,7 @@ interface Reservation {
 export default function Booking() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [availableRanges, setAvailableRanges] = useState<Slot[]>([]);
@@ -85,7 +86,13 @@ export default function Booking() {
         console.error('Failed to parse cookie', e);
       }
     }
-  }, [id]);
+
+    const queryParams = new URLSearchParams(location.search);
+    const timeParam = queryParams.get('time');
+    if (timeParam) {
+      handleStartTimeChange(timeParam);
+    }
+  }, [id, location.search]);
 
   useEffect(() => {
     if (!id || !selectedDate) return;

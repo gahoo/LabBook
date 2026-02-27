@@ -24,6 +24,7 @@ export default function Admin() {
   const [equipmentList, setEquipmentList] = useState<any[]>([]);
   const [editingEquipment, setEditingEquipment] = useState<any>(null);
   const [editingReservation, setEditingReservation] = useState<any>(null);
+  const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [whitelistApps, setWhitelistApps] = useState<any[]>([]);
 
   // Add/Edit Equipment Form State
@@ -419,6 +420,43 @@ export default function Admin() {
         toast.success('预约更新成功');
         setEditingReservation(null);
         fetchReservations();
+      }
+    } catch (err) {
+      toast.error('更新失败');
+    }
+  };
+
+  const handleUpdateReportRecord = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingReportRecord) return;
+    
+    try {
+      const toUTC = (localStr: string) => {
+        if (!localStr) return null;
+        const [datePart, timePart] = localStr.split('T');
+        const [y, m, d] = datePart.split('-').map(Number);
+        const [h, min] = timePart.split(':').map(Number);
+        return new Date(y, m - 1, d, h, min).toISOString();
+      };
+
+      const res = await fetch(`/api/admin/reports/reservations/${editingReportRecord.id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          actual_start_time: toUTC(editingReportRecord.actual_start_time),
+          actual_end_time: toUTC(editingReportRecord.actual_end_time),
+          consumable_quantity: editingReportRecord.consumable_quantity
+        })
+      });
+      if (res.ok) {
+        toast.success('记录更新成功');
+        setEditingReportRecord(null);
+        fetchReports();
+      } else {
+        toast.error('更新失败');
       }
     } catch (err) {
       toast.error('更新失败');
@@ -865,9 +903,15 @@ export default function Admin() {
                       <input type="text" value={editingReservation.student_id} onChange={e => setEditingReservation({...editingReservation, student_id: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-neutral-500 mb-1">导师</label>
-                    <input type="text" value={editingReservation.supervisor} onChange={e => setEditingReservation({...editingReservation, supervisor: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">导师</label>
+                      <input type="text" value={editingReservation.supervisor} onChange={e => setEditingReservation({...editingReservation, supervisor: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">手机号码</label>
+                      <input type="text" value={editingReservation.phone} onChange={e => setEditingReservation({...editingReservation, phone: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1117,6 +1161,7 @@ export default function Admin() {
                         <th className="px-6 py-4 font-medium">实际上机</th>
                         <th className="px-6 py-4 font-medium">时长/费用</th>
                         <th className="px-6 py-4 font-medium">状态</th>
+                        <th className="px-6 py-4 font-medium text-right">操作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
@@ -1158,18 +1203,89 @@ export default function Admin() {
                                 {r.reportStatus}
                               </span>
                             </td>
+                            <td className="px-6 py-4 text-right">
+                              <button 
+                                onClick={() => {
+                                  const toLocalISO = (utcStr: string) => {
+                                    if (!utcStr) return '';
+                                    const date = new Date(utcStr);
+                                    const y = date.getFullYear();
+                                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                                    const d = String(date.getDate()).padStart(2, '0');
+                                    const h = String(date.getHours()).padStart(2, '0');
+                                    const min = String(date.getMinutes()).padStart(2, '0');
+                                    return `${y}-${m}-${d}T${h}:${min}`;
+                                  };
+                                  setEditingReportRecord({
+                                    ...r,
+                                    actual_start_time: toLocalISO(r.actual_start_time),
+                                    actual_end_time: toLocalISO(r.actual_end_time),
+                                  });
+                                }}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="修改记录"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
                       {reports.allReservations.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-neutral-500">此时间范围内暂无记录</td>
+                          <td colSpan={7} className="px-6 py-12 text-center text-neutral-500">此时间范围内暂无记录</td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
+
+              {editingReportRecord && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
+                    <h3 className="text-xl font-bold mb-6">修改实际上机记录</h3>
+                    <form onSubmit={handleUpdateReportRecord} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-500 mb-1">实际上机时间</label>
+                          <input 
+                            type="datetime-local" 
+                            step="300"
+                            value={editingReportRecord.actual_start_time || ''} 
+                            onChange={e => setEditingReportRecord({...editingReportRecord, actual_start_time: e.target.value})} 
+                            className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-500 mb-1">实际下机时间</label>
+                          <input 
+                            type="datetime-local" 
+                            step="300"
+                            value={editingReportRecord.actual_end_time || ''} 
+                            onChange={e => setEditingReportRecord({...editingReportRecord, actual_end_time: e.target.value})} 
+                            className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-neutral-500 mb-1">耗材数量</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={editingReportRecord.consumable_quantity || 0} 
+                          onChange={e => setEditingReportRecord({...editingReportRecord, consumable_quantity: Number(e.target.value)})} 
+                          className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
+                        />
+                      </div>
+                      <div className="flex gap-4 mt-8">
+                        <button type="button" onClick={() => setEditingReportRecord(null)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
+                        <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700">保存修改</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Top Users Table */}

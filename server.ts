@@ -61,6 +61,16 @@ db.exec(`
     modified_count INTEGER DEFAULT 0, -- New field
     FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reservation_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    old_data TEXT,
+    new_data TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+  );
 `);
 
 // Migration: Add new columns if they don't exist
@@ -145,6 +155,56 @@ app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
   stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', id);
   
   res.json({ success: true });
+});
+
+app.get('/api/equipment/availability/today', (req, res) => {
+  const date = format(new Date(), 'yyyy-MM-dd');
+  const targetDate = parseISO(date);
+  const dayOfWeek = targetDate.getDay();
+
+  const equipmentList = db.prepare('SELECT * FROM equipment').all() as any[];
+  
+  const results = equipmentList.map(eq => {
+    let availability;
+    try {
+      availability = JSON.parse(eq.availability_json || '{"rules":[], "advanceDays": 7, "maxDurationMinutes": 60, "minDurationMinutes": 30}');
+    } catch (e) {
+      availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
+    }
+
+    const dayRules = availability.rules?.filter((r: any) => r.day === dayOfWeek) || [];
+    
+    const availableSlots = dayRules.map((rule: any) => {
+      const [startH, startM] = rule.start.split(':').map(Number);
+      const [endH, endM] = rule.end.split(':').map(Number);
+      
+      const start = new Date(targetDate);
+      start.setHours(startH, startM, 0, 0);
+      
+      const end = new Date(targetDate);
+      end.setHours(endH, endM, 0, 0);
+      
+      return { start: start.toISOString(), end: end.toISOString() };
+    });
+
+    const reservations = db.prepare(`
+      SELECT * FROM reservations 
+      WHERE equipment_id = ? 
+      AND status IN ('pending', 'approved', 'active')
+      AND date(start_time) = ?
+    `).all(eq.id, date);
+
+    return {
+      equipment_id: eq.id,
+      equipment_name: eq.name,
+      availableSlots,
+      reservations,
+      maxDurationMinutes: availability.maxDurationMinutes || 60,
+      minDurationMinutes: availability.minDurationMinutes || 30
+    };
+  });
+
+  res.json(results);
 });
 
 // 3. Get availability for an equipment on a specific date
@@ -537,6 +597,47 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
 });
 
 // 9. Admin Reports
+app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const { actual_start_time, actual_end_time, consumable_quantity } = req.body;
+  
+  const oldRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
+  if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
+
+  let total_cost = oldRes.total_cost;
+  if (actual_start_time && actual_end_time) {
+    const eq = db.prepare('SELECT * FROM equipment WHERE id = ?').get(oldRes.equipment_id) as any;
+    const start = new Date(actual_start_time);
+    const end = new Date(actual_end_time);
+    const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    
+    if (eq.price_type === 'hour') {
+      total_cost = hours * eq.price;
+    } else {
+      total_cost = eq.price;
+    }
+    if (eq.consumable_fee > 0 && consumable_quantity > 0) {
+      total_cost += eq.consumable_fee * consumable_quantity;
+    }
+  }
+
+  const stmt = db.prepare(`
+    UPDATE reservations 
+    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?
+    WHERE id = ?
+  `);
+  stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, id);
+  
+  const newRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
+  
+  db.prepare(`
+    INSERT INTO audit_logs (reservation_id, action, old_data, new_data)
+    VALUES (?, ?, ?, ?)
+  `).run(id, 'Admin modified actual times/consumables', JSON.stringify(oldRes), JSON.stringify(newRes));
+  
+  res.json({ success: true, total_cost });
+});
+
 app.get('/api/admin/reports', adminAuth, (req, res) => {
   const { period, student_name, supervisor, startDate, endDate } = req.query;
   
