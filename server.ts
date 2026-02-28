@@ -68,10 +68,34 @@ db.exec(`
     action TEXT NOT NULL,
     old_data TEXT,
     new_data TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+try {
+  // Remove foreign key constraint from audit_logs
+  const tableInfo = db.prepare("PRAGMA table_info(audit_logs)").all();
+  if (tableInfo.length > 0) {
+    const foreignKeyInfo = db.prepare("PRAGMA foreign_key_list(audit_logs)").all();
+    if (foreignKeyInfo.length > 0) {
+      db.exec(`
+        CREATE TABLE audit_logs_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          reservation_id INTEGER NOT NULL,
+          action TEXT NOT NULL,
+          old_data TEXT,
+          new_data TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO audit_logs_new SELECT * FROM audit_logs;
+        DROP TABLE audit_logs;
+        ALTER TABLE audit_logs_new RENAME TO audit_logs;
+      `);
+    }
+  }
+} catch (e) {
+  console.error("Migration error:", e);
+}
 
 // Migration: Add new columns if they don't exist
 try {
@@ -174,18 +198,27 @@ app.get('/api/equipment/availability/today', (req, res) => {
 
     const dayRules = availability.rules?.filter((r: any) => r.day === dayOfWeek) || [];
     
-    const availableSlots = dayRules.map((rule: any) => {
-      const [startH, startM] = rule.start.split(':').map(Number);
-      const [endH, endM] = rule.end.split(':').map(Number);
-      
+    let availableSlots: { start: string, end: string }[] = [];
+    if (availability.allowOutOfHours) {
       const start = new Date(targetDate);
-      start.setHours(startH, startM, 0, 0);
-      
+      start.setHours(0, 0, 0, 0);
       const end = new Date(targetDate);
-      end.setHours(endH, endM, 0, 0);
-      
-      return { start: start.toISOString(), end: end.toISOString() };
-    });
+      end.setHours(23, 59, 59, 999);
+      availableSlots.push({ start: start.toISOString(), end: end.toISOString() });
+    } else {
+      availableSlots = dayRules.map((rule: any) => {
+        const [startH, startM] = rule.start.split(':').map(Number);
+        const [endH, endM] = rule.end.split(':').map(Number);
+        
+        const start = new Date(targetDate);
+        start.setHours(startH, startM, 0, 0);
+        
+        const end = new Date(targetDate);
+        end.setHours(endH, endM, 0, 0);
+        
+        return { start: start.toISOString(), end: end.toISOString() };
+      });
+    }
 
     const reservations = db.prepare(`
       SELECT * FROM reservations 
@@ -241,21 +274,34 @@ app.get('/api/equipment/:id/availability', (req, res) => {
   const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
   const availableSlots: { start: string, end: string }[] = [];
 
-  rules.forEach((rule: any) => {
-    const [startH, startM] = rule.start.split(':').map(Number);
-    const [endH, endM] = rule.end.split(':').map(Number);
-    
+  if (availability.allowOutOfHours) {
     const slotStart = new Date(targetDate);
-    slotStart.setHours(startH, startM, 0, 0);
+    slotStart.setHours(0, 0, 0, 0);
     
     const slotEnd = new Date(targetDate);
-    slotEnd.setHours(endH, endM, 0, 0);
+    slotEnd.setHours(23, 59, 59, 999);
 
     availableSlots.push({
       start: slotStart.toISOString(),
       end: slotEnd.toISOString()
     });
-  });
+  } else {
+    rules.forEach((rule: any) => {
+      const [startH, startM] = rule.start.split(':').map(Number);
+      const [endH, endM] = rule.end.split(':').map(Number);
+      
+      const slotStart = new Date(targetDate);
+      slotStart.setHours(startH, startM, 0, 0);
+      
+      const slotEnd = new Date(targetDate);
+      slotEnd.setHours(endH, endM, 0, 0);
+
+      availableSlots.push({
+        start: slotStart.toISOString(),
+        end: slotEnd.toISOString()
+      });
+    });
+  }
 
   // Fetch existing reservations for this date
   const reservations = db.prepare(`
@@ -307,8 +353,61 @@ app.post('/api/reservations', (req, res) => {
   // Check if slot is in the past
   const now = new Date();
   const start = new Date(start_time);
+  const end = new Date(end_time);
   if (isBefore(start, now)) {
     return res.status(400).json({ error: '不能预约已经开始或过去的时间' });
+  }
+
+  let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
+  try {
+    if (equipment.availability_json) {
+      availability = JSON.parse(equipment.availability_json);
+    }
+  } catch (e) {}
+
+  if (end <= start) {
+    return res.status(400).json({ error: '结束时间必须晚于开始时间' });
+  }
+
+  const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+  const maxDuration = availability.maxDurationMinutes || 60;
+  const minDuration = availability.minDurationMinutes || 30;
+
+  if (durationMinutes > maxDuration) return res.status(400).json({ error: `预约时长不能超过 ${maxDuration} 分钟` });
+  if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
+
+  const maxDate = new Date(now);
+  maxDate.setDate(maxDate.getDate() + (availability.advanceDays || 7));
+  maxDate.setHours(23, 59, 59, 999);
+  
+  if (start > maxDate) {
+    return res.status(400).json({ error: `只能提前 ${availability.advanceDays || 7} 天预约` });
+  }
+
+  const dayOfWeek = start.getDay();
+  const rule = availability.rules.find((r: any) => r.day === dayOfWeek);
+  
+  let isOutOfHours = false;
+  if (!rule) {
+    if (!availability.allowOutOfHours) {
+      return res.status(400).json({ error: '所选日期仪器不开放' });
+    }
+    isOutOfHours = true;
+  } else {
+    const ruleStart = new Date(start);
+    const [rsH, rsM] = rule.start.split(':').map(Number);
+    ruleStart.setHours(rsH, rsM, 0, 0);
+
+    const ruleEnd = new Date(start);
+    const [reH, reM] = rule.end.split(':').map(Number);
+    ruleEnd.setHours(reH, reM, 0, 0);
+
+    if (start < ruleStart || end > ruleEnd) {
+      if (!availability.allowOutOfHours) {
+        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${rule.start}-${rule.end})` });
+      }
+      isOutOfHours = true;
+    }
   }
 
   // Check if slot is already booked
@@ -323,7 +422,7 @@ app.post('/api/reservations', (req, res) => {
   }
 
   const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const status = equipment.auto_approve ? 'approved' : 'pending';
+  const status = isOutOfHours ? 'pending' : (equipment.auto_approve ? 'approved' : 'pending');
 
   const stmt = db.prepare(`
     INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
@@ -464,20 +563,28 @@ app.post('/api/reservations/update', (req, res) => {
 
   const dayOfWeek = start.getDay();
   const rule = availability.rules.find((r: any) => r.day === dayOfWeek);
+  
+  let isOutOfHours = false;
   if (!rule) {
-    return res.status(400).json({ error: '所选日期仪器不开放' });
-  }
+    if (!availability.allowOutOfHours) {
+      return res.status(400).json({ error: '所选日期仪器不开放' });
+    }
+    isOutOfHours = true;
+  } else {
+    const ruleStart = new Date(start);
+    const [rsH, rsM] = rule.start.split(':').map(Number);
+    ruleStart.setHours(rsH, rsM, 0, 0);
 
-  const ruleStart = new Date(start);
-  const [rsH, rsM] = rule.start.split(':').map(Number);
-  ruleStart.setHours(rsH, rsM, 0, 0);
+    const ruleEnd = new Date(start);
+    const [reH, reM] = rule.end.split(':').map(Number);
+    ruleEnd.setHours(reH, reM, 0, 0);
 
-  const ruleEnd = new Date(start);
-  const [reH, reM] = rule.end.split(':').map(Number);
-  ruleEnd.setHours(reH, reM, 0, 0);
-
-  if (start < ruleStart || end > ruleEnd) {
-    return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${rule.start}-${rule.end})` });
+    if (start < ruleStart || end > ruleEnd) {
+      if (!availability.allowOutOfHours) {
+        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${rule.start}-${rule.end})` });
+      }
+      isOutOfHours = true;
+    }
   }
 
   // Check conflicts (excluding self)
@@ -491,12 +598,14 @@ app.post('/api/reservations/update', (req, res) => {
     return res.status(400).json({ error: '所选时间段已有其他预约' });
   }
 
+  const newStatus = isOutOfHours ? 'pending' : (equipment.auto_approve ? 'approved' : 'pending');
+
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET start_time = ?, end_time = ?, modified_count = modified_count + 1
+    SET start_time = ?, end_time = ?, modified_count = modified_count + 1, status = ?
     WHERE id = ?
   `);
-  stmt.run(start_time, end_time, reservation.id);
+  stmt.run(start_time, end_time, newStatus, reservation.id);
   
   res.json({ success: true });
 });
@@ -638,6 +747,21 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
   res.json({ success: true, total_cost });
 });
 
+app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const oldRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
+  if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
+
+  db.prepare('DELETE FROM reservations WHERE id = ?').run(id);
+
+  db.prepare(`
+    INSERT INTO audit_logs (reservation_id, action, old_data, new_data)
+    VALUES (?, ?, ?, ?)
+  `).run(id, 'Admin deleted reservation from reports', JSON.stringify(oldRes), null);
+
+  res.json({ success: true });
+});
+
 app.get('/api/admin/reports', adminAuth, (req, res) => {
   const { period, student_name, supervisor, startDate, endDate } = req.query;
   
@@ -672,7 +796,12 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   // Helper to calculate report status
   const calculateStatus = (res: any, prevRes: any) => {
     if (res.status === 'cancelled') return '已取消';
-    if (!res.actual_start_time) return '爽约';
+    if (!res.actual_start_time) {
+      if (new Date() < new Date(res.start_time)) {
+        return '待上机';
+      }
+      return '爽约';
+    }
     
     const start = new Date(res.start_time);
     const end = new Date(res.end_time);
@@ -756,6 +885,15 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   const usageBySupervisor = Array.from(supervisorMap.values()).sort((a, b) => b.total_hours - a.total_hours);
 
   res.json({ usageByTime, usageByPerson, usageBySupervisor, allReservations });
+});
+
+app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
+  const logs = db.prepare(`
+    SELECT * FROM audit_logs
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).all();
+  res.json(logs);
 });
 
 async function startServer() {

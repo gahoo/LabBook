@@ -246,6 +246,7 @@ export default function MyReservations() {
     
     return {
       date: dateStr,
+      maxDurationMinutes: dayData.maxDurationMinutes,
       times: timeSteps.map(t => {
         const timeDate = new Date(`${dateStr}T${t}`);
         const isAvailable = slots.some((s: any) => {
@@ -397,9 +398,13 @@ export default function MyReservations() {
                                               )}
                                               onClick={() => {
                                                 if (t.isAvailable && !t.isBooked && !isPast) {
+                                                  const maxDuration = row.maxDurationMinutes || 60;
+                                                  const start = new Date(`${row.date}T${t.time}`);
+                                                  const end = addMinutes(start, maxDuration);
                                                   setEditData({
                                                     ...editData,
-                                                    start_time: `${row.date}T${t.time}`
+                                                    start_time: `${row.date}T${t.time}`,
+                                                    end_time: format(end, "yyyy-MM-dd'T'HH:mm")
                                                   });
                                                 }
                                               }}

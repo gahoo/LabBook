@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload } from 'lucide-react';
+import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, CheckCircle, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -11,8 +11,9 @@ export default function Admin() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations' | 'equipment' | 'whitelist_apps'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs'>('add');
   const [reports, setReports] = useState<any>(null);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [reportPeriod, setReportPeriod] = useState('day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
   const [reportStartDate, setReportStartDate] = useState(format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
@@ -25,6 +26,8 @@ export default function Admin() {
   const [editingEquipment, setEditingEquipment] = useState<any>(null);
   const [editingReservation, setEditingReservation] = useState<any>(null);
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteReservationConfirmId, setDeleteReservationConfirmId] = useState<number | null>(null);
   const [whitelistApps, setWhitelistApps] = useState<any[]>([]);
 
   // Add/Edit Equipment Form State
@@ -34,6 +37,7 @@ export default function Admin() {
     image_url: '',
     location: '',
     auto_approve: true,
+    allow_out_of_hours: false,
     price_type: 'hour',
     price: 0,
     consumable_fee: 0,
@@ -170,7 +174,8 @@ export default function Admin() {
       rules: formData.rules,
       advanceDays: formData.advanceDays,
       maxDurationMinutes: formData.maxDurationMinutes,
-      minDurationMinutes: formData.minDurationMinutes
+      minDurationMinutes: formData.minDurationMinutes,
+      allowOutOfHours: formData.allow_out_of_hours
     });
 
     try {
@@ -196,6 +201,7 @@ export default function Admin() {
           image_url: '',
           location: '',
           auto_approve: true,
+          allow_out_of_hours: false,
           price_type: 'hour',
           price: 0,
           consumable_fee: 0,
@@ -216,7 +222,7 @@ export default function Admin() {
   };
 
   const startEdit = (eq: any) => {
-    let availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
+    let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, allowOutOfHours: false };
     try {
       availability = JSON.parse(eq.availability_json || '{}');
     } catch (e) {}
@@ -228,6 +234,7 @@ export default function Admin() {
       image_url: eq.image_url || '',
       location: eq.location || '',
       auto_approve: eq.auto_approve === 1,
+      allow_out_of_hours: availability.allowOutOfHours === true,
       price_type: eq.price_type,
       price: eq.price,
       consumable_fee: eq.consumable_fee,
@@ -463,6 +470,24 @@ export default function Admin() {
     }
   };
 
+  const handleDeleteReportRecord = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/reports/reservations/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success('删除成功');
+        setDeleteConfirmId(null);
+        fetchReports();
+      } else {
+        toast.error('删除失败');
+      }
+    } catch (err) {
+      toast.error('删除失败');
+    }
+  };
+
   const fetchReservations = async () => {
     try {
       const res = await fetch('/api/admin/reservations', {
@@ -477,7 +502,6 @@ export default function Admin() {
   };
 
   const handleDeleteReservation = async (id: number) => {
-    if (!confirm('确定要删除此预约吗？')) return;
     try {
       const res = await fetch(`/api/admin/reservations/${id}`, {
         method: 'DELETE',
@@ -485,6 +509,7 @@ export default function Admin() {
       });
       if (res.ok) {
         toast.success('删除成功');
+        setDeleteReservationConfirmId(null);
         fetchReservations();
       } else {
         toast.error('删除失败');
@@ -494,12 +519,27 @@ export default function Admin() {
     }
   };
 
+  const fetchAuditLogs = async () => {
+    try {
+      const res = await fetch('/api/admin/audit-logs', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) return handleLogout();
+      const data = await res.json();
+      setAuditLogs(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
     if (activeTab === 'reports') {
       fetchReports();
     } else if (activeTab === 'reservations') {
       fetchReservations();
+    } else if (activeTab === 'audit_logs') {
+      fetchAuditLogs();
     }
   }, [activeTab, reportPeriod, token]);
 
@@ -550,7 +590,7 @@ export default function Admin() {
         <div className="flex items-center gap-4">
           <div className="flex gap-2 bg-neutral-100 p-1 rounded-xl">
             <button
-              onClick={() => { setActiveTab('add'); setEditingEquipment(null); setFormData({ name: '', description: '', image_url: '', location: '', auto_approve: true, price_type: 'hour', price: 0, consumable_fee: 0, whitelist_enabled: false, whitelist_data: '', advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [] }); }}
+              onClick={() => { setActiveTab('add'); setEditingEquipment(null); setFormData({ name: '', description: '', image_url: '', location: '', auto_approve: true, allow_out_of_hours: false, price_type: 'hour', price: 0, consumable_fee: 0, whitelist_enabled: false, whitelist_data: '', advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [] }); }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <PlusCircle className="w-4 h-4" />
@@ -583,6 +623,13 @@ export default function Admin() {
             >
               <BarChart3 className="w-4 h-4" />
               报表
+            </button>
+            <button
+              onClick={() => setActiveTab('audit_logs')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'audit_logs' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+            >
+              <FileText className="w-4 h-4" />
+              审计日志
             </button>
           </div>
           <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline">退出</button>
@@ -739,10 +786,14 @@ export default function Admin() {
                   )}
                 </div>
 
-                <div className="pt-4 border-t border-neutral-200 mt-4">
+                <div className="pt-4 border-t border-neutral-200 mt-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <input type="checkbox" id="auto_approve" checked={formData.auto_approve} onChange={e => setFormData({...formData, auto_approve: e.target.checked})} className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-600" />
                     <label htmlFor="auto_approve" className="text-sm font-medium text-neutral-700">自动审批预约</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="allow_out_of_hours" checked={formData.allow_out_of_hours} onChange={e => setFormData({...formData, allow_out_of_hours: e.target.checked})} className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-600" />
+                    <label htmlFor="allow_out_of_hours" className="text-sm font-medium text-neutral-700">允许可预约时段外预约 (需管理员审批)</label>
                   </div>
                 </div>
               </div>
@@ -836,6 +887,7 @@ export default function Admin() {
                   <th className="px-6 py-4 font-medium">预约码</th>
                   <th className="px-6 py-4 font-medium">仪器</th>
                   <th className="px-6 py-4 font-medium">用户</th>
+                  <th className="px-6 py-4 font-medium">联系方式</th>
                   <th className="px-6 py-4 font-medium">时间</th>
                   <th className="px-6 py-4 font-medium">状态</th>
                   <th className="px-6 py-4 font-medium text-right">操作</th>
@@ -849,7 +901,10 @@ export default function Admin() {
                     <td className="px-6 py-4">
                       <p className="font-medium text-neutral-900">{res.student_name}</p>
                       <p className="text-xs text-neutral-500">{res.supervisor}</p>
-                      <p className="text-xs text-neutral-400">{res.phone}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs text-neutral-900">{res.phone}</p>
+                      <p className="text-xs text-neutral-500">{res.email}</p>
                     </td>
                     <td className="px-6 py-4">
                       <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd HH:mm')}</p>
@@ -867,6 +922,32 @@ export default function Admin() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
+                      {res.status === 'pending' && (
+                        <button 
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`/api/admin/reservations/${res.id}`, {
+                                method: 'PUT',
+                                headers: { 
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ ...res, status: 'approved' })
+                              });
+                              if (response.ok) {
+                                toast.success('已审批通过');
+                                fetchReservations();
+                              }
+                            } catch (err) {
+                              toast.error('审批失败');
+                            }
+                          }}
+                          className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          title="审批通过"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                      )}
                       <button 
                         onClick={() => startEditReservation(res)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -875,7 +956,7 @@ export default function Admin() {
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => handleDeleteReservation(res.id)}
+                        onClick={() => setDeleteReservationConfirmId(res.id)}
                         className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="删除预约"
                       >
@@ -911,6 +992,12 @@ export default function Admin() {
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">手机号码</label>
                       <input type="text" value={editingReservation.phone} onChange={e => setEditingReservation({...editingReservation, phone: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">邮箱</label>
+                      <input type="email" value={editingReservation.email} onChange={e => setEditingReservation({...editingReservation, email: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -1198,6 +1285,7 @@ export default function Admin() {
                                 ${r.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' : ''}
                                 ${r.reportStatus === '超时' ? 'bg-orange-100 text-orange-700' : ''}
                                 ${r.reportStatus === '爽约' ? 'bg-red-100 text-red-700' : ''}
+                                ${r.reportStatus === '待上机' ? 'bg-blue-100 text-blue-700' : ''}
                                 ${r.reportStatus === '已取消' ? 'bg-neutral-100 text-neutral-500' : ''}
                               `}>
                                 {r.reportStatus}
@@ -1226,6 +1314,13 @@ export default function Admin() {
                                 title="修改记录"
                               >
                                 <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => setDeleteConfirmId(r.id)}
+                                className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="删除记录"
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </td>
                           </tr>
@@ -1362,6 +1457,120 @@ export default function Admin() {
           ) : null}
         </div>
       )}
+      {activeTab === 'audit_logs' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="p-6 border-b border-neutral-100">
+            <h3 className="font-bold flex items-center gap-2">
+              <FileText className="w-5 h-5 text-red-600" />
+              审计日志 (最近 100 条)
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase">
+                <tr>
+                  <th className="px-6 py-4 font-medium">时间</th>
+                  <th className="px-6 py-4 font-medium">预约 ID</th>
+                  <th className="px-6 py-4 font-medium">操作</th>
+                  <th className="px-6 py-4 font-medium">修改前</th>
+                  <th className="px-6 py-4 font-medium">修改后</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {auditLogs.map((log: any) => (
+                  <tr key={log.id} className="hover:bg-neutral-50/50">
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-neutral-500">
+                      {format(new Date(log.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-xs">{log.reservation_id}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-neutral-100 text-neutral-700 rounded-lg text-xs font-medium">
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="max-h-24 overflow-y-auto w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
+                        {log.old_data ? JSON.stringify(JSON.parse(log.old_data), null, 2) : '-'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="max-h-24 overflow-y-auto w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
+                        {log.new_data ? JSON.stringify(JSON.parse(log.new_data), null, 2) : '-'}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {auditLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-neutral-500">暂无审计日志</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmId !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认删除</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              确定要删除该预约记录吗？此操作不可恢复，且将被记录在审计日志中。
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeleteConfirmId(null)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => handleDeleteReportRecord(deleteConfirmId)} 
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteReservationConfirmId !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认删除</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              确定要删除该预约吗？此操作不可恢复。
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeleteReservationConfirmId(null)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => handleDeleteReservation(deleteReservationConfirmId)} 
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

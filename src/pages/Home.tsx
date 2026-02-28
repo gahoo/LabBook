@@ -143,7 +143,7 @@ export default function Home() {
                           )}
                           onClick={() => {
                             if (t.isAvailable && !t.isBooked && !isPast) {
-                              navigate(`/equipment/${row.equipment_id}?time=${t.time}`);
+                              navigate(`/book/${row.equipment_id}?time=${t.time}`);
                             }
                           }}
                         />
