@@ -42,6 +42,7 @@ export default function Booking() {
   const [minDuration, setMinDuration] = useState(30);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [advanceDays, setAdvanceDays] = useState(7);
+  const [allowOutOfHours, setAllowOutOfHours] = useState(false);
   
   const [startTime, setStartTime] = useState<string>('');
   const [endTime, setEndTime] = useState<string>('');
@@ -69,6 +70,7 @@ export default function Booking() {
           try {
             const avail = JSON.parse(eq.availability_json);
             setAdvanceDays(avail.advanceDays || 7);
+            setAllowOutOfHours(avail.allowOutOfHours || false);
           } catch (e) {}
         }
       });
@@ -143,7 +145,7 @@ export default function Booking() {
       const rEnd = new Date(range.end);
       return (start >= rStart && end <= rEnd);
     });
-    if (!inRange) return toast.error('所选时间不在仪器开放范围内');
+    if (!inRange && !allowOutOfHours) return toast.error('所选时间不在仪器开放范围内');
 
     // Check conflicts
     const conflict = existingReservations.some(res => {
@@ -420,7 +422,7 @@ export default function Booking() {
                                         t.isBooked ? "bg-red-500" : (t.isAvailable && !isPast ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200")
                                       )}
                                       onClick={() => {
-                                        if (t.isAvailable && !t.isBooked && !isPast) {
+                                        if (!t.isBooked && !isPast && t.isAvailable) {
                                           setSelectedDate(date);
                                           handleStartTimeChange(t.time);
                                         }

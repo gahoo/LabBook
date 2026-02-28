@@ -58,8 +58,9 @@ export default function MyReservations() {
           'active': 1,
           'approved': 2,
           'pending': 3,
-          'completed': 4,
-          'cancelled': 5
+          'rejected': 4,
+          'completed': 5,
+          'cancelled': 6
         };
         
         const orderA = statusOrder[a.status] || 99;
@@ -275,6 +276,7 @@ export default function MyReservations() {
     approved: '已通过',
     active: '进行中',
     completed: '已完成',
+    rejected: '已驳回',
     cancelled: '已取消'
   };
 
@@ -345,7 +347,16 @@ export default function MyReservations() {
                 <div className="flex items-center gap-6">
                   <div className="text-right hidden sm:block">
                     <p className="text-sm font-medium text-neutral-900">{format(new Date(resv.start_time), 'MM-dd HH:mm')}</p>
-                    <p className="text-xs text-neutral-500">{statusMap[resv.status]}</p>
+                    <p className={`text-xs font-medium ${
+                      resv.status === 'approved' ? 'text-emerald-600' :
+                      resv.status === 'pending' ? 'text-amber-600' :
+                      resv.status === 'active' ? 'text-blue-600' :
+                      resv.status === 'completed' ? 'text-neutral-600' :
+                      resv.status === 'rejected' ? 'text-red-600' :
+                      'text-red-600'
+                    }`}>
+                      {statusMap[resv.status]}
+                    </p>
                   </div>
                   {expandedId === resv.id ? <ChevronUp className="w-5 h-5 text-neutral-400" /> : <ChevronDown className="w-5 h-5 text-neutral-400" />}
                 </div>
@@ -422,7 +433,7 @@ export default function MyReservations() {
                       </div>
 
                       <form onSubmit={handleUpdate} className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs font-bold text-neutral-400 mb-1">开始时间</label>
                             <input 
@@ -451,7 +462,7 @@ export default function MyReservations() {
                       </form>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <div>
                           <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">预约详情</p>

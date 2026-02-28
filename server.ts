@@ -198,27 +198,18 @@ app.get('/api/equipment/availability/today', (req, res) => {
 
     const dayRules = availability.rules?.filter((r: any) => r.day === dayOfWeek) || [];
     
-    let availableSlots: { start: string, end: string }[] = [];
-    if (availability.allowOutOfHours) {
+    const availableSlots = dayRules.map((rule: any) => {
+      const [startH, startM] = rule.start.split(':').map(Number);
+      const [endH, endM] = rule.end.split(':').map(Number);
+      
       const start = new Date(targetDate);
-      start.setHours(0, 0, 0, 0);
+      start.setHours(startH, startM, 0, 0);
+      
       const end = new Date(targetDate);
-      end.setHours(23, 59, 59, 999);
-      availableSlots.push({ start: start.toISOString(), end: end.toISOString() });
-    } else {
-      availableSlots = dayRules.map((rule: any) => {
-        const [startH, startM] = rule.start.split(':').map(Number);
-        const [endH, endM] = rule.end.split(':').map(Number);
-        
-        const start = new Date(targetDate);
-        start.setHours(startH, startM, 0, 0);
-        
-        const end = new Date(targetDate);
-        end.setHours(endH, endM, 0, 0);
-        
-        return { start: start.toISOString(), end: end.toISOString() };
-      });
-    }
+      end.setHours(endH, endM, 0, 0);
+      
+      return { start: start.toISOString(), end: end.toISOString() };
+    });
 
     const reservations = db.prepare(`
       SELECT * FROM reservations 
@@ -274,34 +265,21 @@ app.get('/api/equipment/:id/availability', (req, res) => {
   const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
   const availableSlots: { start: string, end: string }[] = [];
 
-  if (availability.allowOutOfHours) {
+  rules.forEach((rule: any) => {
+    const [startH, startM] = rule.start.split(':').map(Number);
+    const [endH, endM] = rule.end.split(':').map(Number);
+    
     const slotStart = new Date(targetDate);
-    slotStart.setHours(0, 0, 0, 0);
+    slotStart.setHours(startH, startM, 0, 0);
     
     const slotEnd = new Date(targetDate);
-    slotEnd.setHours(23, 59, 59, 999);
+    slotEnd.setHours(endH, endM, 0, 0);
 
     availableSlots.push({
       start: slotStart.toISOString(),
       end: slotEnd.toISOString()
     });
-  } else {
-    rules.forEach((rule: any) => {
-      const [startH, startM] = rule.start.split(':').map(Number);
-      const [endH, endM] = rule.end.split(':').map(Number);
-      
-      const slotStart = new Date(targetDate);
-      slotStart.setHours(startH, startM, 0, 0);
-      
-      const slotEnd = new Date(targetDate);
-      slotEnd.setHours(endH, endM, 0, 0);
-
-      availableSlots.push({
-        start: slotStart.toISOString(),
-        end: slotEnd.toISOString()
-      });
-    });
-  }
+  });
 
   // Fetch existing reservations for this date
   const reservations = db.prepare(`

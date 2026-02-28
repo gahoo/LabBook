@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, CheckCircle, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload } from 'lucide-react';
+import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, CheckCircle, XCircle, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -574,6 +574,7 @@ export default function Admin() {
 
   const statusMap: Record<string, string> = {
     pending: '待审批',
+    rejected: '已驳回',
     approved: '已通过',
     active: '进行中',
     completed: '已完成',
@@ -582,13 +583,13 @@ export default function Admin() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-neutral-900">管理后台</h1>
           <p className="text-neutral-500 mt-2">管理仪器设备并查看使用报表。</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2 bg-neutral-100 p-1 rounded-xl">
+        <div className="flex items-center gap-4 w-full sm:w-auto overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0">
+          <div className="flex gap-2 bg-neutral-100 p-1 rounded-xl whitespace-nowrap">
             <button
               onClick={() => { setActiveTab('add'); setEditingEquipment(null); setFormData({ name: '', description: '', image_url: '', location: '', auto_approve: true, allow_out_of_hours: false, price_type: 'hour', price: 0, consumable_fee: 0, whitelist_enabled: false, whitelist_data: '', advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [] }); }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
@@ -632,7 +633,7 @@ export default function Admin() {
               审计日志
             </button>
           </div>
-          <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline">退出</button>
+          <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline shrink-0">退出</button>
         </div>
       </div>
 
@@ -650,7 +651,7 @@ export default function Admin() {
                 <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all" rows={3} placeholder="简要介绍仪器的功能和用途..." />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center gap-2">
                     <ImageIcon className="w-4 h-4 text-neutral-400" />
@@ -680,7 +681,7 @@ export default function Admin() {
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs text-neutral-500 mb-1">可提前预约天数</label>
                       <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
@@ -786,19 +787,38 @@ export default function Admin() {
                   )}
                 </div>
 
-                <div className="pt-4 border-t border-neutral-200 mt-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="auto_approve" checked={formData.auto_approve} onChange={e => setFormData({...formData, auto_approve: e.target.checked})} className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-600" />
-                    <label htmlFor="auto_approve" className="text-sm font-medium text-neutral-700">自动审批预约</label>
+                <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-neutral-700">自动审批预约</h3>
+                      <p className="text-xs text-neutral-500">开启后，预约将自动通过审批</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, auto_approve: !formData.auto_approve})}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-red-600' : 'bg-neutral-200'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="allow_out_of_hours" checked={formData.allow_out_of_hours} onChange={e => setFormData({...formData, allow_out_of_hours: e.target.checked})} className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-600" />
-                    <label htmlFor="allow_out_of_hours" className="text-sm font-medium text-neutral-700">允许可预约时段外预约 (需管理员审批)</label>
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-neutral-700">允许可预约时段外预约</h3>
+                      <p className="text-xs text-neutral-500">开启后，用户可选择非开放时段，但需要管理员审批</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, allow_out_of_hours: !formData.allow_out_of_hours})}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.allow_out_of_hours ? 'bg-red-600' : 'bg-neutral-200'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.allow_out_of_hours ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">计费方式</label>
                   <select value={formData.price_type} onChange={e => setFormData({...formData, price_type: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white">
@@ -917,36 +937,63 @@ export default function Admin() {
                         ${res.status === 'active' ? 'bg-red-100 text-red-800' : ''}
                         ${res.status === 'completed' ? 'bg-neutral-100 text-neutral-800' : ''}
                         ${res.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
+                        ${res.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
                       `}>
                         {statusMap[res.status] || res.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
                       {res.status === 'pending' && (
-                        <button 
-                          onClick={async () => {
-                            try {
-                              const response = await fetch(`/api/admin/reservations/${res.id}`, {
-                                method: 'PUT',
-                                headers: { 
-                                  'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${token}`
-                                },
-                                body: JSON.stringify({ ...res, status: 'approved' })
-                              });
-                              if (response.ok) {
-                                toast.success('已审批通过');
-                                fetchReservations();
+                        <>
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const response = await fetch(`/api/admin/reservations/${res.id}`, {
+                                  method: 'PUT',
+                                  headers: { 
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                  },
+                                  body: JSON.stringify({ ...res, status: 'approved' })
+                                });
+                                if (response.ok) {
+                                  toast.success('已审批通过');
+                                  fetchReservations();
+                                }
+                              } catch (err) {
+                                toast.error('审批失败');
                               }
-                            } catch (err) {
-                              toast.error('审批失败');
-                            }
-                          }}
-                          className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="审批通过"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                        </button>
+                            }}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="审批通过"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const response = await fetch(`/api/admin/reservations/${res.id}`, {
+                                  method: 'PUT',
+                                  headers: { 
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                  },
+                                  body: JSON.stringify({ ...res, status: 'rejected' })
+                                });
+                                if (response.ok) {
+                                  toast.success('已驳回');
+                                  fetchReservations();
+                                }
+                              } catch (err) {
+                                toast.error('驳回失败');
+                              }
+                            }}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="审批驳回"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </>
                       )}
                       <button 
                         onClick={() => startEditReservation(res)}
@@ -974,7 +1021,7 @@ export default function Admin() {
               <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
                 <h3 className="text-xl font-bold mb-6">修改预约信息</h3>
                 <form onSubmit={handleUpdateReservation} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">姓名</label>
                       <input type="text" value={editingReservation.student_name} onChange={e => setEditingReservation({...editingReservation, student_name: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
@@ -984,7 +1031,7 @@ export default function Admin() {
                       <input type="text" value={editingReservation.student_id} onChange={e => setEditingReservation({...editingReservation, student_id: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">导师</label>
                       <input type="text" value={editingReservation.supervisor} onChange={e => setEditingReservation({...editingReservation, supervisor: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
@@ -994,13 +1041,13 @@ export default function Admin() {
                       <input type="text" value={editingReservation.phone} onChange={e => setEditingReservation({...editingReservation, phone: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">邮箱</label>
                       <input type="email" value={editingReservation.email} onChange={e => setEditingReservation({...editingReservation, email: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-1">开始时间</label>
                       <input 
@@ -1239,7 +1286,7 @@ export default function Admin() {
                   </button>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                       <tr>
                         <th className="px-6 py-4 font-medium">用户/导师</th>
@@ -1341,7 +1388,7 @@ export default function Admin() {
                   <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
                     <h3 className="text-xl font-bold mb-6">修改实际上机记录</h3>
                     <form onSubmit={handleUpdateReportRecord} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-medium text-neutral-500 mb-1">实际上机时间</label>
                           <input 
@@ -1466,7 +1513,7 @@ export default function Admin() {
             </h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase">
                 <tr>
                   <th className="px-6 py-4 font-medium">时间</th>
