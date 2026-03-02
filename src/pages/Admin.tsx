@@ -30,6 +30,41 @@ export default function Admin() {
   const [deleteReservationConfirmId, setDeleteReservationConfirmId] = useState<number | null>(null);
   const [whitelistApps, setWhitelistApps] = useState<any[]>([]);
 
+  // Reservation Filters
+  const [hideExpiredReservations, setHideExpiredReservations] = useState(true);
+  const [resFilterUser, setResFilterUser] = useState('');
+  const [resFilterEquipment, setResFilterEquipment] = useState('');
+  const [resFilterContact, setResFilterContact] = useState('');
+  const [resFilterTimeStart, setResFilterTimeStart] = useState('');
+  const [resFilterTimeEnd, setResFilterTimeEnd] = useState('');
+  const [resFilterStatus, setResFilterStatus] = useState<string[]>([]);
+  const [resFilterCode, setResFilterCode] = useState('');
+  const [showTimeFilterPopup, setShowTimeFilterPopup] = useState(false);
+  const [showStatusFilterPopup, setShowStatusFilterPopup] = useState(false);
+
+  // Whitelist App Filters
+  const [hideProcessedWhitelistApps, setHideProcessedWhitelistApps] = useState(true);
+
+  const filteredReservations = reservations.filter(res => {
+    if (hideExpiredReservations) {
+      const today = startOfToday();
+      if (new Date(res.end_time) < today) return false;
+    }
+    if (resFilterCode && !res.booking_code.toLowerCase().includes(resFilterCode.toLowerCase())) return false;
+    if (resFilterUser && !res.student_name.toLowerCase().includes(resFilterUser.toLowerCase()) && !res.student_id.toLowerCase().includes(resFilterUser.toLowerCase()) && !res.supervisor.toLowerCase().includes(resFilterUser.toLowerCase())) return false;
+    if (resFilterEquipment && !res.equipment_name.toLowerCase().includes(resFilterEquipment.toLowerCase())) return false;
+    if (resFilterContact && !res.phone.includes(resFilterContact) && !res.email.toLowerCase().includes(resFilterContact.toLowerCase())) return false;
+    if (resFilterTimeStart && new Date(res.start_time) < new Date(resFilterTimeStart)) return false;
+    if (resFilterTimeEnd && new Date(res.end_time) > new Date(resFilterTimeEnd)) return false;
+    if (resFilterStatus.length > 0 && !resFilterStatus.includes(res.status)) return false;
+    return true;
+  });
+
+  const filteredWhitelistApps = whitelistApps.filter(app => {
+    if (hideProcessedWhitelistApps && app.status !== 'pending') return false;
+    return true;
+  });
+
   // Add/Edit Equipment Form State
   const [formData, setFormData] = useState({
     name: '',
@@ -349,7 +384,7 @@ export default function Admin() {
 
   const exportDetailedReport = () => {
     if (!reports?.allReservations) return;
-    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约开始', '预约结束', '实际开始', '实际结束', '时长(小时)', '费用(¥)', '状态'];
+    const headers = ['预约码', '仪器', '用户', '学号/工号', '导师', '预约开始', '预约结束', '实际开始', '实际结束', '时长(小时)', '费用(¥)', '状态'];
     exportToCSV(
       reports.allReservations,
       `detailed_report_${reportStartDate}_${reportEndDate}`,
@@ -378,7 +413,7 @@ export default function Admin() {
 
   const exportUserStats = () => {
     if (!reports?.usageByPerson) return;
-    const headers = ['姓名', '学号', '导师', '总时长(小时)', '总费用(¥)'];
+    const headers = ['姓名', '学号/工号', '导师', '总时长(小时)', '总费用(¥)'];
     exportToCSV(
       reports.usageByPerson,
       `user_stats_${reportStartDate}_${reportEndDate}`,
@@ -595,42 +630,42 @@ export default function Admin() {
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <PlusCircle className="w-4 h-4" />
-              {editingEquipment ? '编辑仪器' : '添加仪器'}
+              <span className={activeTab === 'add' ? 'inline' : 'hidden sm:inline'}>{editingEquipment ? '编辑仪器' : '添加仪器'}</span>
             </button>
             <button
               onClick={() => setActiveTab('equipment')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'equipment' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <List className="w-4 h-4" />
-              仪器管理
+              <span className={activeTab === 'equipment' ? 'inline' : 'hidden sm:inline'}>仪器管理</span>
             </button>
             <button
               onClick={() => setActiveTab('reservations')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reservations' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <CalendarDays className="w-4 h-4" />
-              预约管理
+              <span className={activeTab === 'reservations' ? 'inline' : 'hidden sm:inline'}>预约管理</span>
             </button>
             <button
               onClick={() => setActiveTab('whitelist_apps')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'whitelist_apps' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <Lock className="w-4 h-4" />
-              白名单申请
+              <span className={activeTab === 'whitelist_apps' ? 'inline' : 'hidden sm:inline'}>白名单申请</span>
             </button>
             <button
               onClick={() => setActiveTab('reports')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reports' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <BarChart3 className="w-4 h-4" />
-              报表
+              <span className={activeTab === 'reports' ? 'inline' : 'hidden sm:inline'}>报表</span>
             </button>
             <button
               onClick={() => setActiveTab('audit_logs')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'audit_logs' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <FileText className="w-4 h-4" />
-              审计日志
+              <span className={activeTab === 'audit_logs' ? 'inline' : 'hidden sm:inline'}>审计日志</span>
             </button>
           </div>
           <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline shrink-0">退出</button>
@@ -732,10 +767,12 @@ export default function Admin() {
                             </button>
                           ))}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <input id="new-rule-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
-                          <span className="text-xs">至</span>
-                          <input id="new-rule-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                          <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                            <input id="new-rule-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
+                            <span className="text-xs">至</span>
+                            <input id="new-rule-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
+                          </div>
                           <button 
                             type="button"
                             onClick={() => {
@@ -748,7 +785,7 @@ export default function Admin() {
                               setFormData({...formData, rules: [...formData.rules, ...newRules]});
                               setSelectedDays([]);
                             }}
-                            className="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
+                            className="w-full sm:w-auto px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
                           >
                             批量添加
                           </button>
@@ -833,7 +870,7 @@ export default function Admin() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">耗材费 (¥, 可选)</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">耗材费 (¥/个, 可选)</label>
                 <input type="number" min="0" step="0.01" value={formData.consumable_fee} onChange={e => setFormData({...formData, consumable_fee: Number(e.target.value)})} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all" />
               </div>
             </div>
@@ -852,17 +889,41 @@ export default function Admin() {
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                 <tr>
                   <th className="px-6 py-4 font-medium">仪器名称</th>
+                  <th className="px-6 py-4 font-medium">所在位置</th>
                   <th className="px-6 py-4 font-medium">计费</th>
+                  <th className="px-6 py-4 font-medium">可提前预约天数</th>
+                  <th className="px-6 py-4 font-medium">时段外预约</th>
                   <th className="px-6 py-4 font-medium">白名单</th>
                   <th className="px-6 py-4 font-medium">自动审批</th>
                   <th className="px-6 py-4 font-medium text-right">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {equipmentList.map(eq => (
+                {equipmentList.map(eq => {
+                  let advanceDays = 7;
+                  let allowOutOfHours = false;
+                  try {
+                    const avail = JSON.parse(eq.availability_json || '{}');
+                    advanceDays = avail.advanceDays || 7;
+                    allowOutOfHours = avail.allowOutOfHours === true;
+                  } catch (e) {}
+                  
+                  return (
                   <tr key={eq.id} className="hover:bg-neutral-50/50">
                     <td className="px-6 py-4 font-medium">{eq.name}</td>
-                    <td className="px-6 py-4">¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}</td>
+                    <td className="px-6 py-4 text-neutral-500">{eq.location || '-'}</td>
+                    <td className="px-6 py-4">
+                      ¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}
+                      {eq.consumable_fee > 0 && <span className="text-xs text-neutral-500 ml-1">(+¥{eq.consumable_fee}/个 耗材费)</span>}
+                    </td>
+                    <td className="px-6 py-4 text-neutral-500">{advanceDays}天</td>
+                    <td className="px-6 py-4">
+                      {allowOutOfHours ? (
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">允许</span>
+                      ) : (
+                        <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">不允许</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       {eq.whitelist_enabled ? (
                         <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">已开启</span>
@@ -886,10 +947,10 @@ export default function Admin() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                )})}
                 {equipmentList.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-neutral-500">暂无仪器记录</td>
+                    <td colSpan={8} className="px-6 py-12 text-center text-neutral-500">暂无仪器记录</td>
                   </tr>
                 )}
               </tbody>
@@ -900,21 +961,194 @@ export default function Admin() {
 
       {activeTab === 'reservations' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-neutral-700">隐藏已过期预约</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHideExpiredReservations(!hideExpiredReservations)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideExpiredReservations ? 'bg-red-600' : 'bg-neutral-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideExpiredReservations ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                 <tr>
-                  <th className="px-6 py-4 font-medium">预约码</th>
-                  <th className="px-6 py-4 font-medium">仪器</th>
-                  <th className="px-6 py-4 font-medium">用户</th>
-                  <th className="px-6 py-4 font-medium">联系方式</th>
-                  <th className="px-6 py-4 font-medium">时间</th>
-                  <th className="px-6 py-4 font-medium">状态</th>
-                  <th className="px-6 py-4 font-medium text-right">操作</th>
+                  <th className="px-6 py-4 font-medium align-top">
+                    <div className="mb-2">预约码</div>
+                    <input 
+                      type="text" 
+                      placeholder="搜索预约码..." 
+                      value={resFilterCode}
+                      onChange={e => setResFilterCode(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    />
+                  </th>
+                  <th className="px-6 py-4 font-medium align-top">
+                    <div className="mb-2">仪器</div>
+                    <input 
+                      type="text" 
+                      placeholder="搜索仪器..." 
+                      value={resFilterEquipment}
+                      onChange={e => setResFilterEquipment(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    />
+                  </th>
+                  <th className="px-6 py-4 font-medium align-top">
+                    <div className="mb-2">用户</div>
+                    <input 
+                      type="text" 
+                      placeholder="姓名/学号/工号/导师..." 
+                      value={resFilterUser}
+                      onChange={e => setResFilterUser(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    />
+                  </th>
+                  <th className="px-6 py-4 font-medium align-top">
+                    <div className="mb-2">联系方式</div>
+                    <input 
+                      type="text" 
+                      placeholder="电话/邮箱..." 
+                      value={resFilterContact}
+                      onChange={e => setResFilterContact(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    />
+                  </th>
+                  <th className="px-6 py-4 font-medium align-top">
+                    <div className="mb-2">时间</div>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowTimeFilterPopup(!showTimeFilterPopup)}
+                        className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left flex items-center justify-between truncate"
+                      >
+                        <span className="truncate">
+                          {resFilterTimeStart || resFilterTimeEnd 
+                            ? `${resFilterTimeStart ? format(new Date(resFilterTimeStart), 'MM-dd') : '不限'} 至 ${resFilterTimeEnd ? format(new Date(resFilterTimeEnd), 'MM-dd') : '不限'}`
+                            : '全部时间'}
+                        </span>
+                        <ChevronDown className="w-3 h-3 ml-1 shrink-0" />
+                      </button>
+                      {showTimeFilterPopup && (
+                        <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10">
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs text-neutral-500 mb-1">开始日期</label>
+                              <input 
+                                type="date" 
+                                value={resFilterTimeStart ? format(new Date(resFilterTimeStart), 'yyyy-MM-dd') : ''}
+                                onChange={e => setResFilterTimeStart(e.target.value ? new Date(e.target.value).toISOString() : '')}
+                                className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-neutral-500 mb-1">结束日期</label>
+                              <input 
+                                type="date" 
+                                value={resFilterTimeEnd ? format(new Date(resFilterTimeEnd), 'yyyy-MM-dd') : ''}
+                                onChange={e => {
+                                  if (e.target.value) {
+                                    const date = new Date(e.target.value);
+                                    date.setHours(23, 59, 59, 999);
+                                    setResFilterTimeEnd(date.toISOString());
+                                  } else {
+                                    setResFilterTimeEnd('');
+                                  }
+                                }}
+                                className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+                              <button 
+                                onClick={() => { setResFilterTimeStart(''); setResFilterTimeEnd(''); }}
+                                className="text-xs text-neutral-500 hover:text-neutral-700"
+                              >
+                                清空
+                              </button>
+                              <button 
+                                onClick={() => setShowTimeFilterPopup(false)}
+                                className="text-xs text-red-600 font-medium"
+                              >
+                                确定
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 font-medium align-top">
+                    <div className="mb-2">状态</div>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowStatusFilterPopup(!showStatusFilterPopup)}
+                        className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center"
+                      >
+                        {resFilterStatus.length > 0 ? (
+                          <>
+                            {resFilterStatus.map(s => (
+                              <span key={s} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                {statusMap[s]}
+                                <X 
+                                  className="w-3 h-3 cursor-pointer hover:text-red-500" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setResFilterStatus(resFilterStatus.filter(st => st !== s));
+                                  }}
+                                />
+                              </span>
+                            ))}
+                          </>
+                        ) : (
+                          <span className="text-neutral-400">全部状态</span>
+                        )}
+                      </button>
+                      {showStatusFilterPopup && (
+                        <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10">
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {Object.entries(statusMap).map(([key, value]) => (
+                              <label key={key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                                <input 
+                                  type="checkbox"
+                                  checked={resFilterStatus.includes(key)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setResFilterStatus([...resFilterStatus, key]);
+                                    } else {
+                                      setResFilterStatus(resFilterStatus.filter(s => s !== key));
+                                    }
+                                  }}
+                                  className="w-3.5 h-3.5 text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                />
+                                <span className="text-xs">{value}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex justify-between items-center pt-2 mt-2 border-t border-neutral-100 px-2">
+                             <button 
+                                onClick={() => setResFilterStatus([])}
+                                className="text-xs text-neutral-500 hover:text-neutral-700"
+                              >
+                                清空
+                              </button>
+                              <button 
+                                onClick={() => setShowStatusFilterPopup(false)}
+                                className="text-xs text-red-600 font-medium"
+                              >
+                                确定
+                              </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 font-medium text-right align-top">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {reservations.map(res => (
+                {filteredReservations.map(res => (
                   <tr key={res.id} className="hover:bg-neutral-50/50">
                     <td className="px-6 py-4 font-mono text-xs">{res.booking_code}</td>
                     <td className="px-6 py-4 font-medium text-neutral-900">{res.equipment_name}</td>
@@ -927,8 +1161,8 @@ export default function Admin() {
                       <p className="text-xs text-neutral-500">{res.email}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd HH:mm')}</p>
-                      <p className="text-xs text-neutral-500">至 {format(new Date(res.end_time), 'HH:mm')}</p>
+                      <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd')}</p>
+                      <p className="text-xs text-neutral-500">{format(new Date(res.start_time), 'HH:mm')} - {format(new Date(res.end_time), 'HH:mm')}</p>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium
@@ -1027,7 +1261,7 @@ export default function Admin() {
                       <input type="text" value={editingReservation.student_name} onChange={e => setEditingReservation({...editingReservation, student_name: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-neutral-500 mb-1">学号</label>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">学号/工号</label>
                       <input type="text" value={editingReservation.student_id} onChange={e => setEditingReservation({...editingReservation, student_id: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-300" />
                     </div>
                   </div>
@@ -1088,6 +1322,18 @@ export default function Admin() {
 
       {activeTab === 'whitelist_apps' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-neutral-700">隐藏已处理申请</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHideProcessedWhitelistApps(!hideProcessedWhitelistApps)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideProcessedWhitelistApps ? 'bg-red-600' : 'bg-neutral-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideProcessedWhitelistApps ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
@@ -1101,7 +1347,7 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {whitelistApps.map(app => (
+                {filteredWhitelistApps.map(app => (
                   <tr key={app.id} className="hover:bg-neutral-50/50">
                     <td className="px-6 py-4 font-medium">{app.equipment_name}</td>
                     <td className="px-6 py-4">

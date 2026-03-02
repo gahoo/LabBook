@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter, startOfDay, endOfDay } from 'date-fns';
-import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock, DollarSign } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -59,6 +59,7 @@ export default function Booking() {
   const [bookingStatus, setBookingStatus] = useState<string | null>(null);
   const [needsWhitelist, setNeedsWhitelist] = useState(false);
   const [applyingWhitelist, setApplyingWhitelist] = useState(false);
+  const [showFullDesc, setShowFullDesc] = useState(false);
 
   useEffect(() => {
     fetch('/api/equipment')
@@ -272,13 +273,19 @@ export default function Booking() {
   });
 
   if (bookingCode) {
+    const isApproved = bookingStatus === 'approved';
     return (
       <div className="max-w-md mx-auto mt-12 bg-white p-8 rounded-2xl shadow-sm border border-neutral-200 text-center">
-        <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${isApproved ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+          <CheckCircle2 className={`w-8 h-8 ${isApproved ? 'text-emerald-600' : 'text-amber-600'}`} />
         </div>
-        <h2 className="text-2xl font-bold text-neutral-900 mb-2">预约成功！</h2>
-        <p className="text-neutral-500 mb-8">您的预约状态为 {bookingStatus === 'approved' ? '已通过' : '待审批'}。</p>
+        <h2 className="text-2xl font-bold text-neutral-900 mb-2">{isApproved ? '预约成功！' : '预约已提交！'}</h2>
+        <div className="mb-8 p-4 rounded-xl bg-neutral-50 border border-neutral-100">
+          <p className="text-neutral-500 mb-2">您的预约状态为</p>
+          <p className={`text-4xl font-black ${isApproved ? 'text-emerald-600' : 'text-amber-500'}`}>
+            {isApproved ? '已通过' : '待审批'}
+          </p>
+        </div>
         
         <div className="bg-neutral-50 rounded-xl p-6 mb-8 border border-neutral-200">
           <p className="text-sm text-neutral-500 mb-2 uppercase tracking-wider font-semibold">您的预约码</p>
@@ -312,9 +319,20 @@ export default function Booking() {
           {equipment && (
             <div className="mt-2 space-y-1">
               <p className="text-lg font-medium text-neutral-700">{equipment.name}</p>
-              <div className="flex flex-wrap gap-4 text-sm text-neutral-500">
+              <div className="flex flex-col gap-2 text-sm text-neutral-500">
                 <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {equipment.location || '未知地点'}</span>
-                <span className="flex items-center gap-1"><Info className="w-4 h-4" /> {equipment.description}</span>
+                <span className="flex items-center gap-1">
+                  <DollarSign className="w-4 h-4" /> 
+                  ¥{equipment.price}/{equipment.price_type === 'hour' ? '小时' : '次'}
+                  {equipment.consumable_fee > 0 && ` + ¥${equipment.consumable_fee}/个 耗材费`}
+                </span>
+                <div className="flex items-start gap-1 cursor-pointer" onClick={() => setShowFullDesc(!showFullDesc)}>
+                  <Info className="w-4 h-4 mt-0.5 shrink-0" /> 
+                  <div className={`whitespace-pre-wrap ${!showFullDesc ? 'hidden md:line-clamp-2' : ''}`}>
+                    {equipment.description}
+                  </div>
+                  {!showFullDesc && <span className="text-red-600 text-xs mt-0.5 md:hidden">点击查看详情</span>}
+                </div>
               </div>
             </div>
           )}
@@ -340,7 +358,7 @@ export default function Booking() {
                     <input required type="text" name="student_name" value={formData.student_name} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">学号</label>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">学号/工号</label>
                     <input required type="text" name="student_id" value={formData.student_id} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300" />
                   </div>
                 </div>
@@ -503,7 +521,7 @@ export default function Booking() {
               <input required type="text" name="student_name" value={formData.student_name} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all" placeholder="张三" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">学号</label>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">学号/工号</label>
               <input required type="text" name="student_id" value={formData.student_id} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all" placeholder="20230001" />
             </div>
             <div>

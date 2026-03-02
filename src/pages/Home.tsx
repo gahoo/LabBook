@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Clock, DollarSign, Zap, QrCode, X, MapPin, Search, Calendar as CalendarIcon } from 'lucide-react';
+import { Clock, DollarSign, Zap, QrCode, X, MapPin, Search, Calendar as CalendarIcon, Star } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { format, parseISO } from 'date-fns';
 import clsx from 'clsx';
@@ -24,6 +24,29 @@ export default function Home() {
   const [qrModal, setQrModal] = useState<Equipment | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [availabilityToday, setAvailabilityToday] = useState<any[]>([]);
+  
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_favorites='));
+    return cookie ? JSON.parse(decodeURIComponent(cookie.split('=')[1])) : [];
+  });
+  
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(() => {
+    const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_show_favorites_only='));
+    return cookie ? cookie.split('=')[1] === 'true' : false;
+  });
+
+  const toggleFavorite = (id: number) => {
+    const newFavs = favorites.includes(id) ? favorites.filter(f => f !== id) : [...favorites, id];
+    setFavorites(newFavs);
+    document.cookie = `lab_favorites=${encodeURIComponent(JSON.stringify(newFavs))}; max-age=31536000; path=/`;
+  };
+
+  const toggleShowFavoritesOnly = () => {
+    const newVal = !showFavoritesOnly;
+    setShowFavoritesOnly(newVal);
+    document.cookie = `lab_show_favorites_only=${newVal}; max-age=31536000; path=/`;
+  };
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -85,9 +108,10 @@ export default function Home() {
     return <div className="flex justify-center py-12"><div className="animate-pulse flex space-x-4"><div className="rounded-full bg-neutral-200 h-10 w-10"></div></div></div>;
   }
 
-  const filteredEquipment = equipment.filter(eq => 
-    eq.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredEquipment = equipment.filter(eq => {
+    if (showFavoritesOnly && !favorites.includes(eq.id)) return false;
+    return eq.name.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <div className="space-y-8">
@@ -96,15 +120,27 @@ export default function Home() {
           <h1 className="text-3xl font-bold tracking-tight text-neutral-900">实验仪器</h1>
           <p className="text-neutral-500 mt-2">预约和管理您的科研实验仪器设备。</p>
         </div>
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-          <input
-            type="text"
-            placeholder="搜索仪器名称..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-neutral-200 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
-          />
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-600 whitespace-nowrap">只显示收藏</span>
+            <button
+              type="button"
+              onClick={toggleShowFavoritesOnly}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${showFavoritesOnly ? 'bg-red-600' : 'bg-neutral-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showFavoritesOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="搜索仪器名称..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-neutral-200 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+            />
+          </div>
         </div>
       </div>
 
@@ -160,6 +196,25 @@ export default function Home() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredEquipment.map(eq => (
           <div key={eq.id} className="bg-white rounded-2xl border border-neutral-200 shadow-sm hover:shadow-md transition-all flex flex-col relative group overflow-hidden">
+            <div className="absolute top-4 right-4 flex gap-2 z-10">
+              <button 
+                onClick={() => toggleFavorite(eq.id)}
+                className={clsx(
+                  "p-2 rounded-full transition-colors backdrop-blur-sm",
+                  favorites.includes(eq.id) ? "bg-amber-100 text-amber-500" : "bg-white/80 text-neutral-400 hover:text-amber-500 hover:bg-amber-50 opacity-0 group-hover:opacity-100"
+                )}
+                title={favorites.includes(eq.id) ? "取消收藏" : "收藏"}
+              >
+                <Star className={clsx("w-5 h-5", favorites.includes(eq.id) && "fill-current")} />
+              </button>
+              <button 
+                onClick={() => setQrModal(eq)}
+                className="p-2 bg-white/80 backdrop-blur-sm text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                title="显示二维码"
+              >
+                <QrCode className="w-5 h-5" />
+              </button>
+            </div>
             {eq.image_url && (
               <div className="h-48 overflow-hidden">
                 <img 
@@ -171,15 +226,8 @@ export default function Home() {
               </div>
             )}
             <div className="p-6 flex-1 flex flex-col">
-              <button 
-                onClick={() => setQrModal(eq)}
-                className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 z-10"
-                title="显示二维码"
-              >
-                <QrCode className="w-5 h-5" />
-              </button>
               <div className="flex-1">
-                <div className="flex justify-between items-start mb-2 pr-8">
+                <div className="flex justify-between items-start mb-2 pr-20">
                   <h2 className="text-lg font-semibold text-neutral-900">{eq.name}</h2>
                 </div>
                 {eq.location && (
@@ -206,7 +254,7 @@ export default function Home() {
                     <DollarSign className="w-4 h-4" />
                     <span>
                       ¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}
-                      {eq.consumable_fee > 0 && ` + ¥${eq.consumable_fee} 耗材费`}
+                      {eq.consumable_fee > 0 && ` + ¥${eq.consumable_fee}/个 耗材费`}
                     </span>
                   </div>
                 </div>

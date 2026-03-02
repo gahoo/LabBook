@@ -599,6 +599,13 @@ app.post('/api/reservations/checkin', (req, res) => {
   }
 
   const now = new Date();
+  const startTime = new Date(reservation.start_time);
+  const diffMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
+
+  if (diffMinutes > 30) {
+    return res.status(400).json({ error: '已超过预约开始时间30分钟，不允许上机' });
+  }
+
   const scheduledStart = new Date(reservation.start_time);
   
   // Only allow check-in 30 minutes before scheduled start

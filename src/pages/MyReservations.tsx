@@ -37,6 +37,41 @@ export default function MyReservations() {
   const [availabilityData, setAvailabilityData] = useState<any[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
 
+  const [hideExpired, setHideExpired] = useState(() => {
+    const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_hide_expired='));
+    return cookie ? cookie.split('=')[1] === 'true' : true;
+  });
+
+  const [showPendingOnly, setShowPendingOnly] = useState(() => {
+    const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_show_pending_only='));
+    return cookie ? cookie.split('=')[1] === 'true' : false;
+  });
+
+  const toggleHideExpired = () => {
+    const newVal = !hideExpired;
+    setHideExpired(newVal);
+    document.cookie = `lab_hide_expired=${newVal}; max-age=31536000; path=/`;
+  };
+
+  const toggleShowPendingOnly = () => {
+    const newVal = !showPendingOnly;
+    setShowPendingOnly(newVal);
+    document.cookie = `lab_show_pending_only=${newVal}; max-age=31536000; path=/`;
+  };
+
+  const handleClearExpired = async () => {
+    if (!confirm('确定要清除所有已过期的预约记录吗？这只会从您的本地记录中移除，不会删除系统数据。')) return;
+    
+    const now = new Date();
+    const activeCodes = myReservations
+      .filter(resv => new Date(resv.end_time) >= now || ['active', 'pending', 'approved'].includes(resv.status))
+      .map(resv => resv.booking_code);
+    
+    document.cookie = `lab_booking_codes=${activeCodes.join(',')}; max-age=31536000; path=/`;
+    fetchMyReservations();
+    toast.success('已清除过期记录');
+  };
+
   const fetchMyReservations = useCallback(async () => {
     const codesStr = document.cookie
       .split('; ')
@@ -322,8 +357,48 @@ export default function MyReservations() {
         </form>
 
         <div className="space-y-4">
-          <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest px-2">预约列表</h3>
-          {myReservations.slice(0, visibleCount).map((resv, idx) => (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-2 gap-4">
+            <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest">预约列表</h3>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={handleClearExpired}
+                className="text-xs text-neutral-500 hover:text-red-600 transition-colors"
+              >
+                清除过期预约
+              </button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-neutral-600">只显示待处理</span>
+                  <button
+                    type="button"
+                    onClick={toggleShowPendingOnly}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${showPendingOnly ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showPendingOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-neutral-600">隐藏已过期</span>
+                  <button
+                    type="button"
+                    onClick={toggleHideExpired}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideExpired ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideExpired ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {myReservations.filter(resv => {
+            if (showPendingOnly) {
+              if (!['pending', 'approved', 'active'].includes(resv.status)) return false;
+            }
+            if (!hideExpired) return true;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return new Date(resv.end_time) >= today;
+          }).slice(0, visibleCount).map((resv, idx) => (
             <div 
               key={resv.id} 
               ref={idx === visibleCount - 1 ? lastElementRef : null}
@@ -345,9 +420,10 @@ export default function MyReservations() {
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-sm font-medium text-neutral-900">{format(new Date(resv.start_time), 'MM-dd HH:mm')}</p>
-                    <p className={`text-xs font-medium ${
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-neutral-900">{format(new Date(resv.start_time), 'MM-dd')}</p>
+                    <p className="text-xs text-neutral-500">{format(new Date(resv.start_time), 'HH:mm')} - {format(new Date(resv.end_time), 'HH:mm')}</p>
+                    <p className={`text-xs font-medium mt-1 ${
                       resv.status === 'approved' ? 'text-emerald-600' :
                       resv.status === 'pending' ? 'text-amber-600' :
                       resv.status === 'active' ? 'text-blue-600' :
@@ -478,7 +554,7 @@ export default function MyReservations() {
                         <div>
                           <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">费用估算</p>
                           <p className="text-sm font-medium text-neutral-900">¥{resv.price} / {resv.price_type === 'hour' ? '小时' : '次'}</p>
-                          {resv.consumable_fee > 0 && <p className="text-xs text-neutral-500">+ ¥{resv.consumable_fee} 耗材费</p>}
+                          {resv.consumable_fee > 0 && <p className="text-xs text-neutral-500">+ ¥{resv.consumable_fee}/个 耗材费</p>}
                         </div>
                         {resv.total_cost !== null && (
                           <div>
@@ -532,7 +608,15 @@ export default function MyReservations() {
               )}
             </div>
           ))}
-          {myReservations.length === 0 && (
+          {myReservations.filter(resv => {
+            if (showPendingOnly) {
+              if (!['pending', 'approved', 'active'].includes(resv.status)) return false;
+            }
+            if (!hideExpired) return true;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return new Date(resv.end_time) >= today;
+          }).length === 0 && (
             <div className="text-center py-20 bg-neutral-50 rounded-3xl border-2 border-dashed border-neutral-200">
               <Clock className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
               <p className="text-neutral-500">暂无预约记录</p>
