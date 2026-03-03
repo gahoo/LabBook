@@ -28,6 +28,7 @@ export default function Admin() {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteReservationConfirmId, setDeleteReservationConfirmId] = useState<number | null>(null);
+  const [deleteEquipmentConfirmId, setDeleteEquipmentConfirmId] = useState<number | null>(null);
   const [whitelistApps, setWhitelistApps] = useState<any[]>([]);
 
   // Reservation Filters
@@ -44,6 +45,23 @@ export default function Admin() {
 
   // Whitelist App Filters
   const [hideProcessedWhitelistApps, setHideProcessedWhitelistApps] = useState(true);
+
+  // Equipment Filters
+  const [eqFilterName, setEqFilterName] = useState('');
+  const [eqFilterLocation, setEqFilterLocation] = useState('');
+  const [eqFilterPriceMin, setEqFilterPriceMin] = useState('');
+  const [eqFilterPriceMax, setEqFilterPriceMax] = useState('');
+  const [eqFilterConsumableMin, setEqFilterConsumableMin] = useState('');
+  const [eqFilterConsumableMax, setEqFilterConsumableMax] = useState('');
+  const [eqFilterPriceEnabled, setEqFilterPriceEnabled] = useState(false);
+  const [eqFilterConsumableEnabled, setEqFilterConsumableEnabled] = useState(false);
+  const [eqFilterAdvanceDaysMin, setEqFilterAdvanceDaysMin] = useState('');
+  const [eqFilterAdvanceDaysMax, setEqFilterAdvanceDaysMax] = useState('');
+  const [eqFilterOutOfHours, setEqFilterOutOfHours] = useState<string>('all');
+  const [eqFilterWhitelist, setEqFilterWhitelist] = useState<string>('all');
+  const [eqFilterAutoApprove, setEqFilterAutoApprove] = useState<string>('all');
+  const [showEqPricePopup, setShowEqPricePopup] = useState(false);
+  const [showEqAdvanceDaysPopup, setShowEqAdvanceDaysPopup] = useState(false);
 
   const filteredReservations = reservations.filter(res => {
     if (hideExpiredReservations) {
@@ -62,6 +80,38 @@ export default function Admin() {
 
   const filteredWhitelistApps = whitelistApps.filter(app => {
     if (hideProcessedWhitelistApps && app.status !== 'pending') return false;
+    return true;
+  });
+
+  const filteredEquipmentList = equipmentList.filter(eq => {
+    let advanceDays = 7;
+    let allowOutOfHours = false;
+    try {
+      const avail = JSON.parse(eq.availability_json || '{}');
+      advanceDays = avail.advanceDays || 7;
+      allowOutOfHours = avail.allowOutOfHours === true;
+    } catch (e) {}
+
+    if (eqFilterName && !eq.name.toLowerCase().includes(eqFilterName.toLowerCase())) return false;
+    if (eqFilterLocation && !(eq.location || '').toLowerCase().includes(eqFilterLocation.toLowerCase())) return false;
+    
+    if (eqFilterPriceEnabled) {
+      if (eqFilterPriceMin && eq.price < Number(eqFilterPriceMin)) return false;
+      if (eqFilterPriceMax && eq.price > Number(eqFilterPriceMax)) return false;
+    }
+    
+    if (eqFilterConsumableEnabled) {
+      if (eqFilterConsumableMin && eq.consumable_fee < Number(eqFilterConsumableMin)) return false;
+      if (eqFilterConsumableMax && eq.consumable_fee > Number(eqFilterConsumableMax)) return false;
+    }
+    
+    if (eqFilterAdvanceDaysMin && advanceDays < Number(eqFilterAdvanceDaysMin)) return false;
+    if (eqFilterAdvanceDaysMax && advanceDays > Number(eqFilterAdvanceDaysMax)) return false;
+    
+    if (eqFilterOutOfHours !== 'all' && allowOutOfHours !== (eqFilterOutOfHours === 'true')) return false;
+    if (eqFilterWhitelist !== 'all' && Boolean(eq.whitelist_enabled) !== (eqFilterWhitelist === 'true')) return false;
+    if (eqFilterAutoApprove !== 'all' && Boolean(eq.auto_approve) !== (eqFilterAutoApprove === 'true')) return false;
+
     return true;
   });
 
@@ -284,7 +334,6 @@ export default function Admin() {
   };
 
   const deleteEquipment = async (id: number) => {
-    if (!confirm('确定要删除该仪器吗？')) return;
     try {
       const res = await fetch(`/api/admin/equipment/${id}`, {
         method: 'DELETE',
@@ -293,6 +342,9 @@ export default function Admin() {
       if (res.ok) {
         toast.success('删除成功');
         fetchEquipment();
+        setDeleteEquipmentConfirmId(null);
+      } else {
+        toast.error('删除失败，可能存在相关预约记录');
       }
     } catch (err) {
       toast.error('删除失败');
@@ -888,18 +940,168 @@ export default function Admin() {
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                 <tr>
-                  <th className="px-6 py-4 font-medium">仪器名称</th>
-                  <th className="px-6 py-4 font-medium">所在位置</th>
-                  <th className="px-6 py-4 font-medium">计费</th>
-                  <th className="px-6 py-4 font-medium">可提前预约天数</th>
-                  <th className="px-6 py-4 font-medium">时段外预约</th>
-                  <th className="px-6 py-4 font-medium">白名单</th>
-                  <th className="px-6 py-4 font-medium">自动审批</th>
-                  <th className="px-6 py-4 font-medium text-right">操作</th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">仪器名称</div>
+                    <input 
+                      type="text" 
+                      placeholder="搜索名称..." 
+                      value={eqFilterName}
+                      onChange={e => setEqFilterName(e.target.value)}
+                      className="w-24 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    />
+                  </th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">所在位置</div>
+                    <input 
+                      type="text" 
+                      placeholder="搜索位置..." 
+                      value={eqFilterLocation}
+                      onChange={e => setEqFilterLocation(e.target.value)}
+                      className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    />
+                  </th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">计费</div>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowEqPricePopup(!showEqPricePopup)}
+                        className="w-26 text-left px-2 py-1 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 flex items-center justify-between"
+                      >
+                        <div className="flex flex-col gap-0.5 w-full overflow-hidden">
+                          {!eqFilterPriceEnabled && !eqFilterConsumableEnabled && <span>全部</span>}
+                          {eqFilterPriceEnabled && <span className="truncate">计费: {eqFilterPriceMin || 0}-{eqFilterPriceMax || '∞'}</span>}
+                          {eqFilterConsumableEnabled && <span className="truncate">耗材: {eqFilterConsumableMin || 0}-{eqFilterConsumableMax || '∞'}</span>}
+                        </div>
+                        <ChevronDown className="w-3 h-3 ml-1 shrink-0" />
+                      </button>
+                      
+                      {showEqPricePopup && (
+                        <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-neutral-200 p-4 z-50">
+                          <div className="mb-4">
+                            <label className="flex items-center gap-2 text-xs font-medium text-neutral-700 mb-2">
+                              <input 
+                                type="checkbox" 
+                                checked={eqFilterPriceEnabled} 
+                                onChange={e => setEqFilterPriceEnabled(e.target.checked)}
+                                className="rounded border-neutral-300 text-red-600 focus:ring-red-600"
+                              />
+                              计费区间 (¥)
+                            </label>
+                            {eqFilterPriceEnabled && (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <input type="number" placeholder="Min" value={eqFilterPriceMin} onChange={e => setEqFilterPriceMin(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                  <span className="text-neutral-400">-</span>
+                                  <input type="number" placeholder="Max" value={eqFilterPriceMax} onChange={e => setEqFilterPriceMax(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                </div>
+                                <div className="mt-2 px-1">
+                                  <input type="range" min="0" max="500" step="10" value={eqFilterPriceMax || 500} onChange={e => setEqFilterPriceMax(e.target.value)} className="w-full accent-red-600" />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          
+                          <div>
+                            <label className="flex items-center gap-2 text-xs font-medium text-neutral-700 mb-2">
+                              <input 
+                                type="checkbox" 
+                                checked={eqFilterConsumableEnabled} 
+                                onChange={e => setEqFilterConsumableEnabled(e.target.checked)}
+                                className="rounded border-neutral-300 text-red-600 focus:ring-red-600"
+                              />
+                              耗材费区间 (¥)
+                            </label>
+                            {eqFilterConsumableEnabled && (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <input type="number" placeholder="Min" value={eqFilterConsumableMin} onChange={e => setEqFilterConsumableMin(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                  <span className="text-neutral-400">-</span>
+                                  <input type="number" placeholder="Max" value={eqFilterConsumableMax} onChange={e => setEqFilterConsumableMax(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                </div>
+                                <div className="mt-2 px-1">
+                                  <input type="range" min="0" max="500" step="10" value={eqFilterConsumableMax || 500} onChange={e => setEqFilterConsumableMax(e.target.value)} className="w-full accent-red-600" />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          
+                          <div className="mt-4 flex justify-end">
+                            <button onClick={() => {
+                              setEqFilterPriceEnabled(false); setEqFilterConsumableEnabled(false);
+                              setEqFilterPriceMin(''); setEqFilterPriceMax('');
+                              setEqFilterConsumableMin(''); setEqFilterConsumableMax('');
+                            }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
+                            <button onClick={() => setShowEqPricePopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">提前预约天数</div>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowEqAdvanceDaysPopup(!showEqAdvanceDaysPopup)}
+                        className="w-full text-left px-2 py-1 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 flex items-center justify-between"
+                      >
+                        <span className="truncate">
+                          {eqFilterAdvanceDaysMin || eqFilterAdvanceDaysMax 
+                            ? `${eqFilterAdvanceDaysMin || 0}-${eqFilterAdvanceDaysMax || '∞'}天`
+                            : '全部'}
+                        </span>
+                        <ChevronDown className="w-3 h-3 ml-1 shrink-0" />
+                      </button>
+                      
+                      {showEqAdvanceDaysPopup && (
+                        <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-neutral-200 p-4 z-50">
+                          <label className="block text-xs font-medium text-neutral-700 mb-2">天数区间</label>
+                          <div className="flex items-center gap-2">
+                            <input type="number" placeholder="Min" value={eqFilterAdvanceDaysMin} onChange={e => setEqFilterAdvanceDaysMin(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                            <span className="text-neutral-400">-</span>
+                            <input type="number" placeholder="Max" value={eqFilterAdvanceDaysMax} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                          </div>
+                          <div className="mt-2 px-1">
+                            <input type="range" min="0" max="30" step="1" value={eqFilterAdvanceDaysMax || 30} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="w-full accent-red-600" />
+                          </div>
+                          <div className="mt-4 flex justify-end">
+                            <button onClick={() => {
+                              setEqFilterAdvanceDaysMin(''); setEqFilterAdvanceDaysMax('');
+                            }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
+                            <button onClick={() => setShowEqAdvanceDaysPopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">时段外预约</div>
+                    <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-1 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                      <option value="all">全部</option>
+                      <option value="true">允许</option>
+                      <option value="false">不允许</option>
+                    </select>
+                  </th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">白名单</div>
+                    <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-1 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                      <option value="all">全部</option>
+                      <option value="true">已开启</option>
+                      <option value="false">未开启</option>
+                    </select>
+                  </th>
+                  <th className="px-4 py-4 font-medium align-top">
+                    <div className="mb-2">自动审批</div>
+                    <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-1 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                      <option value="all">全部</option>
+                      <option value="true">是</option>
+                      <option value="false">否</option>
+                    </select>
+                  </th>
+                  <th className="px-4 py-4 font-medium text-right align-top">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {equipmentList.map(eq => {
+                {filteredEquipmentList.map(eq => {
                   let advanceDays = 7;
                   let allowOutOfHours = false;
                   try {
@@ -910,47 +1112,47 @@ export default function Admin() {
                   
                   return (
                   <tr key={eq.id} className="hover:bg-neutral-50/50">
-                    <td className="px-6 py-4 font-medium">{eq.name}</td>
-                    <td className="px-6 py-4 text-neutral-500">{eq.location || '-'}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4 font-medium">{eq.name}</td>
+                    <td className="px-4 py-4 text-neutral-500">{eq.location || '-'}</td>
+                    <td className="px-4 py-4">
                       ¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}
                       {eq.consumable_fee > 0 && <span className="text-xs text-neutral-500 ml-1">(+¥{eq.consumable_fee}/个 耗材费)</span>}
                     </td>
-                    <td className="px-6 py-4 text-neutral-500">{advanceDays}天</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4 text-neutral-500">{advanceDays}天</td>
+                    <td className="px-4 py-4">
                       {allowOutOfHours ? (
                         <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">允许</span>
                       ) : (
                         <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">不允许</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       {eq.whitelist_enabled ? (
                         <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">已开启</span>
                       ) : (
                         <span className="px-2 py-1 bg-neutral-100 text-neutral-500 rounded-full text-xs">未开启</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       {eq.auto_approve ? (
                         <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">是</span>
                       ) : (
                         <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">否</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      <button onClick={() => startEdit(eq)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                    <td className="px-4 py-4 text-right space-x-1">
+                      <button onClick={() => startEdit(eq)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Settings2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => deleteEquipment(eq.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => setDeleteEquipmentConfirmId(eq.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
                 )})}
-                {equipmentList.length === 0 && (
+                {filteredEquipmentList.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-neutral-500">暂无仪器记录</td>
+                    <td colSpan={8} className="px-4 py-12 text-center text-neutral-500">暂无仪器记录</td>
                   </tr>
                 )}
               </tbody>
@@ -977,17 +1179,17 @@ export default function Admin() {
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                 <tr>
-                  <th className="px-6 py-4 font-medium align-top">
+                  <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">预约码</div>
                     <input 
                       type="text" 
                       placeholder="搜索预约码..." 
                       value={resFilterCode}
                       onChange={e => setResFilterCode(e.target.value)}
-                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                      className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                     />
                   </th>
-                  <th className="px-6 py-4 font-medium align-top">
+                  <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">仪器</div>
                     <input 
                       type="text" 
@@ -997,17 +1199,17 @@ export default function Admin() {
                       className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                     />
                   </th>
-                  <th className="px-6 py-4 font-medium align-top">
+                  <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">用户</div>
                     <input 
                       type="text" 
                       placeholder="姓名/学号/工号/导师..." 
                       value={resFilterUser}
                       onChange={e => setResFilterUser(e.target.value)}
-                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                      className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                     />
                   </th>
-                  <th className="px-6 py-4 font-medium align-top">
+                  <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">联系方式</div>
                     <input 
                       type="text" 
@@ -1017,7 +1219,7 @@ export default function Admin() {
                       className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                     />
                   </th>
-                  <th className="px-6 py-4 font-medium align-top">
+                  <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">时间</div>
                     <div className="relative">
                       <button 
@@ -1079,7 +1281,7 @@ export default function Admin() {
                       )}
                     </div>
                   </th>
-                  <th className="px-6 py-4 font-medium align-top">
+                  <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">状态</div>
                     <div className="relative">
                       <button 
@@ -1144,27 +1346,27 @@ export default function Admin() {
                       )}
                     </div>
                   </th>
-                  <th className="px-6 py-4 font-medium text-right align-top">操作</th>
+                  <th className="px-4 py-4 font-medium text-right align-top">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {filteredReservations.map(res => (
                   <tr key={res.id} className="hover:bg-neutral-50/50">
-                    <td className="px-6 py-4 font-mono text-xs">{res.booking_code}</td>
-                    <td className="px-6 py-4 font-medium text-neutral-900">{res.equipment_name}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4 font-mono text-xs">{res.booking_code}</td>
+                    <td className="px-4 py-4 font-medium text-neutral-900">{res.equipment_name}</td>
+                    <td className="px-4 py-4">
                       <p className="font-medium text-neutral-900">{res.student_name}</p>
                       <p className="text-xs text-neutral-500">{res.supervisor}</p>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <p className="text-xs text-neutral-900">{res.phone}</p>
                       <p className="text-xs text-neutral-500">{res.email}</p>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd')}</p>
                       <p className="text-xs text-neutral-500">{format(new Date(res.start_time), 'HH:mm')} - {format(new Date(res.end_time), 'HH:mm')}</p>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium
                         ${res.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
                         ${res.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
@@ -1176,7 +1378,7 @@ export default function Admin() {
                         {statusMap[res.status] || res.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right space-x-2">
+                    <td className="px-4 py-4 text-right space-x-1">
                       {res.status === 'pending' && (
                         <>
                           <button 
@@ -1198,7 +1400,7 @@ export default function Admin() {
                                 toast.error('审批失败');
                               }
                             }}
-                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                             title="审批通过"
                           >
                             <CheckCircle className="w-4 h-4" />
@@ -1222,7 +1424,7 @@ export default function Admin() {
                                 toast.error('驳回失败');
                               }
                             }}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="审批驳回"
                           >
                             <XCircle className="w-4 h-4" />
@@ -1231,7 +1433,7 @@ export default function Admin() {
                       )}
                       <button 
                         onClick={() => startEditReservation(res)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="修改预约"
                       >
                         <Edit3 className="w-4 h-4" />
@@ -1338,28 +1540,28 @@ export default function Admin() {
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                 <tr>
-                  <th className="px-6 py-4 font-medium">仪器</th>
-                  <th className="px-6 py-4 font-medium">申请人</th>
-                  <th className="px-6 py-4 font-medium">导师</th>
-                  <th className="px-6 py-4 font-medium">联系方式</th>
-                  <th className="px-6 py-4 font-medium">状态</th>
-                  <th className="px-6 py-4 font-medium text-right">操作</th>
+                  <th className="px-4 py-4 font-medium">仪器</th>
+                  <th className="px-4 py-4 font-medium">申请人</th>
+                  <th className="px-4 py-4 font-medium">导师</th>
+                  <th className="px-4 py-4 font-medium">联系方式</th>
+                  <th className="px-4 py-4 font-medium">状态</th>
+                  <th className="px-4 py-4 font-medium text-right">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {filteredWhitelistApps.map(app => (
                   <tr key={app.id} className="hover:bg-neutral-50/50">
-                    <td className="px-6 py-4 font-medium">{app.equipment_name}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4 font-medium">{app.equipment_name}</td>
+                    <td className="px-4 py-4">
                       <p className="font-medium">{app.student_name}</p>
                       <p className="text-xs text-neutral-500">{app.student_id}</p>
                     </td>
-                    <td className="px-6 py-4">{app.supervisor}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">{app.supervisor}</td>
+                    <td className="px-4 py-4">
                       <p>{app.phone}</p>
                       <p className="text-xs text-neutral-500">{app.email}</p>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium
                         ${app.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
                         ${app.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
@@ -1368,13 +1570,13 @@ export default function Admin() {
                         {app.status === 'pending' ? '待处理' : app.status === 'approved' ? '已批准' : '已拒绝'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right space-x-2">
+                    <td className="px-4 py-4 text-right space-x-1">
                       {app.status === 'pending' && (
                         <>
-                          <button onClick={() => handleApproveApp(app.id)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                          <button onClick={() => handleApproveApp(app.id)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
                             <Check className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleRejectApp(app.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <button onClick={() => handleRejectApp(app.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                             <X className="w-4 h-4" />
                           </button>
                         </>
@@ -1384,7 +1586,7 @@ export default function Admin() {
                 ))}
                 {whitelistApps.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-neutral-500">暂无申请记录</td>
+                    <td colSpan={6} className="px-4 py-12 text-center text-neutral-500">暂无申请记录</td>
                   </tr>
                 )}
               </tbody>
@@ -1535,13 +1737,13 @@ export default function Admin() {
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                       <tr>
-                        <th className="px-6 py-4 font-medium">用户/导师</th>
-                        <th className="px-6 py-4 font-medium">仪器</th>
-                        <th className="px-6 py-4 font-medium">预约时间</th>
-                        <th className="px-6 py-4 font-medium">实际上机</th>
-                        <th className="px-6 py-4 font-medium">时长/费用</th>
-                        <th className="px-6 py-4 font-medium">状态</th>
-                        <th className="px-6 py-4 font-medium text-right">操作</th>
+                        <th className="px-4 py-4 font-medium">用户/导师</th>
+                        <th className="px-4 py-4 font-medium">仪器</th>
+                        <th className="px-4 py-4 font-medium">预约时间</th>
+                        <th className="px-4 py-4 font-medium">实际上机</th>
+                        <th className="px-4 py-4 font-medium">时长/费用</th>
+                        <th className="px-4 py-4 font-medium">状态</th>
+                        <th className="px-4 py-4 font-medium text-right">操作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
@@ -1551,16 +1753,16 @@ export default function Admin() {
                           : 0;
                         return (
                           <tr key={r.id} className="hover:bg-neutral-50/50">
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-4">
                               <p className="font-medium">{r.student_name}</p>
                               <p className="text-xs text-neutral-500">{r.supervisor}</p>
                             </td>
-                            <td className="px-6 py-4">{r.equipment_name}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-4">{r.equipment_name}</td>
+                            <td className="px-4 py-4">
                               <p className="text-xs">{format(new Date(r.start_time), 'MM-dd HH:mm')}</p>
                               <p className="text-xs text-neutral-400">至 {format(new Date(r.end_time), 'HH:mm')}</p>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-4">
                               {r.actual_start_time ? (
                                 <>
                                   <p className="text-xs">{format(new Date(r.actual_start_time), 'MM-dd HH:mm')}</p>
@@ -1568,11 +1770,11 @@ export default function Admin() {
                                 </>
                               ) : '-'}
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-4">
                               <p className="font-medium">{duration.toFixed(2)}h</p>
                               <p className="text-xs text-red-600">¥{(r.total_cost || 0).toFixed(2)}</p>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-4">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold
                                 ${r.reportStatus === '正常' ? 'bg-emerald-100 text-emerald-700' : ''}
                                 ${r.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' : ''}
@@ -1584,7 +1786,7 @@ export default function Admin() {
                                 {r.reportStatus}
                               </span>
                             </td>
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-4 py-4 text-right">
                               <button 
                                 onClick={() => {
                                   const toLocalISO = (utcStr: string) => {
@@ -1603,7 +1805,7 @@ export default function Admin() {
                                     actual_end_time: toLocalISO(r.actual_end_time),
                                   });
                                 }}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 title="修改记录"
                               >
                                 <Edit3 className="w-4 h-4" />
@@ -1621,7 +1823,7 @@ export default function Admin() {
                       })}
                       {reports.allReservations.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-6 py-12 text-center text-neutral-500">此时间范围内暂无记录</td>
+                          <td colSpan={7} className="px-4 py-12 text-center text-neutral-500">此时间范围内暂无记录</td>
                         </tr>
                       )}
                     </tbody>
@@ -1692,20 +1894,20 @@ export default function Admin() {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                         <tr>
-                          <th className="px-6 py-4 font-medium">用户</th>
-                          <th className="px-6 py-4 font-medium">总时长</th>
-                          <th className="px-6 py-4 font-medium">总费用</th>
+                          <th className="px-4 py-4 font-medium">用户</th>
+                          <th className="px-4 py-4 font-medium">总时长</th>
+                          <th className="px-4 py-4 font-medium">总费用</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-100">
                         {reports.usageByPerson.map((u: any, i: number) => (
                           <tr key={i}>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-4">
                               <p className="font-medium">{u.student_name}</p>
                               <p className="text-xs text-neutral-500">{u.supervisor}</p>
                             </td>
-                            <td className="px-6 py-4">{u.total_hours.toFixed(1)}h</td>
-                            <td className="px-6 py-4 font-bold">¥{u.total_revenue.toFixed(2)}</td>
+                            <td className="px-4 py-4">{u.total_hours.toFixed(1)}h</td>
+                            <td className="px-4 py-4 font-bold">¥{u.total_revenue.toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1728,17 +1930,17 @@ export default function Admin() {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                         <tr>
-                          <th className="px-6 py-4 font-medium">导师</th>
-                          <th className="px-6 py-4 font-medium">总时长</th>
-                          <th className="px-6 py-4 font-medium">总费用</th>
+                          <th className="px-4 py-4 font-medium">导师</th>
+                          <th className="px-4 py-4 font-medium">总时长</th>
+                          <th className="px-4 py-4 font-medium">总费用</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-100">
                         {reports.usageBySupervisor.map((s: any, i: number) => (
                           <tr key={i}>
-                            <td className="px-6 py-4 font-medium">{s.supervisor}</td>
-                            <td className="px-6 py-4">{s.total_hours.toFixed(1)}h</td>
-                            <td className="px-6 py-4 font-bold">¥{s.total_revenue.toFixed(2)}</td>
+                            <td className="px-4 py-4 font-medium">{s.supervisor}</td>
+                            <td className="px-4 py-4">{s.total_hours.toFixed(1)}h</td>
+                            <td className="px-4 py-4 font-bold">¥{s.total_revenue.toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1762,31 +1964,31 @@ export default function Admin() {
             <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase">
                 <tr>
-                  <th className="px-6 py-4 font-medium">时间</th>
-                  <th className="px-6 py-4 font-medium">预约 ID</th>
-                  <th className="px-6 py-4 font-medium">操作</th>
-                  <th className="px-6 py-4 font-medium">修改前</th>
-                  <th className="px-6 py-4 font-medium">修改后</th>
+                  <th className="px-4 py-4 font-medium">时间</th>
+                  <th className="px-4 py-4 font-medium">预约 ID</th>
+                  <th className="px-4 py-4 font-medium">操作</th>
+                  <th className="px-4 py-4 font-medium">修改前</th>
+                  <th className="px-4 py-4 font-medium">修改后</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {auditLogs.map((log: any) => (
                   <tr key={log.id} className="hover:bg-neutral-50/50">
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-neutral-500">
+                    <td className="px-4 py-4 whitespace-nowrap text-xs text-neutral-500">
                       {format(new Date(log.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs">{log.reservation_id}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4 font-mono text-xs">{log.reservation_id}</td>
+                    <td className="px-4 py-4">
                       <span className="px-2 py-1 bg-neutral-100 text-neutral-700 rounded-lg text-xs font-medium">
                         {log.action}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <div className="max-h-24 overflow-y-auto w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
                         {log.old_data ? JSON.stringify(JSON.parse(log.old_data), null, 2) : '-'}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <div className="max-h-24 overflow-y-auto w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
                         {log.new_data ? JSON.stringify(JSON.parse(log.new_data), null, 2) : '-'}
                       </div>
@@ -1795,7 +1997,7 @@ export default function Admin() {
                 ))}
                 {auditLogs.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-neutral-500">暂无审计日志</td>
+                    <td colSpan={5} className="px-4 py-12 text-center text-neutral-500">暂无审计日志</td>
                   </tr>
                 )}
               </tbody>
@@ -1855,6 +2057,36 @@ export default function Admin() {
               </button>
               <button 
                 onClick={() => handleDeleteReservation(deleteReservationConfirmId)} 
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteEquipmentConfirmId !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认删除仪器</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              删除后将无法恢复，且可能影响相关的预约记录。确定要继续吗？
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeleteEquipmentConfirmId(null)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => deleteEquipment(deleteEquipmentConfirmId)} 
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
               >
                 确认删除
