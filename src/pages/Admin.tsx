@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, CheckCircle, XCircle, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
@@ -57,11 +57,38 @@ export default function Admin() {
   const [eqFilterConsumableEnabled, setEqFilterConsumableEnabled] = useState(false);
   const [eqFilterAdvanceDaysMin, setEqFilterAdvanceDaysMin] = useState('');
   const [eqFilterAdvanceDaysMax, setEqFilterAdvanceDaysMax] = useState('');
+  const [eqFilterDaysOfWeek, setEqFilterDaysOfWeek] = useState<number[]>([]);
+  const [eqFilterTimeRangeStart, setEqFilterTimeRangeStart] = useState('');
+  const [eqFilterTimeRangeEnd, setEqFilterTimeRangeEnd] = useState('');
   const [eqFilterOutOfHours, setEqFilterOutOfHours] = useState<string>('all');
   const [eqFilterWhitelist, setEqFilterWhitelist] = useState<string>('all');
   const [eqFilterAutoApprove, setEqFilterAutoApprove] = useState<string>('all');
   const [showEqPricePopup, setShowEqPricePopup] = useState(false);
   const [showEqAdvanceDaysPopup, setShowEqAdvanceDaysPopup] = useState(false);
+  
+  const eqPricePopupRef = useRef<HTMLDivElement>(null);
+  const eqAdvanceDaysPopupRef = useRef<HTMLDivElement>(null);
+  const timeFilterPopupRef = useRef<HTMLDivElement>(null);
+  const statusFilterPopupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (eqPricePopupRef.current && !eqPricePopupRef.current.contains(event.target as Node)) {
+        setShowEqPricePopup(false);
+      }
+      if (eqAdvanceDaysPopupRef.current && !eqAdvanceDaysPopupRef.current.contains(event.target as Node)) {
+        setShowEqAdvanceDaysPopup(false);
+      }
+      if (timeFilterPopupRef.current && !timeFilterPopupRef.current.contains(event.target as Node)) {
+        setShowTimeFilterPopup(false);
+      }
+      if (statusFilterPopupRef.current && !statusFilterPopupRef.current.contains(event.target as Node)) {
+        setShowStatusFilterPopup(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const filteredReservations = reservations.filter(res => {
     if (hideExpiredReservations) {
@@ -86,10 +113,12 @@ export default function Admin() {
   const filteredEquipmentList = equipmentList.filter(eq => {
     let advanceDays = 7;
     let allowOutOfHours = false;
+    let rules: any[] = [];
     try {
       const avail = JSON.parse(eq.availability_json || '{}');
       advanceDays = avail.advanceDays || 7;
       allowOutOfHours = avail.allowOutOfHours === true;
+      rules = avail.rules || [];
     } catch (e) {}
 
     if (eqFilterName && !eq.name.toLowerCase().includes(eqFilterName.toLowerCase())) return false;
@@ -107,6 +136,19 @@ export default function Admin() {
     
     if (eqFilterAdvanceDaysMin && advanceDays < Number(eqFilterAdvanceDaysMin)) return false;
     if (eqFilterAdvanceDaysMax && advanceDays > Number(eqFilterAdvanceDaysMax)) return false;
+
+    if (eqFilterDaysOfWeek.length > 0 || eqFilterTimeRangeStart || eqFilterTimeRangeEnd) {
+      if (rules.length === 0) return false;
+
+      const hasMatchingRule = rules.some(rule => {
+        if (eqFilterDaysOfWeek.length > 0 && !eqFilterDaysOfWeek.includes(rule.day)) return false;
+        if (eqFilterTimeRangeStart && rule.end <= eqFilterTimeRangeStart) return false;
+        if (eqFilterTimeRangeEnd && rule.start >= eqFilterTimeRangeEnd) return false;
+        return true;
+      });
+
+      if (!hasMatchingRule) return false;
+    }
     
     if (eqFilterOutOfHours !== 'all' && allowOutOfHours !== (eqFilterOutOfHours === 'true')) return false;
     if (eqFilterWhitelist !== 'all' && Boolean(eq.whitelist_enabled) !== (eqFilterWhitelist === 'true')) return false;
@@ -679,42 +721,42 @@ export default function Admin() {
           <div className="flex gap-2 bg-neutral-100 p-1 rounded-xl whitespace-nowrap">
             <button
               onClick={() => { setActiveTab('add'); setEditingEquipment(null); setFormData({ name: '', description: '', image_url: '', location: '', auto_approve: true, allow_out_of_hours: false, price_type: 'hour', price: 0, consumable_fee: 0, whitelist_enabled: false, whitelist_data: '', advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [] }); }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <PlusCircle className="w-4 h-4" />
               <span className={activeTab === 'add' ? 'inline' : 'hidden sm:inline'}>{editingEquipment ? '编辑仪器' : '添加仪器'}</span>
             </button>
             <button
               onClick={() => setActiveTab('equipment')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'equipment' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'equipment' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <List className="w-4 h-4" />
               <span className={activeTab === 'equipment' ? 'inline' : 'hidden sm:inline'}>仪器管理</span>
             </button>
             <button
               onClick={() => setActiveTab('reservations')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reservations' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reservations' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <CalendarDays className="w-4 h-4" />
               <span className={activeTab === 'reservations' ? 'inline' : 'hidden sm:inline'}>预约管理</span>
             </button>
             <button
               onClick={() => setActiveTab('whitelist_apps')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'whitelist_apps' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'whitelist_apps' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <Lock className="w-4 h-4" />
               <span className={activeTab === 'whitelist_apps' ? 'inline' : 'hidden sm:inline'}>白名单申请</span>
             </button>
             <button
               onClick={() => setActiveTab('reports')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reports' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reports' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <BarChart3 className="w-4 h-4" />
               <span className={activeTab === 'reports' ? 'inline' : 'hidden sm:inline'}>报表</span>
             </button>
             <button
               onClick={() => setActiveTab('audit_logs')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'audit_logs' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'audit_logs' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
               <FileText className="w-4 h-4" />
               <span className={activeTab === 'audit_logs' ? 'inline' : 'hidden sm:inline'}>审计日志</span>
@@ -962,7 +1004,7 @@ export default function Admin() {
                   </th>
                   <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">计费</div>
-                    <div className="relative">
+                    <div className="relative" ref={eqPricePopupRef}>
                       <button 
                         onClick={() => setShowEqPricePopup(!showEqPricePopup)}
                         className="w-26 text-left px-2 py-1 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 flex items-center justify-between"
@@ -1039,33 +1081,71 @@ export default function Admin() {
                   </th>
                   <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">预约时段</div>
-                    <div className="relative">
+                    <div className="relative" ref={eqAdvanceDaysPopupRef}>
                       <button 
                         onClick={() => setShowEqAdvanceDaysPopup(!showEqAdvanceDaysPopup)}
                         className="w-full text-left px-2 py-1 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 flex items-center justify-between"
                       >
                         <span className="truncate">
-                          {eqFilterAdvanceDaysMin || eqFilterAdvanceDaysMax 
-                            ? `${eqFilterAdvanceDaysMin || 0}-${eqFilterAdvanceDaysMax || '∞'}天`
+                          {eqFilterDaysOfWeek.length > 0 || eqFilterTimeRangeStart || eqFilterTimeRangeEnd || eqFilterAdvanceDaysMin || eqFilterAdvanceDaysMax 
+                            ? '已筛选'
                             : '全部'}
                         </span>
                         <ChevronDown className="w-3 h-3 ml-1 shrink-0" />
                       </button>
                       
                       {showEqAdvanceDaysPopup && (
-                        <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-neutral-200 p-4 z-50">
-                          <label className="block text-xs font-medium text-neutral-700 mb-2">天数区间</label>
-                          <div className="flex items-center gap-2">
-                            <input type="number" placeholder="Min" value={eqFilterAdvanceDaysMin} onChange={e => setEqFilterAdvanceDaysMin(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
-                            <span className="text-neutral-400">-</span>
-                            <input type="number" placeholder="Max" value={eqFilterAdvanceDaysMax} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                        <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-neutral-200 p-4 z-50">
+                          
+                          <div className="mb-4">
+                            <label className="block text-xs font-medium text-neutral-700 mb-2">周几</label>
+                            <div className="flex flex-wrap gap-1">
+                              {daysOfWeek.map(d => (
+                                <button
+                                  key={d.value}
+                                  onClick={() => {
+                                    if (eqFilterDaysOfWeek.includes(d.value)) {
+                                      setEqFilterDaysOfWeek(eqFilterDaysOfWeek.filter(v => v !== d.value));
+                                    } else {
+                                      setEqFilterDaysOfWeek([...eqFilterDaysOfWeek, d.value]);
+                                    }
+                                  }}
+                                  className={`px-2 py-1 text-xs rounded border transition-colors ${eqFilterDaysOfWeek.includes(d.value) ? 'bg-red-600 border-red-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-red-300'}`}
+                                >
+                                  {d.label.replace('周', '')}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          <div className="mt-2 px-1">
-                            <input type="range" min="0" max="30" step="1" value={eqFilterAdvanceDaysMax || 30} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="w-full accent-red-600" />
+
+                          <div className="mb-4">
+                            <label className="block text-xs font-medium text-neutral-700 mb-2">时间段</label>
+                            <div className="flex items-center gap-2">
+                              <input type="time" value={eqFilterTimeRangeStart} onChange={e => setEqFilterTimeRangeStart(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white" />
+                              <span className="text-neutral-400">-</span>
+                              <input type="time" value={eqFilterTimeRangeEnd} onChange={e => setEqFilterTimeRangeEnd(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white" />
+                            </div>
                           </div>
+
+                          <div className="mb-4">
+                            <label className="block text-xs font-medium text-neutral-700 mb-2">提前预约天数</label>
+                            <div className="flex items-center gap-2">
+                              <input type="number" placeholder="Min" value={eqFilterAdvanceDaysMin} onChange={e => setEqFilterAdvanceDaysMin(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                              <span className="text-neutral-400">-</span>
+                              <input type="number" placeholder="Max" value={eqFilterAdvanceDaysMax} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                            </div>
+                            <div className="mt-2 px-1">
+                              <input type="range" min="0" max="30" step="1" value={eqFilterAdvanceDaysMax || 30} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="w-full accent-red-600" />
+                            </div>
+                          </div>
+
                           <div className="mt-4 flex justify-end">
                             <button onClick={() => {
-                              setEqFilterAdvanceDaysMin(''); setEqFilterAdvanceDaysMax('');
+                              setEqFilterDaysOfWeek([]);
+                              setEqFilterTimeRangeStart('');
+                              setEqFilterTimeRangeEnd('');
+                              setEqFilterAdvanceDaysMin(''); 
+                              setEqFilterAdvanceDaysMax('');
                             }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
                             <button onClick={() => setShowEqAdvanceDaysPopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
                           </div>
@@ -1285,7 +1365,7 @@ export default function Admin() {
                   </th>
                   <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">时间</div>
-                    <div className="relative">
+                    <div className="relative" ref={timeFilterPopupRef}>
                       <button 
                         onClick={() => setShowTimeFilterPopup(!showTimeFilterPopup)}
                         className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left flex items-center justify-between truncate"
@@ -1347,7 +1427,7 @@ export default function Admin() {
                   </th>
                   <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">状态</div>
-                    <div className="relative">
+                    <div className="relative" ref={statusFilterPopupRef}>
                       <button 
                         onClick={() => setShowStatusFilterPopup(!showStatusFilterPopup)}
                         className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center"
