@@ -1038,7 +1038,7 @@ export default function Admin() {
                     </div>
                   </th>
                   <th className="px-4 py-4 font-medium align-top">
-                    <div className="mb-2">提前预约天数</div>
+                    <div className="mb-2">预约时段</div>
                     <div className="relative">
                       <button 
                         onClick={() => setShowEqAdvanceDaysPopup(!showEqAdvanceDaysPopup)}
@@ -1115,10 +1115,74 @@ export default function Admin() {
                     <td className="px-4 py-4 font-medium">{eq.name}</td>
                     <td className="px-4 py-4 text-neutral-500">{eq.location || '-'}</td>
                     <td className="px-4 py-4">
-                      ¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}
-                      {eq.consumable_fee > 0 && <span className="text-xs text-neutral-500 ml-1">(+¥{eq.consumable_fee}/个 耗材费)</span>}
+                      <div>¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}</div>
+                      {eq.consumable_fee > 0 && <div className="text-xs text-neutral-500 mt-1">+¥{eq.consumable_fee}/个 耗材费</div>}
                     </td>
-                    <td className="px-4 py-4 text-neutral-500">{advanceDays}天</td>
+                    <td className="px-4 py-4">
+                      {(() => {
+                        let rules: any[] = [];
+                        try {
+                          const avail = JSON.parse(eq.availability_json || '{}');
+                          rules = avail.rules || [];
+                        } catch (e) {}
+                        
+                        if (!rules || rules.length === 0) return <div className="text-neutral-500 text-xs">未设置</div>;
+                        
+                        const daySlots: Record<number, string[]> = {};
+                        rules.forEach(r => {
+                          if (!daySlots[r.day]) daySlots[r.day] = [];
+                          daySlots[r.day].push(`${r.start}~${r.end}`);
+                        });
+                        
+                        Object.keys(daySlots).forEach(day => {
+                          daySlots[Number(day)].sort();
+                        });
+                        
+                        const slotsToDays: Record<string, number[]> = {};
+                        Object.entries(daySlots).forEach(([day, slots]) => {
+                          const slotsStr = slots.join(', ');
+                          if (!slotsToDays[slotsStr]) slotsToDays[slotsStr] = [];
+                          slotsToDays[slotsStr].push(Number(day));
+                        });
+                        
+                        const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                        const formatDays = (days: number[]) => {
+                          days.sort((a, b) => a - b);
+                          let ranges = [];
+                          let j = 0;
+                          while (j < days.length) {
+                            let start = j;
+                            while (j + 1 < days.length && days[j + 1] === days[j] + 1) {
+                              j++;
+                            }
+                            ranges.push(days.slice(start, j + 1));
+                            j++;
+                          }
+                          
+                          let parts = ranges.map(range => {
+                            if (range.length >= 3) {
+                              return `${dayNames[range[0]]}～${dayNames[range[range.length - 1]]}`;
+                            } else {
+                              return range.map(d => dayNames[d]).join('、');
+                            }
+                          });
+                          
+                          return parts.join('、').replace(/、周/g, '、');
+                        };
+
+                        return (
+                          <div className="space-y-2 text-xs">
+                            {Object.entries(slotsToDays).map(([slotsStr, days], idx) => (
+                              <div key={idx}>
+                                <div className="font-medium text-neutral-700">{formatDays(days)}</div>
+                                <div className="text-neutral-500">{slotsStr}</div>
+                              </div>
+                            ))}
+                            <div className="text-red-600 font-medium pt-1">提前{advanceDays}天</div>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="px-4 py-4">
                       {allowOutOfHours ? (
                         <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">允许</span>
