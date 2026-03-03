@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Play, Square, XCircle, CheckCircle2, Clock, Calendar, ChevronDown, ChevronUp, Edit3, Save, X } from 'lucide-react';
+import { Search, Play, Square, XCircle, CheckCircle2, Clock, Calendar, ChevronDown, ChevronUp, Edit3, Save, X, Trash2 } from 'lucide-react';
 import { format, isBefore, addMinutes, parseISO } from 'date-fns';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -36,15 +36,11 @@ export default function MyReservations() {
   const [editData, setEditData] = useState<any>(null);
   const [availabilityData, setAvailabilityData] = useState<any[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const [hideExpired, setHideExpired] = useState(() => {
     const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_hide_expired='));
     return cookie ? cookie.split('=')[1] === 'true' : true;
-  });
-
-  const [showPendingOnly, setShowPendingOnly] = useState(() => {
-    const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_show_pending_only='));
-    return cookie ? cookie.split('=')[1] === 'true' : false;
   });
 
   const toggleHideExpired = () => {
@@ -53,15 +49,7 @@ export default function MyReservations() {
     document.cookie = `lab_hide_expired=${newVal}; max-age=31536000; path=/`;
   };
 
-  const toggleShowPendingOnly = () => {
-    const newVal = !showPendingOnly;
-    setShowPendingOnly(newVal);
-    document.cookie = `lab_show_pending_only=${newVal}; max-age=31536000; path=/`;
-  };
-
   const handleClearExpired = async () => {
-    if (!confirm('确定要清除所有已过期的预约记录吗？这只会从您的本地记录中移除，不会删除系统数据。')) return;
-    
     const now = new Date();
     const activeCodes = myReservations
       .filter(resv => new Date(resv.end_time) >= now || ['active', 'pending', 'approved'].includes(resv.status))
@@ -361,22 +349,12 @@ export default function MyReservations() {
             <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest">预约列表</h3>
             <div className="flex items-center gap-4">
               <button 
-                onClick={handleClearExpired}
-                className="text-xs text-neutral-500 hover:text-red-600 transition-colors"
+                onClick={() => setShowClearConfirm(true)}
+                className="px-3 py-1.5 bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 rounded-lg text-xs font-medium transition-colors"
               >
                 清除过期预约
               </button>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-neutral-600">只显示待处理</span>
-                  <button
-                    type="button"
-                    onClick={toggleShowPendingOnly}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${showPendingOnly ? 'bg-red-600' : 'bg-neutral-200'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showPendingOnly ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-neutral-600">隐藏已过期</span>
                   <button
@@ -391,9 +369,6 @@ export default function MyReservations() {
             </div>
           </div>
           {myReservations.filter(resv => {
-            if (showPendingOnly) {
-              if (!['pending', 'approved', 'active'].includes(resv.status)) return false;
-            }
             if (!hideExpired) return true;
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -609,9 +584,6 @@ export default function MyReservations() {
             </div>
           ))}
           {myReservations.filter(resv => {
-            if (showPendingOnly) {
-              if (!['pending', 'approved', 'active'].includes(resv.status)) return false;
-            }
             if (!hideExpired) return true;
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -625,6 +597,39 @@ export default function MyReservations() {
           )}
         </div>
       </div>
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认清除</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              确定要清除所有已过期的预约记录吗？这只会从您的本地记录中移除，不会删除系统数据。
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowClearConfirm(false)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => {
+                  handleClearExpired();
+                  setShowClearConfirm(false);
+                }} 
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                确认清除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

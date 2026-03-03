@@ -961,17 +961,17 @@ export default function Admin() {
 
       {activeTab === 'reservations' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-          <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
-            <div className="flex items-center gap-2">
+          <div className="p-4 border-b border-neutral-200 flex items-center justify-end bg-neutral-50">
+            <div className="flex items-center gap-3">
               <h3 className="text-sm font-medium text-neutral-700">隐藏已过期预约</h3>
+              <button
+                type="button"
+                onClick={() => setHideExpiredReservations(!hideExpiredReservations)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideExpiredReservations ? 'bg-red-600' : 'bg-neutral-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideExpiredReservations ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setHideExpiredReservations(!hideExpiredReservations)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideExpiredReservations ? 'bg-red-600' : 'bg-neutral-200'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideExpiredReservations ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -1322,17 +1322,17 @@ export default function Admin() {
 
       {activeTab === 'whitelist_apps' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-          <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
-            <div className="flex items-center gap-2">
+          <div className="p-4 border-b border-neutral-200 flex items-center justify-end bg-neutral-50">
+            <div className="flex items-center gap-3">
               <h3 className="text-sm font-medium text-neutral-700">隐藏已处理申请</h3>
+              <button
+                type="button"
+                onClick={() => setHideProcessedWhitelistApps(!hideProcessedWhitelistApps)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideProcessedWhitelistApps ? 'bg-red-600' : 'bg-neutral-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideProcessedWhitelistApps ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setHideProcessedWhitelistApps(!hideProcessedWhitelistApps)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideProcessedWhitelistApps ? 'bg-red-600' : 'bg-neutral-200'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideProcessedWhitelistApps ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
