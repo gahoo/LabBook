@@ -1053,22 +1053,30 @@ export default function Admin() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-neutral-500">权限设置</label>
-                <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
-                  <option value="all">非工作时间：全部</option>
-                  <option value="yes">允许</option>
-                  <option value="no">不允许</option>
-                </select>
-                <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
-                  <option value="all">白名单：全部</option>
-                  <option value="yes">已启用</option>
-                  <option value="no">未启用</option>
-                </select>
-                <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
-                  <option value="all">自动审批：全部</option>
-                  <option value="yes">已开启</option>
-                  <option value="no">未开启</option>
-                </select>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">时段外预约</label>
+                  <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
+                    <option value="all">全部</option>
+                    <option value="true">允许</option>
+                    <option value="false">不允许</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">白名单</label>
+                  <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
+                    <option value="all">全部</option>
+                    <option value="true">已开启</option>
+                    <option value="false">未开启</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">自动审批</label>
+                  <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
+                    <option value="all">全部</option>
+                    <option value="true">是</option>
+                    <option value="false">否</option>
+                  </select>
+                </div>
               </div>
             </div>
           )}
