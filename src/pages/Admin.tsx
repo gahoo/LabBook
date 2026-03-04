@@ -250,7 +250,7 @@ export default function Admin() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        toast.success('已批准并加入白名单');
+        toast.success('已通过并加入白名单');
         fetchWhitelistApps();
         fetchEquipment();
       }
@@ -266,7 +266,7 @@ export default function Admin() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        toast.success('已拒绝申请');
+        toast.success('已驳回申请');
         fetchWhitelistApps();
       }
     } catch (err) {
@@ -2124,7 +2124,7 @@ export default function Admin() {
                             ${app.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
                             ${app.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
                           `}>
-                            {app.status === 'pending' ? '待处理' : app.status === 'approved' ? '已批准' : '已拒绝'}
+                            {statusMap[app.status] || app.status}
                           </span>
                         </div>
                       </div>
