@@ -21,6 +21,7 @@ interface Reservation {
   price_type: string;
   price: number;
   consumable_fee: number;
+  consumable_quantity?: number;
   modified_count: number;
 }
 
@@ -144,12 +145,17 @@ export default function MyReservations() {
   };
 
   const [consumableQty, setConsumableQty] = useState<number>(1);
+  const [checkoutResv, setCheckoutResv] = useState<Reservation | null>(null);
+  const [checkoutConsumableQty, setCheckoutConsumableQty] = useState<number>(0);
 
-  const handleAction = async (resv: Reservation, action: 'checkin' | 'checkout' | 'cancel') => {
+  const handleAction = async (resv: Reservation, action: 'checkin' | 'checkout' | 'cancel', qty?: number) => {
     try {
       const body: any = { booking_code: resv.booking_code };
       if (action === 'checkin' && resv.consumable_fee > 0) {
         body.consumable_quantity = consumableQty;
+      }
+      if (action === 'checkout' && qty !== undefined) {
+        body.consumable_quantity = qty;
       }
 
       const res = await fetch(`/api/reservations/${action}`, {
@@ -165,6 +171,9 @@ export default function MyReservations() {
         fetchMyReservations();
         if (reservation?.booking_code === resv.booking_code) {
           handleSearch({ preventDefault: () => {} } as React.FormEvent);
+        }
+        if (action === 'checkout') {
+          setCheckoutResv(null);
         }
       } else {
         toast.error(data.error || `操作失败`);
@@ -557,24 +566,34 @@ export default function MyReservations() {
                       </button>
                     )}
                     {resv.status === 'approved' && !editingId && (
-                      <div className="flex-1 min-w-[240px] flex gap-2">
+                      <div className="flex-1 min-w-[240px] flex flex-col gap-2">
                         {resv.consumable_fee > 0 && (
-                          <input 
-                            type="number" 
-                            min="0" 
-                            value={consumableQty} 
-                            onChange={e => setConsumableQty(Number(e.target.value))}
-                            className="w-20 px-3 py-2 rounded-xl border border-neutral-200 text-sm"
-                            placeholder="耗材数"
-                          />
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-neutral-600 whitespace-nowrap">预计耗材数量:</span>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              value={consumableQty} 
+                              onChange={e => setConsumableQty(Number(e.target.value))}
+                              className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                              placeholder="数量"
+                            />
+                            <span className="text-xs text-neutral-400">(¥{resv.consumable_fee}/个)</span>
+                          </div>
                         )}
-                        <button onClick={() => handleAction(resv, 'checkin')} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
+                        <button onClick={() => handleAction(resv, 'checkin')} className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
                           <Play className="w-4 h-4" /> 上机
                         </button>
                       </div>
                     )}
                     {resv.status === 'active' && !editingId && (
-                      <button onClick={() => handleAction(resv, 'checkout')} className="flex-1 min-w-[120px] py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 flex items-center justify-center gap-2">
+                      <button 
+                        onClick={() => {
+                          setCheckoutResv(resv);
+                          setCheckoutConsumableQty(resv.consumable_quantity || 0);
+                        }} 
+                        className="flex-1 min-w-[120px] py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 flex items-center justify-center gap-2"
+                      >
                         <Square className="w-4 h-4" /> 下机
                       </button>
                     )}
@@ -599,8 +618,8 @@ export default function MyReservations() {
       </div>
 
       {showClearConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowClearConfirm(false)}>
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-center mb-4">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <Trash2 className="w-6 h-6 text-red-600" />
@@ -625,6 +644,55 @@ export default function MyReservations() {
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
               >
                 确认清除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {checkoutResv && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setCheckoutResv(null)}>
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                <Square className="w-6 h-6 text-amber-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认下机</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              您确定要结束当前预约并下机吗？
+            </p>
+            
+            {checkoutResv.consumable_fee > 0 && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  实际使用耗材数量 (¥{checkoutResv.consumable_fee}/个)
+                </label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  value={checkoutConsumableQty} 
+                  onChange={e => setCheckoutConsumableQty(Number(e.target.value))}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-center text-lg font-bold"
+                />
+                <p className="text-xs text-neutral-400 mt-2 text-center">
+                  请确认您实际使用的耗材数量，这将用于最终计费。
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setCheckoutResv(null)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => handleAction(checkoutResv, 'checkout', checkoutConsumableQty)} 
+                className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 transition-colors"
+              >
+                确认下机
               </button>
             </div>
           </div>

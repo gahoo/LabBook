@@ -1976,8 +1976,8 @@ export default function Admin() {
               </div>
 
               {editingReportRecord && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingReportRecord(null)}>
+                  <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl" onClick={e => e.stopPropagation()}>
                     <h3 className="text-xl font-bold mb-6">修改实际上机记录</h3>
                     <form onSubmit={handleUpdateReportRecord} className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

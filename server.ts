@@ -621,7 +621,7 @@ app.post('/api/reservations/checkin', (req, res) => {
 
 // 8. Check-out
 app.post('/api/reservations/checkout', (req, res) => {
-  const { booking_code } = req.body;
+  const { booking_code, consumable_quantity } = req.body;
   const reservation = db.prepare(`
     SELECT r.*, e.price_type, e.price, e.consumable_fee 
     FROM reservations r
@@ -639,15 +639,17 @@ app.post('/api/reservations/checkout', (req, res) => {
   const actualEnd = new Date(now);
   const durationHours = (actualEnd.getTime() - actualStart.getTime()) / (1000 * 60 * 60);
   
-  let total_cost = (reservation.consumable_quantity || 0) * (reservation.consumable_fee || 0);
+  const finalConsumableQty = consumable_quantity !== undefined ? Number(consumable_quantity) : (reservation.consumable_quantity || 0);
+  
+  let total_cost = finalConsumableQty * (reservation.consumable_fee || 0);
   if (reservation.price_type === 'hour') {
     total_cost += Math.ceil(durationHours) * reservation.price;
   } else {
     total_cost += reservation.price;
   }
 
-  db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ? WHERE booking_code = ?").run(now, total_cost, booking_code);
-  res.json({ success: true, actual_end_time: now, total_cost });
+  db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ?, consumable_quantity = ? WHERE booking_code = ?").run(now, total_cost, finalConsumableQty, booking_code);
+  res.json({ success: true, actual_end_time: now, total_cost, consumable_quantity: finalConsumableQty });
 });
 
 // Admin get all reservations
