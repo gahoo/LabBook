@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, CheckCircle, XCircle, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload } from 'lucide-react';
+import { PlusCircle, BarChart3, Users, CalendarDays, DollarSign, List, Trash2, Lock, Settings2, Image as ImageIcon, MapPin, Check, CheckCircle, XCircle, X, Download, FileText, ChevronDown, ChevronUp, Edit3, Clock, Upload, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -42,6 +42,7 @@ export default function Admin() {
   const [resFilterCode, setResFilterCode] = useState('');
   const [showTimeFilterPopup, setShowTimeFilterPopup] = useState(false);
   const [showStatusFilterPopup, setShowStatusFilterPopup] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Whitelist App Filters
   const [hideProcessedWhitelistApps, setHideProcessedWhitelistApps] = useState(true);
@@ -978,6 +979,99 @@ export default function Admin() {
 
       {activeTab === 'equipment' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50 md:hidden">
+            <h3 className="text-sm font-medium text-neutral-700">仪器列表</h3>
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+            >
+              <Filter className="w-5 h-5" />
+              <span className="text-sm font-medium">筛选</span>
+            </button>
+          </div>
+          {showMobileFilters && (
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">仪器名称</label>
+                <input type="text" placeholder="搜索名称..." value={eqFilterName} onChange={e => setEqFilterName(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">所在位置</label>
+                <input type="text" placeholder="搜索位置..." value={eqFilterLocation} onChange={e => setEqFilterLocation(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-500">计费</label>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={eqFilterPriceEnabled} onChange={e => setEqFilterPriceEnabled(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                  <span className="text-sm">启用计费筛选</span>
+                </div>
+                {eqFilterPriceEnabled && (
+                  <div className="flex gap-2">
+                    <input type="number" placeholder="最低" value={eqFilterPriceMin} onChange={e => setEqFilterPriceMin(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                    <input type="number" placeholder="最高" value={eqFilterPriceMax} onChange={e => setEqFilterPriceMax(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={eqFilterConsumableEnabled} onChange={e => setEqFilterConsumableEnabled(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                  <span className="text-sm">启用耗材筛选</span>
+                </div>
+                {eqFilterConsumableEnabled && (
+                  <div className="flex gap-2">
+                    <input type="number" placeholder="最低" value={eqFilterConsumableMin} onChange={e => setEqFilterConsumableMin(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                    <input type="number" placeholder="最高" value={eqFilterConsumableMax} onChange={e => setEqFilterConsumableMax(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-500">预约规则</label>
+                <div className="flex gap-2">
+                  <input type="number" placeholder="最小提前天数" value={eqFilterAdvanceDaysMin} onChange={e => setEqFilterAdvanceDaysMin(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                  <input type="number" placeholder="最大提前天数" value={eqFilterAdvanceDaysMax} onChange={e => setEqFilterAdvanceDaysMax(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-500">开放时间</label>
+                <div className="flex flex-wrap gap-2">
+                  {daysOfWeek.map(d => (
+                    <label key={d.value} className="flex items-center gap-1">
+                      <input type="checkbox" checked={eqFilterDaysOfWeek.includes(d.value)} onChange={e => {
+                        if (e.target.checked) setEqFilterDaysOfWeek([...eqFilterDaysOfWeek, d.value]);
+                        else setEqFilterDaysOfWeek(eqFilterDaysOfWeek.filter(v => v !== d.value));
+                      }} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                      <span className="text-sm">{d.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input type="time" value={eqFilterTimeRangeStart} onChange={e => setEqFilterTimeRangeStart(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                  <input type="time" value={eqFilterTimeRangeEnd} onChange={e => setEqFilterTimeRangeEnd(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-500">权限设置</label>
+                <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
+                  <option value="all">非工作时间：全部</option>
+                  <option value="yes">允许</option>
+                  <option value="no">不允许</option>
+                </select>
+                <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
+                  <option value="all">白名单：全部</option>
+                  <option value="yes">已启用</option>
+                  <option value="no">未启用</option>
+                </select>
+                <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
+                  <option value="all">自动审批：全部</option>
+                  <option value="yes">已开启</option>
+                  <option value="no">未开启</option>
+                </select>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm block md:table">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
@@ -1344,8 +1438,16 @@ export default function Admin() {
 
       {activeTab === 'reservations' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-          <div className="p-4 border-b border-neutral-200 flex items-center justify-end bg-neutral-50">
-            <div className="flex items-center gap-3">
+          <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+            >
+              <Filter className="w-5 h-5" />
+              <span className="text-sm font-medium">筛选</span>
+            </button>
+            <div className="flex items-center gap-3 ml-auto">
               <h3 className="text-sm font-medium text-neutral-700">隐藏已过期预约</h3>
               <button
                 type="button"
@@ -1356,6 +1458,55 @@ export default function Admin() {
               </button>
             </div>
           </div>
+          {showMobileFilters && (
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">预约码</label>
+                <input type="text" placeholder="搜索预约码..." value={resFilterCode} onChange={e => setResFilterCode(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
+                <input type="text" placeholder="搜索仪器..." value={resFilterEquipment} onChange={e => setResFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">用户</label>
+                <input type="text" placeholder="姓名/学号/工号/导师..." value={resFilterUser} onChange={e => setResFilterUser(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">联系方式</label>
+                <input type="text" placeholder="电话/邮箱..." value={resFilterContact} onChange={e => setResFilterContact(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">时间</label>
+                <div className="flex gap-2">
+                  <input type="date" value={resFilterTimeStart ? format(new Date(resFilterTimeStart), 'yyyy-MM-dd') : ''} onChange={e => setResFilterTimeStart(e.target.value ? new Date(e.target.value).toISOString() : '')} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                  <input type="date" value={resFilterTimeEnd ? format(new Date(resFilterTimeEnd), 'yyyy-MM-dd') : ''} onChange={e => {
+                    if (e.target.value) {
+                      const date = new Date(e.target.value);
+                      date.setHours(23, 59, 59, 999);
+                      setResFilterTimeEnd(date.toISOString());
+                    } else {
+                      setResFilterTimeEnd('');
+                    }
+                  }} className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-2">状态</label>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(statusMap).map(([key, value]) => (
+                    <label key={key} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg">
+                      <input type="checkbox" checked={resFilterStatus.includes(key)} onChange={e => {
+                        if (e.target.checked) setResFilterStatus([...resFilterStatus, key]);
+                        else setResFilterStatus(resFilterStatus.filter(s => s !== key));
+                      }} className="text-red-600 rounded border-neutral-300 focus:ring-red-600" />
+                      <span className="text-sm">{value}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm block md:table">
               <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
