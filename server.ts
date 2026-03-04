@@ -486,6 +486,11 @@ app.post('/api/reservations/cancel', (req, res) => {
   if (reservation.status !== 'pending' && reservation.status !== 'approved') {
     return res.status(400).json({ error: '无法取消进行中或已完成的预约' });
   }
+  
+  const startTime = new Date(reservation.start_time).getTime();
+  if (Date.now() > startTime + 30 * 60000) {
+    return res.status(400).json({ error: '超过上机时间30分钟未上机的预约，不允许取消或者修改' });
+  }
 
   db.prepare("UPDATE reservations SET status = 'cancelled' WHERE booking_code = ?").run(booking_code);
   res.json({ success: true });
@@ -500,6 +505,12 @@ app.post('/api/reservations/update', (req, res) => {
   if (reservation.status !== 'pending' && reservation.status !== 'approved') {
     return res.status(400).json({ error: '无法修改进行中或已完成的预约' });
   }
+  
+  const startTime = new Date(reservation.start_time).getTime();
+  if (Date.now() > startTime + 30 * 60000) {
+    return res.status(400).json({ error: '超过上机时间30分钟未上机的预约，不允许取消或者修改' });
+  }
+
   if (reservation.modified_count >= 1) {
     return res.status(400).json({ error: '每个预约仅允许修改一次时间，请取消后重新预约' });
   }

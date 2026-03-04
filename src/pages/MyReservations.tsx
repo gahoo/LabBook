@@ -550,41 +550,51 @@ export default function MyReservations() {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
-                    {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (
-                      <button 
-                        onClick={() => startEdit(resv)} 
-                        disabled={resv.modified_count >= 1}
-                        className="flex-1 min-w-[120px] py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Edit3 className="w-4 h-4" /> {resv.modified_count >= 1 ? '已修改过' : '修改信息'}
-                      </button>
-                    )}
-                    {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (
-                      <button onClick={() => handleAction(resv, 'cancel')} className="flex-1 min-w-[120px] py-2.5 border border-red-100 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 flex items-center justify-center gap-2">
-                        <XCircle className="w-4 h-4" /> 取消预约
-                      </button>
-                    )}
-                    {resv.status === 'approved' && !editingId && (
-                      <div className="flex-1 min-w-[240px] flex flex-col gap-2">
-                        {resv.consumable_fee > 0 && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="text-neutral-600 whitespace-nowrap">预计耗材数量:</span>
-                            <input 
-                              type="number" 
-                              min="0" 
-                              value={consumableQty} 
-                              onChange={e => setConsumableQty(Number(e.target.value))}
-                              className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                              placeholder="数量"
-                            />
-                            <span className="text-xs text-neutral-400">(¥{resv.consumable_fee}/个)</span>
-                          </div>
-                        )}
-                        <button onClick={() => handleAction(resv, 'checkin')} className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
-                          <Play className="w-4 h-4" /> 上机
-                        </button>
+                  {resv.status === 'approved' && !editingId && resv.consumable_fee > 0 && (
+                    <div className="pt-4 border-t border-neutral-50">
+                      <div className="flex items-center gap-3 bg-neutral-50/50 p-3 rounded-xl border border-neutral-100">
+                        <span className="text-sm font-medium text-neutral-700 whitespace-nowrap">预计耗材数量:</span>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          value={consumableQty} 
+                          onChange={e => setConsumableQty(Number(e.target.value))}
+                          className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
+                          placeholder="数量"
+                        />
+                        <span className="text-xs text-neutral-500">(¥{resv.consumable_fee}/个)</span>
                       </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
+                    {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (() => {
+                      const isPast30Mins = new Date().getTime() > new Date(resv.start_time).getTime() + 30 * 60000;
+                      return (
+                        <>
+                          <button 
+                            onClick={() => startEdit(resv)} 
+                            disabled={resv.modified_count >= 1 || isPast30Mins}
+                            title={isPast30Mins ? '超过上机时间30分钟未上机的预约，不允许修改' : (resv.modified_count >= 1 ? '每个预约仅允许修改一次' : '修改预约时间')}
+                            className="flex-1 min-w-[120px] py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Edit3 className="w-4 h-4" /> {resv.modified_count >= 1 ? '已修改过' : '修改信息'}
+                          </button>
+                          <button 
+                            onClick={() => handleAction(resv, 'cancel')} 
+                            disabled={isPast30Mins}
+                            title={isPast30Mins ? '超过上机时间30分钟未上机的预约，不允许取消' : '取消此预约'}
+                            className="flex-1 min-w-[120px] py-2.5 border border-red-100 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <XCircle className="w-4 h-4" /> 取消预约
+                          </button>
+                        </>
+                      );
+                    })()}
+                    {resv.status === 'approved' && !editingId && (
+                      <button onClick={() => handleAction(resv, 'checkin')} className="flex-1 min-w-[120px] py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
+                        <Play className="w-4 h-4" /> 上机
+                      </button>
                     )}
                     {resv.status === 'active' && !editingId && (
                       <button 
