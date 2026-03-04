@@ -11,7 +11,7 @@ export default function Admin() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs'>('reservations');
   const [reports, setReports] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [reportPeriod, setReportPeriod] = useState('day');
@@ -979,8 +979,8 @@ export default function Admin() {
       {activeTab === 'equipment' && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+            <table className="w-full text-left text-sm block md:table">
+              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                 <tr>
                   <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">仪器名称</div>
@@ -1180,7 +1180,7 @@ export default function Admin() {
                   <th className="px-4 py-4 font-medium text-right align-top">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {filteredEquipmentList.map(eq => {
                   let advanceDays = 7;
                   let allowOutOfHours = false;
@@ -1191,112 +1191,149 @@ export default function Admin() {
                   } catch (e) {}
                   
                   return (
-                  <tr key={eq.id} className="hover:bg-neutral-50/50">
-                    <td className="px-4 py-4 font-medium">{eq.name}</td>
-                    <td className="px-4 py-4 text-neutral-500">{eq.location || '-'}</td>
-                    <td className="px-4 py-4">
-                      <div>¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}</div>
-                      {eq.consumable_fee > 0 && <div className="text-xs text-neutral-500 mt-1">+¥{eq.consumable_fee}/个 耗材费</div>}
+                  <tr key={eq.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
+                        <span className="font-medium">{eq.name}</span>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      {(() => {
-                        let rules: any[] = [];
-                        try {
-                          const avail = JSON.parse(eq.availability_json || '{}');
-                          rules = avail.rules || [];
-                        } catch (e) {}
-                        
-                        if (!rules || rules.length === 0) return <div className="text-neutral-500 text-xs">未设置</div>;
-                        
-                        const daySlots: Record<number, string[]> = {};
-                        rules.forEach(r => {
-                          if (!daySlots[r.day]) daySlots[r.day] = [];
-                          daySlots[r.day].push(`${r.start}~${r.end}`);
-                        });
-                        
-                        Object.keys(daySlots).forEach(day => {
-                          daySlots[Number(day)].sort();
-                        });
-                        
-                        const slotsToDays: Record<string, number[]> = {};
-                        Object.entries(daySlots).forEach(([day, slots]) => {
-                          const slotsStr = slots.join(', ');
-                          if (!slotsToDays[slotsStr]) slotsToDays[slotsStr] = [];
-                          slotsToDays[slotsStr].push(Number(day));
-                        });
-                        
-                        const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-                        const formatDays = (days: number[]) => {
-                          days.sort((a, b) => a - b);
-                          let ranges = [];
-                          let j = 0;
-                          while (j < days.length) {
-                            let start = j;
-                            while (j + 1 < days.length && days[j + 1] === days[j] + 1) {
-                              j++;
-                            }
-                            ranges.push(days.slice(start, j + 1));
-                            j++;
-                          }
-                          
-                          let parts = ranges.map(range => {
-                            if (range.length >= 3) {
-                              return `${dayNames[range[0]]}～${dayNames[range[range.length - 1]]}`;
-                            } else {
-                              return range.map(d => dayNames[d]).join('、');
-                            }
-                          });
-                          
-                          return parts.join('、').replace(/、周/g, '、');
-                        };
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">位置</span>
+                        <span className="text-neutral-500">{eq.location || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">计费</span>
+                        <div className="text-right md:text-left">
+                          <div>¥{eq.price}/{eq.price_type === 'hour' ? '小时' : '次'}</div>
+                          {eq.consumable_fee > 0 && <div className="text-xs text-neutral-500 mt-1">+¥{eq.consumable_fee}/个 耗材费</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-start md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs mt-0.5">预约时段</span>
+                        <div className="text-right md:text-left">
+                          {(() => {
+                            let rules: any[] = [];
+                            try {
+                              const avail = JSON.parse(eq.availability_json || '{}');
+                              rules = avail.rules || [];
+                            } catch (e) {}
+                            
+                            if (!rules || rules.length === 0) return <div className="text-neutral-500 text-xs">未设置</div>;
+                            
+                            const daySlots: Record<number, string[]> = {};
+                            rules.forEach(r => {
+                              if (!daySlots[r.day]) daySlots[r.day] = [];
+                              daySlots[r.day].push(`${r.start}~${r.end}`);
+                            });
+                            
+                            Object.keys(daySlots).forEach(day => {
+                              daySlots[Number(day)].sort();
+                            });
+                            
+                            const slotsToDays: Record<string, number[]> = {};
+                            Object.entries(daySlots).forEach(([day, slots]) => {
+                              const slotsStr = slots.join(', ');
+                              if (!slotsToDays[slotsStr]) slotsToDays[slotsStr] = [];
+                              slotsToDays[slotsStr].push(Number(day));
+                            });
+                            
+                            const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                            const formatDays = (days: number[]) => {
+                              days.sort((a, b) => a - b);
+                              let ranges = [];
+                              let j = 0;
+                              while (j < days.length) {
+                                let start = j;
+                                while (j + 1 < days.length && days[j + 1] === days[j] + 1) {
+                                  j++;
+                                }
+                                ranges.push(days.slice(start, j + 1));
+                                j++;
+                              }
+                              
+                              let parts = ranges.map(range => {
+                                if (range.length >= 3) {
+                                  return `${dayNames[range[0]]}～${dayNames[range[range.length - 1]]}`;
+                                } else {
+                                  return range.map(d => dayNames[d]).join('、');
+                                }
+                              });
+                              
+                              return parts.join('、').replace(/、周/g, '、');
+                            };
 
-                        return (
-                          <div className="space-y-2 text-xs">
-                            {Object.entries(slotsToDays).map(([slotsStr, days], idx) => (
-                              <div key={idx}>
-                                <div className="font-medium text-neutral-700">{formatDays(days)}</div>
-                                <div className="text-neutral-500">{slotsStr}</div>
+                            return (
+                              <div className="space-y-2 text-xs">
+                                {Object.entries(slotsToDays).map(([slotsStr, days], idx) => (
+                                  <div key={idx}>
+                                    <div className="font-medium text-neutral-700">{formatDays(days)}</div>
+                                    <div className="text-neutral-500">{slotsStr}</div>
+                                  </div>
+                                ))}
+                                <div className="text-red-600 font-medium pt-1">提前{advanceDays}天</div>
                               </div>
-                            ))}
-                            <div className="text-red-600 font-medium pt-1">提前{advanceDays}天</div>
-                          </div>
-                        );
-                      })()}
+                            );
+                          })()}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      {allowOutOfHours ? (
-                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">允许</span>
-                      ) : (
-                        <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">不允许</span>
-                      )}
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">时段外预约</span>
+                        <div>
+                          {allowOutOfHours ? (
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">允许</span>
+                          ) : (
+                            <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">不允许</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      {eq.whitelist_enabled ? (
-                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">已开启</span>
-                      ) : (
-                        <span className="px-2 py-1 bg-neutral-100 text-neutral-500 rounded-full text-xs">未开启</span>
-                      )}
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">白名单</span>
+                        <div>
+                          {eq.whitelist_enabled ? (
+                            <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">已开启</span>
+                          ) : (
+                            <span className="px-2 py-1 bg-neutral-100 text-neutral-500 rounded-full text-xs">未开启</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      {eq.auto_approve ? (
-                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">是</span>
-                      ) : (
-                        <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">否</span>
-                      )}
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">自动审批</span>
+                        <div>
+                          {eq.auto_approve ? (
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">是</span>
+                          ) : (
+                            <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">否</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4 text-right space-x-1">
-                      <button onClick={() => startEdit(eq)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <Settings2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => setDeleteEquipmentConfirmId(eq.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell">
+                      <div className="flex justify-end md:justify-end items-center space-x-1">
+                        <button onClick={() => startEdit(eq)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Settings2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setDeleteEquipmentConfirmId(eq.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )})}
                 {filteredEquipmentList.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-neutral-500">暂无仪器记录</td>
+                  <tr className="block md:table-row">
+                    <td colSpan={8} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无仪器记录</td>
                   </tr>
                 )}
               </tbody>
@@ -1320,8 +1357,8 @@ export default function Admin() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+            <table className="w-full text-left text-sm block md:table">
+              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                 <tr>
                   <th className="px-4 py-4 font-medium align-top">
                     <div className="mb-2">预约码</div>
@@ -1493,36 +1530,67 @@ export default function Admin() {
                   <th className="px-4 py-4 font-medium text-right align-top">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {filteredReservations.map(res => (
-                  <tr key={res.id} className="hover:bg-neutral-50/50">
-                    <td className="px-4 py-4 font-mono text-xs">{res.booking_code}</td>
-                    <td className="px-4 py-4 font-medium text-neutral-900">{res.equipment_name}</td>
-                    <td className="px-4 py-4">
-                      <p className="font-medium text-neutral-900">{res.student_name}</p>
-                      <p className="text-xs text-neutral-500">{res.supervisor}</p>
+                  <tr key={res.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">预约码</span>
+                        <span className="font-mono text-xs">{res.booking_code}</span>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <p className="text-xs text-neutral-900">{res.phone}</p>
-                      <p className="text-xs text-neutral-500">{res.email}</p>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
+                        <span className="font-medium text-neutral-900">{res.equipment_name}</span>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd')}</p>
-                      <p className="text-xs text-neutral-500">{format(new Date(res.start_time), 'HH:mm')} - {format(new Date(res.end_time), 'HH:mm')}</p>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">用户</span>
+                        <div className="text-right md:text-left">
+                          <p className="font-medium text-neutral-900">{res.student_name}</p>
+                          <p className="text-xs text-neutral-500">{res.supervisor}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium
-                        ${res.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
-                        ${res.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
-                        ${res.status === 'active' ? 'bg-red-100 text-red-800' : ''}
-                        ${res.status === 'completed' ? 'bg-neutral-100 text-neutral-800' : ''}
-                        ${res.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
-                        ${res.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
-                      `}>
-                        {statusMap[res.status] || res.status}
-                      </span>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">联系方式</span>
+                        <div className="text-right md:text-left">
+                          <p className="text-xs text-neutral-900">{res.phone}</p>
+                          <p className="text-xs text-neutral-500">{res.email}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4 text-right space-x-1">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">时间</span>
+                        <div className="text-right md:text-left">
+                          <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd')}</p>
+                          <p className="text-xs text-neutral-500">{format(new Date(res.start_time), 'HH:mm')} - {format(new Date(res.end_time), 'HH:mm')}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
+                        <div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium
+                            ${res.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
+                            ${res.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
+                            ${res.status === 'active' ? 'bg-red-100 text-red-800' : ''}
+                            ${res.status === 'completed' ? 'bg-neutral-100 text-neutral-800' : ''}
+                            ${res.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
+                            ${res.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
+                          `}>
+                            {statusMap[res.status] || res.status}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell">
+                      <div className="flex justify-end md:justify-end items-center space-x-1">
                       {res.status === 'pending' && (
                         <>
                           <button 
@@ -1589,9 +1657,15 @@ export default function Admin() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
+                {filteredReservations.length === 0 && (
+                  <tr className="block md:table-row">
+                    <td colSpan={7} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无预约记录</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1681,8 +1755,8 @@ export default function Admin() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+            <table className="w-full text-left text-sm block md:table">
+              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                 <tr>
                   <th className="px-4 py-4 font-medium">仪器</th>
                   <th className="px-4 py-4 font-medium">申请人</th>
@@ -1692,29 +1766,55 @@ export default function Admin() {
                   <th className="px-4 py-4 font-medium text-right">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {filteredWhitelistApps.map(app => (
-                  <tr key={app.id} className="hover:bg-neutral-50/50">
-                    <td className="px-4 py-4 font-medium">{app.equipment_name}</td>
-                    <td className="px-4 py-4">
-                      <p className="font-medium">{app.student_name}</p>
-                      <p className="text-xs text-neutral-500">{app.student_id}</p>
+                  <tr key={app.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
+                        <span className="font-medium text-neutral-900">{app.equipment_name}</span>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">{app.supervisor}</td>
-                    <td className="px-4 py-4">
-                      <p>{app.phone}</p>
-                      <p className="text-xs text-neutral-500">{app.email}</p>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">申请人</span>
+                        <div className="text-right md:text-left">
+                          <p className="font-medium text-neutral-900">{app.student_name}</p>
+                          <p className="text-xs text-neutral-500">{app.student_id}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium
-                        ${app.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
-                        ${app.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
-                        ${app.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
-                      `}>
-                        {app.status === 'pending' ? '待处理' : app.status === 'approved' ? '已批准' : '已拒绝'}
-                      </span>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
+                        <span className="text-neutral-900">{app.supervisor}</span>
+                      </div>
                     </td>
-                    <td className="px-4 py-4 text-right space-x-1">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">联系方式</span>
+                        <div className="text-right md:text-left">
+                          <p className="text-neutral-900">{app.phone}</p>
+                          <p className="text-xs text-neutral-500">{app.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
+                        <div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium
+                            ${app.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
+                            ${app.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : ''}
+                            ${app.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
+                          `}>
+                            {app.status === 'pending' ? '待处理' : app.status === 'approved' ? '已批准' : '已拒绝'}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell">
+                      <div className="flex justify-end md:justify-end items-center space-x-1">
                       {app.status === 'pending' && (
                         <>
                           <button onClick={() => handleApproveApp(app.id)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
@@ -1725,12 +1825,13 @@ export default function Admin() {
                           </button>
                         </>
                       )}
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {whitelistApps.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-neutral-500">暂无申请记录</td>
+                  <tr className="block md:table-row">
+                    <td colSpan={6} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无申请记录</td>
                   </tr>
                 )}
               </tbody>
@@ -1878,8 +1979,8 @@ export default function Admin() {
                   </button>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                  <table className="w-full text-left text-sm whitespace-nowrap block md:table">
+                    <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                       <tr>
                         <th className="px-4 py-4 font-medium">用户/导师</th>
                         <th className="px-4 py-4 font-medium">仪器</th>
@@ -1890,47 +1991,78 @@ export default function Admin() {
                         <th className="px-4 py-4 font-medium text-right">操作</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-neutral-100">
+                    <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                       {reports.allReservations.map((r: any) => {
                         const duration = r.actual_start_time && r.actual_end_time 
                           ? (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60)
                           : 0;
                         return (
-                          <tr key={r.id} className="hover:bg-neutral-50/50">
-                            <td className="px-4 py-4">
-                              <p className="font-medium">{r.student_name}</p>
-                              <p className="text-xs text-neutral-500">{r.supervisor}</p>
+                          <tr key={r.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
+                                <div className="text-right md:text-left">
+                                  <p className="font-medium text-neutral-900">{r.student_name}</p>
+                                  <p className="text-xs text-neutral-500">{r.supervisor}</p>
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-4 py-4">{r.equipment_name}</td>
-                            <td className="px-4 py-4">
-                              <p className="text-xs">{format(new Date(r.start_time), 'MM-dd HH:mm')}</p>
-                              <p className="text-xs text-neutral-400">至 {format(new Date(r.end_time), 'HH:mm')}</p>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
+                                <span className="text-neutral-900">{r.equipment_name}</span>
+                              </div>
                             </td>
-                            <td className="px-4 py-4">
-                              {r.actual_start_time ? (
-                                <>
-                                  <p className="text-xs">{format(new Date(r.actual_start_time), 'MM-dd HH:mm')}</p>
-                                  {r.actual_end_time && <p className="text-xs text-neutral-400">至 {format(new Date(r.actual_end_time), 'HH:mm')}</p>}
-                                </>
-                              ) : '-'}
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">预约时间</span>
+                                <div className="text-right md:text-left">
+                                  <p className="text-xs text-neutral-900">{format(new Date(r.start_time), 'MM-dd HH:mm')}</p>
+                                  <p className="text-xs text-neutral-400">至 {format(new Date(r.end_time), 'HH:mm')}</p>
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-4 py-4">
-                              <p className="font-medium">{duration.toFixed(2)}h</p>
-                              <p className="text-xs text-red-600">¥{(r.total_cost || 0).toFixed(2)}</p>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">实际上机</span>
+                                <div className="text-right md:text-left">
+                                  {r.actual_start_time ? (
+                                    <>
+                                      <p className="text-xs text-neutral-900">{format(new Date(r.actual_start_time), 'MM-dd HH:mm')}</p>
+                                      {r.actual_end_time && <p className="text-xs text-neutral-400">至 {format(new Date(r.actual_end_time), 'HH:mm')}</p>}
+                                    </>
+                                  ) : <span className="text-neutral-500">-</span>}
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-4 py-4">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold
-                                ${r.reportStatus === '正常' ? 'bg-emerald-100 text-emerald-700' : ''}
-                                ${r.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' : ''}
-                                ${r.reportStatus === '超时' ? 'bg-orange-100 text-orange-700' : ''}
-                                ${r.reportStatus === '爽约' ? 'bg-red-100 text-red-700' : ''}
-                                ${r.reportStatus === '待上机' ? 'bg-blue-100 text-blue-700' : ''}
-                                ${r.reportStatus === '已取消' ? 'bg-neutral-100 text-neutral-500' : ''}
-                              `}>
-                                {r.reportStatus}
-                              </span>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">时长/费用</span>
+                                <div className="text-right md:text-left">
+                                  <p className="font-medium text-neutral-900">{duration.toFixed(2)}h</p>
+                                  <p className="text-xs text-red-600">¥{(r.total_cost || 0).toFixed(2)}</p>
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-4 py-4 text-right">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
+                                <div>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold
+                                    ${r.reportStatus === '正常' ? 'bg-emerald-100 text-emerald-700' : ''}
+                                    ${r.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' : ''}
+                                    ${r.reportStatus === '超时' ? 'bg-orange-100 text-orange-700' : ''}
+                                    ${r.reportStatus === '爽约' ? 'bg-red-100 text-red-700' : ''}
+                                    ${r.reportStatus === '待上机' ? 'bg-blue-100 text-blue-700' : ''}
+                                    ${r.reportStatus === '已取消' ? 'bg-neutral-100 text-neutral-500' : ''}
+                                  `}>
+                                    {r.reportStatus}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell">
+                              <div className="flex justify-end md:justify-end items-center space-x-1">
                               <button 
                                 onClick={() => {
                                   const toLocalISO = (utcStr: string) => {
@@ -1961,13 +2093,14 @@ export default function Admin() {
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
+                              </div>
                             </td>
                           </tr>
                         );
                       })}
                       {reports.allReservations.length === 0 && (
-                        <tr>
-                          <td colSpan={7} className="px-4 py-12 text-center text-neutral-500">此时间范围内暂无记录</td>
+                        <tr className="block md:table-row">
+                          <td colSpan={7} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">此时间范围内暂无记录</td>
                         </tr>
                       )}
                     </tbody>
@@ -2035,25 +2168,45 @@ export default function Admin() {
                     </button>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                    <table className="w-full text-left text-sm block md:table">
+                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                         <tr>
                           <th className="px-4 py-4 font-medium">用户</th>
                           <th className="px-4 py-4 font-medium">总时长</th>
                           <th className="px-4 py-4 font-medium">总费用</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-100">
+                      <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                         {reports.usageByPerson.map((u: any, i: number) => (
-                          <tr key={i}>
-                            <td className="px-4 py-4">
-                              <p className="font-medium">{u.student_name}</p>
-                              <p className="text-xs text-neutral-500">{u.supervisor}</p>
+                          <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">用户</span>
+                                <div className="text-right md:text-left">
+                                  <p className="font-medium text-neutral-900">{u.student_name}</p>
+                                  <p className="text-xs text-neutral-500">{u.supervisor}</p>
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-4 py-4">{u.total_hours.toFixed(1)}h</td>
-                            <td className="px-4 py-4 font-bold">¥{u.total_revenue.toFixed(2)}</td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
+                                <span className="text-neutral-900">{u.total_hours.toFixed(1)}h</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                <span className="font-bold text-neutral-900">¥{u.total_revenue.toFixed(2)}</span>
+                              </div>
+                            </td>
                           </tr>
                         ))}
+                        {reports.usageByPerson.length === 0 && (
+                          <tr className="block md:table-row">
+                            <td colSpan={3} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -2071,22 +2224,42 @@ export default function Admin() {
                     </button>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                    <table className="w-full text-left text-sm block md:table">
+                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                         <tr>
                           <th className="px-4 py-4 font-medium">导师</th>
                           <th className="px-4 py-4 font-medium">总时长</th>
                           <th className="px-4 py-4 font-medium">总费用</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-100">
+                      <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                         {reports.usageBySupervisor.map((s: any, i: number) => (
-                          <tr key={i}>
-                            <td className="px-4 py-4 font-medium">{s.supervisor}</td>
-                            <td className="px-4 py-4">{s.total_hours.toFixed(1)}h</td>
-                            <td className="px-4 py-4 font-bold">¥{s.total_revenue.toFixed(2)}</td>
+                          <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
+                                <span className="font-medium text-neutral-900">{s.supervisor}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
+                                <span className="text-neutral-900">{s.total_hours.toFixed(1)}h</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                <span className="font-bold text-neutral-900">¥{s.total_revenue.toFixed(2)}</span>
+                              </div>
+                            </td>
                           </tr>
                         ))}
+                        {reports.usageBySupervisor.length === 0 && (
+                          <tr className="block md:table-row">
+                            <td colSpan={3} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -2105,8 +2278,8 @@ export default function Admin() {
             </h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left whitespace-nowrap">
-              <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase">
+            <table className="w-full text-sm text-left whitespace-nowrap block md:table">
+              <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase hidden md:table-header-group">
                 <tr>
                   <th className="px-4 py-4 font-medium">时间</th>
                   <th className="px-4 py-4 font-medium">预约 ID</th>
@@ -2115,33 +2288,50 @@ export default function Admin() {
                   <th className="px-4 py-4 font-medium">修改后</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {auditLogs.map((log: any) => (
-                  <tr key={log.id} className="hover:bg-neutral-50/50">
-                    <td className="px-4 py-4 whitespace-nowrap text-xs text-neutral-500">
-                      {format(new Date(log.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}
-                    </td>
-                    <td className="px-4 py-4 font-mono text-xs">{log.reservation_id}</td>
-                    <td className="px-4 py-4">
-                      <span className="px-2 py-1 bg-neutral-100 text-neutral-700 rounded-lg text-xs font-medium">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="max-h-24 overflow-y-auto w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
-                        {log.old_data ? JSON.stringify(JSON.parse(log.old_data), null, 2) : '-'}
+                  <tr key={log.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">时间</span>
+                        <span className="text-xs text-neutral-500">{format(new Date(log.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="max-h-24 overflow-y-auto w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
-                        {log.new_data ? JSON.stringify(JSON.parse(log.new_data), null, 2) : '-'}
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">预约 ID</span>
+                        <span className="font-mono text-xs text-neutral-900">{log.reservation_id}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">操作</span>
+                        <span className="px-2 py-1 bg-neutral-100 text-neutral-700 rounded-lg text-xs font-medium">
+                          {log.action}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex flex-col md:block gap-2">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">修改前</span>
+                        <div className="max-h-24 overflow-y-auto w-full md:w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
+                          {log.old_data ? JSON.stringify(JSON.parse(log.old_data), null, 2) : '-'}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell">
+                      <div className="flex flex-col md:block gap-2">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">修改后</span>
+                        <div className="max-h-24 overflow-y-auto w-full md:w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
+                          {log.new_data ? JSON.stringify(JSON.parse(log.new_data), null, 2) : '-'}
+                        </div>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {auditLogs.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-neutral-500">暂无审计日志</td>
+                  <tr className="block md:table-row">
+                    <td colSpan={5} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无审计日志</td>
                   </tr>
                 )}
               </tbody>
