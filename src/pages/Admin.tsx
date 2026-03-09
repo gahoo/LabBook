@@ -2394,11 +2394,11 @@ export default function Admin() {
                     <div>
                       <label className="block text-xs font-medium text-neutral-500 mb-2">状态</label>
                       <div className="flex flex-wrap gap-2">
-                        {Object.entries(statusMap).map(([key, value]) => (
-                          <label key={key} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg">
-                            <input type="checkbox" checked={reportFilterStatus.includes(key)} onChange={e => {
-                              if (e.target.checked) setReportFilterStatus([...reportFilterStatus, key]);
-                              else setReportFilterStatus(reportFilterStatus.filter(s => s !== key));
+                        {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
+                          <label key={value} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg">
+                            <input type="checkbox" checked={reportFilterStatus.includes(value)} onChange={e => {
+                              if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
+                              else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
                             }} className="text-red-600 rounded border-neutral-300 focus:ring-red-600" />
                             <span className="text-sm">{value}</span>
                           </label>
@@ -2527,7 +2527,7 @@ export default function Admin() {
                             {showReportStatusFilterPopup && (
                               <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10 font-normal">
                                 <div className="space-y-1 max-h-48 overflow-y-auto">
-                                  {['正常', '迟到', '超时', '待上机', '爽约', '已取消'].map((value) => (
+                                  {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
                                     <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
                                       <input 
                                         type="checkbox"

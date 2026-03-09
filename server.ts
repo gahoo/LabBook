@@ -488,11 +488,14 @@ app.post('/api/reservations/cancel', (req, res) => {
   }
   
   const startTime = new Date(reservation.start_time).getTime();
-  if (Date.now() > startTime + 30 * 60000) {
+  const now = Date.now();
+  if (now > startTime + 30 * 60000) {
     return res.status(400).json({ error: '超过上机时间30分钟未上机的预约，不允许取消或者修改' });
   }
 
-  db.prepare("UPDATE reservations SET status = 'cancelled' WHERE booking_code = ?").run(booking_code);
+  // We need to record the cancellation time to determine if it's a late cancellation later
+  // Since we don't want to add a new column, we can use actual_end_time to store the cancellation time for cancelled reservations
+  db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ? WHERE booking_code = ?").run(new Date(now).toISOString(), booking_code);
   res.json({ success: true });
 });
 
@@ -771,7 +774,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   
   const periodExpr = period === 'quarter' ? dateFormat : `strftime(${dateFormat}, actual_start_time)`;
 
-  let whereClause = "WHERE 1=1";
+  let whereClause = "WHERE status IN ('approved', 'active', 'completed', 'cancelled')";
   const params: any[] = [];
   
   if (student_name) {
@@ -793,7 +796,17 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
 
   // Helper to calculate report status
   const calculateStatus = (res: any, prevRes: any) => {
-    if (res.status === 'cancelled') return '已取消';
+    if (res.status === 'cancelled') {
+      // If cancelled, check if it was cancelled within 30 minutes before start time or after start time
+      if (res.actual_end_time) {
+        const cancelTime = new Date(res.actual_end_time).getTime();
+        const startTime = new Date(res.start_time).getTime();
+        if (cancelTime >= startTime - 30 * 60 * 1000) {
+          return '临期取消';
+        }
+      }
+      return '已取消';
+    }
     if (!res.actual_start_time) {
       if (new Date() < new Date(res.start_time)) {
         return '待上机';
@@ -840,7 +853,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     const prevRes = idx > 0 && (allReservationsRaw[idx-1] as any).equipment_id === res.equipment_id ? (allReservationsRaw[idx-1] as any) : null;
     const reportStatus = calculateStatus(res, prevRes);
     return { ...res, reportStatus };
-  });
+  }).filter((res: any) => res.reportStatus !== '已取消');
 
   // Filter for stats: exclude no-shows and cancelled
   const statsReservations = allReservations.filter(r => r.actual_start_time && r.status === 'completed');
