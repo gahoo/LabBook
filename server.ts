@@ -783,12 +783,12 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     params.push(`%${supervisor}%`);
   }
   if (startDate) {
-    whereClause += " AND date(start_time) >= date(?)";
-    params.push(startDate);
+    whereClause += " AND start_time >= ?";
+    params.push(`${startDate}T00:00:00.000Z`);
   }
   if (endDate) {
-    whereClause += " AND date(start_time) <= date(?)";
-    params.push(endDate);
+    whereClause += " AND start_time <= ?";
+    params.push(`${endDate}T23:59:59.999Z`);
   }
 
   // Helper to calculate report status

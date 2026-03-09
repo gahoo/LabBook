@@ -18,9 +18,22 @@ export default function Admin() {
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
   const [reportStartDate, setReportStartDate] = useState(format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
-  const [reportFilterName, setReportFilterName] = useState('');
-  const [reportFilterSupervisor, setReportFilterSupervisor] = useState('');
+  const [reportFilterUser, setReportFilterUser] = useState('');
+  const [reportFilterEquipment, setReportFilterEquipment] = useState('');
+  const [reportFilterDurationMin, setReportFilterDurationMin] = useState('');
+  const [reportFilterDurationMax, setReportFilterDurationMax] = useState('');
+  const [reportFilterCostMin, setReportFilterCostMin] = useState('');
+  const [reportFilterCostMax, setReportFilterCostMax] = useState('');
+  const [reportFilterStatus, setReportFilterStatus] = useState<string[]>([]);
+  const [reportFilterCode, setReportFilterCode] = useState('');
+  const [reportCurrentPage, setReportCurrentPage] = useState(1);
+  const reportPageSize = 20;
   const [loadingReports, setLoadingReports] = useState(false);
+  const [showReportMobileFilters, setShowReportMobileFilters] = useState(false);
+  const [showReportTimeFilterPopup, setShowReportTimeFilterPopup] = useState(false);
+  const [showReportStatusFilterPopup, setShowReportStatusFilterPopup] = useState(false);
+  const reportTimeFilterPopupRef = useRef<HTMLDivElement>(null);
+  const reportStatusFilterPopupRef = useRef<HTMLDivElement>(null);
   const [reservations, setReservations] = useState<any[]>([]);
   const [equipmentList, setEquipmentList] = useState<any[]>([]);
   const [editingEquipment, setEditingEquipment] = useState<any>(null);
@@ -109,6 +122,12 @@ export default function Admin() {
       if (auditTimeFilterPopupRef.current && !auditTimeFilterPopupRef.current.contains(event.target as Node)) {
         setShowAuditTimeFilterPopup(false);
       }
+      if (reportTimeFilterPopupRef.current && !reportTimeFilterPopupRef.current.contains(event.target as Node)) {
+        setShowReportTimeFilterPopup(false);
+      }
+      if (reportStatusFilterPopupRef.current && !reportStatusFilterPopupRef.current.contains(event.target as Node)) {
+        setShowReportStatusFilterPopup(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -194,6 +213,42 @@ export default function Admin() {
 
     return true;
   });
+
+  const filteredReportReservations = (reports?.allReservations || []).filter((res: any) => {
+    if (reportFilterCode && !res.booking_code.toLowerCase().includes(reportFilterCode.toLowerCase())) return false;
+    if (reportFilterUser) {
+      const search = reportFilterUser.toLowerCase();
+      if (!res.student_name.toLowerCase().includes(search) && 
+          !res.student_id.toLowerCase().includes(search) && 
+          !(res.supervisor || '').toLowerCase().includes(search)) {
+        return false;
+      }
+    }
+    if (reportFilterEquipment && !res.equipment_name.toLowerCase().includes(reportFilterEquipment.toLowerCase())) return false;
+    
+    const duration = res.actual_start_time && res.actual_end_time 
+      ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
+      : 0;
+    if (reportFilterDurationMin && duration < Number(reportFilterDurationMin)) return false;
+    if (reportFilterDurationMax && duration > Number(reportFilterDurationMax)) return false;
+    
+    if (reportFilterCostMin && (res.total_cost || 0) < Number(reportFilterCostMin)) return false;
+    if (reportFilterCostMax && (res.total_cost || 0) > Number(reportFilterCostMax)) return false;
+    
+    if (reportFilterStatus.length > 0 && !reportFilterStatus.includes(res.reportStatus)) return false;
+
+    return true;
+  });
+
+  const reportTotalPages = Math.ceil(filteredReportReservations.length / reportPageSize);
+  const paginatedReportReservations = filteredReportReservations.slice(
+    (reportCurrentPage - 1) * reportPageSize,
+    reportCurrentPage * reportPageSize
+  );
+
+  useEffect(() => {
+    setReportCurrentPage(1);
+  }, [reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterStatus]);
 
   // Add/Edit Equipment Form State
   const [formData, setFormData] = useState({
@@ -437,9 +492,7 @@ export default function Admin() {
       const query = new URLSearchParams({
         period: reportPeriod,
         startDate: reportStartDate,
-        endDate: reportEndDate,
-        ...(reportFilterName && { student_name: reportFilterName }),
-        ...(reportFilterSupervisor && { supervisor: reportFilterSupervisor })
+        endDate: reportEndDate
       });
       const res = await fetch(`/api/admin/reports?${query.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -2218,23 +2271,6 @@ export default function Admin() {
                 查询
               </button>
             </div>
-
-            <div className="flex flex-wrap gap-4">
-              <input 
-                type="text" 
-                value={reportFilterName}
-                onChange={e => setReportFilterName(e.target.value)}
-                placeholder="筛选用户姓名"
-                className="px-4 py-2 rounded-xl border border-neutral-300 text-sm w-48"
-              />
-              <input 
-                type="text" 
-                value={reportFilterSupervisor}
-                onChange={e => setReportFilterSupervisor(e.target.value)}
-                placeholder="筛选导师姓名"
-                className="px-4 py-2 rounded-xl border border-neutral-300 text-sm w-48"
-              />
-            </div>
           </div>
 
           {loadingReports ? (
@@ -2303,39 +2339,246 @@ export default function Admin() {
 
               {/* Data Table */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+                <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
                   <h3 className="font-bold flex items-center gap-2">
                     <FileText className="w-5 h-5 text-red-600" />
                     详细预约记录
                   </h3>
-                  <button 
-                    onClick={exportDetailedReport}
-                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
-                    title="导出记录"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowReportMobileFilters(!showReportMobileFilters)}
+                      className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+                    >
+                      <Filter className="w-5 h-5" />
+                      <span className="text-sm font-medium">筛选</span>
+                    </button>
+                    <button 
+                      onClick={exportDetailedReport}
+                      className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      title="导出记录"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
+                {showReportMobileFilters && (
+                  <div className="md:hidden p-4 bg-neutral-50 border-b border-neutral-200 space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">预约码</label>
+                      <input type="text" value={reportFilterCode} onChange={e => setReportFilterCode(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" placeholder="搜索预约码..." />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">用户/导师</label>
+                      <input type="text" value={reportFilterUser} onChange={e => setReportFilterUser(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" placeholder="姓名/学号/导师..." />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
+                      <input type="text" value={reportFilterEquipment} onChange={e => setReportFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" placeholder="搜索仪器..." />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-2">时长/费用</label>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <input type="number" placeholder="Min h" value={reportFilterDurationMin} onChange={e => setReportFilterDurationMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                          <span className="text-neutral-400">-</span>
+                          <input type="number" placeholder="Max h" value={reportFilterDurationMax} onChange={e => setReportFilterDurationMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input type="number" placeholder="Min ¥" value={reportFilterCostMin} onChange={e => setReportFilterCostMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                          <span className="text-neutral-400">-</span>
+                          <input type="number" placeholder="Max ¥" value={reportFilterCostMax} onChange={e => setReportFilterCostMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-2">状态</label>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(statusMap).map(([key, value]) => (
+                          <label key={key} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg">
+                            <input type="checkbox" checked={reportFilterStatus.includes(key)} onChange={e => {
+                              if (e.target.checked) setReportFilterStatus([...reportFilterStatus, key]);
+                              else setReportFilterStatus(reportFilterStatus.filter(s => s !== key));
+                            }} className="text-red-600 rounded border-neutral-300 focus:ring-red-600" />
+                            <span className="text-sm">{value}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm whitespace-nowrap block md:table">
                     <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                       <tr>
-                        <th className="px-4 py-4 font-medium">用户/导师</th>
-                        <th className="px-4 py-4 font-medium">仪器</th>
-                        <th className="px-4 py-4 font-medium">预约时间</th>
-                        <th className="px-4 py-4 font-medium">实际上机</th>
-                        <th className="px-4 py-4 font-medium">时长/费用</th>
-                        <th className="px-4 py-4 font-medium">状态</th>
-                        <th className="px-4 py-4 font-medium text-right">操作</th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">预约码</div>
+                          <input 
+                            type="text" 
+                            placeholder="搜索预约码..." 
+                            value={reportFilterCode}
+                            onChange={e => setReportFilterCode(e.target.value)}
+                            className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                          />
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">用户/导师</div>
+                          <input 
+                            type="text" 
+                            placeholder="姓名/学号/导师..." 
+                            value={reportFilterUser}
+                            onChange={e => setReportFilterUser(e.target.value)}
+                            className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                          />
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">仪器</div>
+                          <input 
+                            type="text" 
+                            placeholder="搜索仪器..." 
+                            value={reportFilterEquipment}
+                            onChange={e => setReportFilterEquipment(e.target.value)}
+                            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                          />
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">预约时间</th>
+                        <th className="px-4 py-4 font-medium align-top">实际上机</th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">时长/费用</div>
+                          <div className="relative" ref={reportTimeFilterPopupRef}>
+                            <button 
+                              onClick={() => setShowReportTimeFilterPopup(!showReportTimeFilterPopup)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex items-center justify-between"
+                            >
+                              <span className="text-neutral-500 truncate">
+                                {reportFilterDurationMin || reportFilterDurationMax || reportFilterCostMin || reportFilterCostMax ? '已筛选' : '筛选时长/费用'}
+                              </span>
+                              <Filter className="w-3 h-3 text-neutral-400" />
+                            </button>
+                            {showReportTimeFilterPopup && (
+                              <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className="block text-xs text-neutral-500 mb-1">时长 (小时)</label>
+                                    <div className="flex items-center gap-1">
+                                      <input type="number" placeholder="Min" value={reportFilterDurationMin} onChange={e => setReportFilterDurationMin(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                      <span className="text-neutral-400">-</span>
+                                      <input type="number" placeholder="Max" value={reportFilterDurationMax} onChange={e => setReportFilterDurationMax(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-neutral-500 mb-1">费用 (¥)</label>
+                                    <div className="flex items-center gap-1">
+                                      <input type="number" placeholder="Min" value={reportFilterCostMin} onChange={e => setReportFilterCostMin(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                      <span className="text-neutral-400">-</span>
+                                      <input type="number" placeholder="Max" value={reportFilterCostMax} onChange={e => setReportFilterCostMax(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                                    <button 
+                                      onClick={() => {
+                                        setReportFilterDurationMin('');
+                                        setReportFilterDurationMax('');
+                                        setReportFilterCostMin('');
+                                        setReportFilterCostMax('');
+                                      }}
+                                      className="text-xs text-neutral-500 hover:text-neutral-700"
+                                    >
+                                      清空
+                                    </button>
+                                    <button 
+                                      onClick={() => setShowReportTimeFilterPopup(false)}
+                                      className="text-xs text-red-600 font-medium"
+                                    >
+                                      确定
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">状态</div>
+                          <div className="relative" ref={reportStatusFilterPopupRef}>
+                            <button 
+                              onClick={() => setShowReportStatusFilterPopup(!showReportStatusFilterPopup)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center"
+                            >
+                              {reportFilterStatus.length > 0 ? (
+                                <>
+                                  {reportFilterStatus.map(s => (
+                                    <span key={s} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                      {s}
+                                      <X 
+                                        className="w-3 h-3 cursor-pointer hover:text-red-500" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setReportFilterStatus(reportFilterStatus.filter(st => st !== s));
+                                        }}
+                                      />
+                                    </span>
+                                  ))}
+                                </>
+                              ) : (
+                                <span className="text-neutral-400">全部状态</span>
+                              )}
+                            </button>
+                            {showReportStatusFilterPopup && (
+                              <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10 font-normal">
+                                <div className="space-y-1 max-h-48 overflow-y-auto">
+                                  {['正常', '迟到', '超时', '待上机', '爽约', '已取消'].map((value) => (
+                                    <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                                      <input 
+                                        type="checkbox"
+                                        checked={reportFilterStatus.includes(value)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setReportFilterStatus([...reportFilterStatus, value]);
+                                          } else {
+                                            setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
+                                          }
+                                        }}
+                                        className="w-3.5 h-3.5 text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                      />
+                                      <span className="text-xs">{value}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                                <div className="flex justify-between items-center pt-2 mt-2 border-t border-neutral-100 px-2">
+                                   <button 
+                                      onClick={() => setReportFilterStatus([])}
+                                      className="text-xs text-neutral-500 hover:text-neutral-700"
+                                    >
+                                      清空
+                                    </button>
+                                    <button 
+                                      onClick={() => setShowReportStatusFilterPopup(false)}
+                                      className="text-xs text-red-600 font-medium"
+                                    >
+                                      确定
+                                    </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium text-right align-top">操作</th>
                       </tr>
                     </thead>
                     <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
-                      {reports.allReservations.map((r: any) => {
+                      {paginatedReportReservations.map((r: any) => {
                         const duration = r.actual_start_time && r.actual_end_time 
                           ? (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60)
                           : 0;
                         return (
                           <tr key={r.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">预约码</span>
+                                <span className="font-mono text-xs text-neutral-600 bg-neutral-100 px-2 py-1 rounded">{r.booking_code}</span>
+                              </div>
+                            </td>
                             <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                               <div className="flex justify-between items-center md:block">
                                 <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
@@ -2355,8 +2598,8 @@ export default function Admin() {
                               <div className="flex justify-between items-center md:block">
                                 <span className="md:hidden font-medium text-neutral-500 text-xs">预约时间</span>
                                 <div className="text-right md:text-left">
-                                  <p className="text-xs text-neutral-900">{format(new Date(r.start_time), 'MM-dd HH:mm')}</p>
-                                  <p className="text-xs text-neutral-400">至 {format(new Date(r.end_time), 'HH:mm')}</p>
+                                  <p className="text-xs text-neutral-900">{format(new Date(r.start_time), 'yyyy-MM-dd')}</p>
+                                  <p className="text-xs text-neutral-500">{format(new Date(r.start_time), 'HH:mm')} - {format(new Date(r.end_time), 'HH:mm')}</p>
                                 </div>
                               </div>
                             </td>
@@ -2366,8 +2609,10 @@ export default function Admin() {
                                 <div className="text-right md:text-left">
                                   {r.actual_start_time ? (
                                     <>
-                                      <p className="text-xs text-neutral-900">{format(new Date(r.actual_start_time), 'MM-dd HH:mm')}</p>
-                                      {r.actual_end_time && <p className="text-xs text-neutral-400">至 {format(new Date(r.actual_end_time), 'HH:mm')}</p>}
+                                      <p className="text-xs text-neutral-900">{format(new Date(r.actual_start_time), 'yyyy-MM-dd')}</p>
+                                      <p className="text-xs text-neutral-500">
+                                        {format(new Date(r.actual_start_time), 'HH:mm')} - {r.actual_end_time ? format(new Date(r.actual_end_time), 'HH:mm') : '进行中'}
+                                      </p>
                                     </>
                                   ) : <span className="text-neutral-500">-</span>}
                                 </div>
@@ -2436,13 +2681,37 @@ export default function Admin() {
                           </tr>
                         );
                       })}
-                      {reports.allReservations.length === 0 && (
+                      {paginatedReportReservations.length === 0 && (
                         <tr className="block md:table-row">
                           <td colSpan={7} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">此时间范围内暂无记录</td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                  
+                  {reportTotalPages > 1 && (
+                    <div className="p-4 border-t border-neutral-100 flex items-center justify-between bg-neutral-50 rounded-b-2xl">
+                      <span className="text-sm text-neutral-500">
+                        共 {filteredReportReservations.length} 条记录，第 {reportCurrentPage} / {reportTotalPages} 页
+                      </span>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setReportCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={reportCurrentPage === 1}
+                          className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm disabled:opacity-50 hover:bg-neutral-50"
+                        >
+                          上一页
+                        </button>
+                        <button 
+                          onClick={() => setReportCurrentPage(p => Math.min(reportTotalPages, p + 1))}
+                          disabled={reportCurrentPage === reportTotalPages}
+                          className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm disabled:opacity-50 hover:bg-neutral-50"
+                        >
+                          下一页
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
