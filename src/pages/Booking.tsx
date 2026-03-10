@@ -419,7 +419,7 @@ export default function Booking() {
                               <button 
                                 onClick={() => setSelectedDate(date)}
                                 className={clsx(
-                                  "w-24 shrink-0 text-left px-2 py-1 rounded-lg transition-colors",
+                                  "w-24 shrink-0 text-left px-2 py-1 rounded-lg transition-colors cursor-pointer",
                                   isSelected ? "bg-red-600 text-white" : "hover:bg-neutral-50"
                                 )}
                               >
@@ -474,10 +474,22 @@ export default function Booking() {
           </div>
 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-            <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-red-600" />
-              设置预约时间 ({format(selectedDate, 'yyyy-MM-dd')})
-            </h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Clock className="w-5 h-5 text-red-600" />
+                设置预约时间
+              </h3>
+              <input 
+                type="date" 
+                value={format(selectedDate, 'yyyy-MM-dd')}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedDate(parseISO(e.target.value));
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none text-sm font-medium cursor-pointer"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">开始时间</label>
