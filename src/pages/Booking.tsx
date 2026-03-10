@@ -46,6 +46,7 @@ export default function Booking() {
   
   const [startTime, setStartTime] = useState<string>('');
   const [endTime, setEndTime] = useState<string>('');
+  const [selectionStep, setSelectionStep] = useState<0 | 1 | 2>(0);
 
   const [formData, setFormData] = useState({
     student_id: '',
@@ -123,6 +124,41 @@ export default function Booking() {
       start.setHours(h, m, 0, 0);
       const end = addMinutes(start, maxDuration);
       setEndTime(format(end, 'HH:mm'));
+      setSelectionStep(2);
+    }
+  };
+
+  const handleTimeGridClick = (date: Date, time: string) => {
+    const isDifferentDate = format(date, 'yyyy-MM-dd') !== format(selectedDate, 'yyyy-MM-dd');
+    
+    setSelectedDate(date);
+    
+    if (selectionStep === 0 || selectionStep === 2 || isDifferentDate) {
+      setStartTime(time);
+      const [h, m] = time.split(':').map(Number);
+      const start = new Date();
+      start.setHours(h, m, 0, 0);
+      const end = addMinutes(start, 30);
+      setEndTime(format(end, 'HH:mm'));
+      setSelectionStep(1);
+    } else if (selectionStep === 1) {
+      const [h1, m1] = startTime.split(':').map(Number);
+      const [h2, m2] = time.split(':').map(Number);
+      const start = new Date();
+      start.setHours(h1, m1, 0, 0);
+      const clickedTime = new Date();
+      clickedTime.setHours(h2, m2, 0, 0);
+      
+      if (clickedTime <= start) {
+        setStartTime(time);
+        const end = addMinutes(clickedTime, 30);
+        setEndTime(format(end, 'HH:mm'));
+        setSelectionStep(1);
+      } else {
+        const end = addMinutes(clickedTime, 30);
+        setEndTime(format(end, 'HH:mm'));
+        setSelectionStep(2);
+      }
     }
   };
 
@@ -431,18 +467,29 @@ export default function Booking() {
                                 {row.times.map((t, i) => {
                                   const timeDate = new Date(`${row.date}T${t.time}`);
                                   const isPast = timeDate < new Date();
+                                  
+                                  let isSelectedBlock = false;
+                                  if (isSelected && startTime && endTime) {
+                                    const blockStart = new Date(`${row.date}T${t.time}`);
+                                    const selStart = new Date(`${row.date}T${startTime}`);
+                                    const selEnd = new Date(`${row.date}T${endTime}`);
+                                    if (blockStart >= selStart && blockStart < selEnd) {
+                                      isSelectedBlock = true;
+                                    }
+                                  }
+
                                   return (
                                     <div 
                                       key={i}
                                       title={`${row.date} ${t.time}`}
                                       className={clsx(
                                         "flex-1 transition-all",
-                                        t.isBooked ? "bg-red-500" : (t.isAvailable && !isPast ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200")
+                                        t.isBooked ? "bg-red-500" : (t.isAvailable && !isPast ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200"),
+                                        isSelectedBlock && "ring-2 ring-neutral-900 ring-inset z-10 scale-105 rounded-sm"
                                       )}
                                       onClick={() => {
                                         if (!t.isBooked && !isPast && t.isAvailable) {
-                                          setSelectedDate(date);
-                                          handleStartTimeChange(t.time);
+                                          handleTimeGridClick(date, t.time);
                                         }
                                       }}
                                     />
