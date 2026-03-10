@@ -463,19 +463,47 @@ export default function Booking() {
                                 <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
                               </button>
                               
-                              <div className="flex-1 flex gap-px h-8 bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                              <div className="flex-1 flex h-8 bg-neutral-50 rounded-md overflow-hidden p-0.5">
                                 {row.times.map((t, i) => {
                                   const timeDate = new Date(`${row.date}T${t.time}`);
                                   const isPast = timeDate < new Date();
                                   
                                   let isSelectedBlock = false;
+                                  let isFirstSelected = false;
+                                  let isLastSelected = false;
+                                  let isNextSelected = false;
+
                                   if (isSelected && startTime && endTime) {
                                     const blockStart = new Date(`${row.date}T${t.time}`);
                                     const selStart = new Date(`${row.date}T${startTime}`);
                                     const selEnd = new Date(`${row.date}T${endTime}`);
+                                    
                                     if (blockStart >= selStart && blockStart < selEnd) {
                                       isSelectedBlock = true;
+                                      if (blockStart.getTime() === selStart.getTime()) {
+                                        isFirstSelected = true;
+                                      }
+                                      const blockEnd = addMinutes(blockStart, 30);
+                                      if (blockEnd.getTime() === selEnd.getTime()) {
+                                        isLastSelected = true;
+                                      }
                                     }
+
+                                    if (i < row.times.length - 1) {
+                                      const nextBlockStart = new Date(`${row.date}T${row.times[i+1].time}`);
+                                      if (nextBlockStart >= selStart && nextBlockStart < selEnd) {
+                                        isNextSelected = true;
+                                      }
+                                    }
+                                  }
+
+                                  const showRightGap = i !== row.times.length - 1 && !isSelectedBlock && !isNextSelected;
+
+                                  let bgColor = "bg-neutral-200";
+                                  if (t.isBooked) {
+                                    bgColor = "bg-red-500";
+                                  } else if (t.isAvailable && !isPast) {
+                                    bgColor = isSelectedBlock ? "bg-emerald-400" : "bg-emerald-500";
                                   }
 
                                   return (
@@ -484,8 +512,12 @@ export default function Booking() {
                                       title={`${row.date} ${t.time}`}
                                       className={clsx(
                                         "flex-1 transition-all",
-                                        t.isBooked ? "bg-red-500" : (t.isAvailable && !isPast ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200"),
-                                        isSelectedBlock && "ring-2 ring-neutral-900 ring-inset z-10 scale-105 rounded-sm"
+                                        bgColor,
+                                        !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
+                                        showRightGap && "border-r border-neutral-50",
+                                        isSelectedBlock && "border-y-2 border-emerald-700 shadow-sm z-10",
+                                        isFirstSelected && "border-l-2 border-emerald-700 rounded-l-sm",
+                                        isLastSelected && "border-r-2 border-emerald-700 rounded-r-sm"
                                       )}
                                       onClick={() => {
                                         if (!t.isBooked && !isPast && t.isAvailable) {
