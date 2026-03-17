@@ -540,10 +540,10 @@ export default function MyReservations() {
                           <p className="text-sm font-medium text-neutral-900">¥{resv.price} / {resv.price_type === 'hour' ? '小时' : '次'}</p>
                           {resv.consumable_fee > 0 && <p className="text-xs text-neutral-500">+ ¥{resv.consumable_fee}/个 耗材费</p>}
                         </div>
-                        {resv.total_cost !== null && (
+                        {resv.total_cost !== null && resv.total_cost !== undefined && (
                           <div>
                             <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">实际费用</p>
-                            <p className="text-lg font-bold text-red-600">¥{resv.total_cost.toFixed(2)}</p>
+                            <p className="text-lg font-bold text-red-600">¥{(resv.total_cost || 0).toFixed(2)}</p>
                           </div>
                         )}
                       </div>
