@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings2, Trash2, Filter, ChevronDown, AlertCircle } from 'lucide-react';
+import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import AddEquipmentTab from './AddEquipmentTab';
 
 interface EquipmentManagementTabProps {
   token: string | null;
-  startEdit: (eq: any) => void;
 }
 
 const daysOfWeek = [
@@ -18,11 +18,14 @@ const daysOfWeek = [
 ];
 
 export default function EquipmentManagementTab({
-  token,
-  startEdit
+  token
 }: EquipmentManagementTabProps) {
   const [equipmentList, setEquipmentList] = useState<any[]>([]);
   const [deleteEquipmentConfirmId, setDeleteEquipmentConfirmId] = useState<number | null>(null);
+  
+  // Drawer state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState<any>(null);
 
   // Equipment Filters
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -155,16 +158,32 @@ export default function EquipmentManagementTab({
   return (
     <>
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-        <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50 md:hidden">
-          <h3 className="text-sm font-medium text-neutral-700">仪器列表</h3>
-          <button
-            type="button"
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-            className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
-          >
-            <Filter className="w-5 h-5" />
-            <span className="text-sm font-medium">筛选</span>
-          </button>
+        <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+          <h3 className="text-sm font-medium text-neutral-700 md:hidden">仪器列表</h3>
+          <div className="hidden md:flex items-center gap-4">
+            <h3 className="text-sm font-medium text-neutral-700">仪器列表</h3>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingEquipment(null);
+                setIsDrawerOpen(true);
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-red-700 transition-colors"
+            >
+              <PlusCircle className="w-4 h-4" />
+              添加仪器
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2 md:hidden"
+            >
+              <Filter className="w-5 h-5" />
+              <span className="text-sm font-medium">筛选</span>
+            </button>
+          </div>
         </div>
         {showMobileFilters && (
           <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
@@ -599,7 +618,10 @@ export default function EquipmentManagementTab({
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell">
                     <div className="flex justify-end md:justify-end items-center space-x-1">
-                      <button onClick={() => startEdit(eq)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => {
+                        setEditingEquipment(eq);
+                        setIsDrawerOpen(true);
+                      }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Settings2 className="w-4 h-4" />
                       </button>
                       <button onClick={() => setDeleteEquipmentConfirmId(eq.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
@@ -648,6 +670,40 @@ export default function EquipmentManagementTab({
           </div>
         </div>
       )}
+
+      {/* Drawer Overlay */}
+      <div 
+        className={`fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setIsDrawerOpen(false)}
+      />
+
+      {/* Drawer Panel */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out overflow-y-auto ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="p-4 border-b border-neutral-200 flex items-center justify-between sticky top-0 bg-white z-10">
+          <h2 className="text-lg font-bold text-neutral-900">{editingEquipment ? '编辑仪器' : '添加新仪器'}</h2>
+          <button 
+            onClick={() => setIsDrawerOpen(false)}
+            className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4 sm:p-6">
+          {isDrawerOpen && (
+            <AddEquipmentTab 
+              token={token}
+              editingEquipment={editingEquipment}
+              setEditingEquipment={setEditingEquipment}
+              setActiveTab={() => {
+                setIsDrawerOpen(false);
+                fetchEquipment();
+              }}
+            />
+          )}
+        </div>
+      </div>
     </>
   );
 }

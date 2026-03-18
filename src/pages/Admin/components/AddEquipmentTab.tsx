@@ -170,8 +170,7 @@ export default function AddEquipmentTab({
   };
 
   return (
-    <div className="bg-white p-8 rounded-2xl shadow-sm border border-neutral-200 max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold mb-6">{editingEquipment ? '编辑仪器' : '添加新仪器'}</h2>
+    <div className="w-full">
       <form onSubmit={handleAddSubmit} className="space-y-6">
         <div className="space-y-4">
           <div>

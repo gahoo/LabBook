@@ -1,19 +1,17 @@
 import React, { useState } from 'react';
-import { PlusCircle, BarChart3, CalendarDays, List, Lock, FileText } from 'lucide-react';
+import { BarChart3, CalendarDays, List, Lock, FileText } from 'lucide-react';
 import AuditLogsTab from './components/AuditLogsTab';
 import WhitelistAppsTab from './components/WhitelistAppsTab';
 import ReservationsTab from './components/ReservationsTab';
 import ReportsTab from './components/ReportsTab';
 import EquipmentManagementTab from './components/EquipmentManagementTab';
-import AddEquipmentTab from './components/AddEquipmentTab';
 
 export default function Admin() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'add' | 'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs'>('reservations');
-  const [editingEquipment, setEditingEquipment] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs'>('reservations');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,13 +87,6 @@ export default function Admin() {
         <div className="flex items-center gap-4 w-full sm:w-auto overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0">
           <div className="flex gap-2 bg-neutral-100 p-1 rounded-xl whitespace-nowrap">
             <button
-              onClick={() => { setActiveTab('add'); setEditingEquipment(null); }}
-              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'add' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span className={activeTab === 'add' ? 'inline' : 'hidden sm:inline'}>{editingEquipment ? '编辑仪器' : '添加仪器'}</span>
-            </button>
-            <button
               onClick={() => setActiveTab('equipment')}
               className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'equipment' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
@@ -135,22 +126,9 @@ export default function Admin() {
         </div>
       </div>
 
-      {activeTab === 'add' && (
-        <AddEquipmentTab 
-          token={token} 
-          editingEquipment={editingEquipment} 
-          setEditingEquipment={setEditingEquipment} 
-          setActiveTab={setActiveTab} 
-        />
-      )}
-
       {activeTab === 'equipment' && (
         <EquipmentManagementTab 
           token={token} 
-          startEdit={(eq) => {
-            setEditingEquipment(eq);
-            setActiveTab('add');
-          }} 
         />
       )}
 
