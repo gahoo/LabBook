@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X } from 'lucide-react';
+import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EquipmentForm from './EquipmentForm';
 
@@ -47,9 +47,11 @@ export default function EquipmentManagementTab({
   const [eqFilterAutoApprove, setEqFilterAutoApprove] = useState<string>('all');
   const [showEqPricePopup, setShowEqPricePopup] = useState(false);
   const [showEqAdvanceDaysPopup, setShowEqAdvanceDaysPopup] = useState(false);
+  const [showEqFeaturesPopup, setShowEqFeaturesPopup] = useState(false);
 
   const eqPricePopupRef = useRef<HTMLDivElement>(null);
   const eqAdvanceDaysPopupRef = useRef<HTMLDivElement>(null);
+  const eqFeaturesPopupRef = useRef<HTMLDivElement>(null);
 
   const fetchEquipment = async () => {
     try {
@@ -74,6 +76,9 @@ export default function EquipmentManagementTab({
       }
       if (eqAdvanceDaysPopupRef.current && !eqAdvanceDaysPopupRef.current.contains(event.target as Node)) {
         setShowEqAdvanceDaysPopup(false);
+      }
+      if (eqFeaturesPopupRef.current && !eqFeaturesPopupRef.current.contains(event.target as Node)) {
+        setShowEqFeaturesPopup(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -247,30 +252,39 @@ export default function EquipmentManagementTab({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div>
-                <label className="block text-xs font-medium text-neutral-500 mb-1">时段外预约</label>
-                <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
-                  <option value="all">全部</option>
-                  <option value="true">允许</option>
-                  <option value="false">不允许</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-500 mb-1">白名单</label>
-                <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
-                  <option value="all">全部</option>
-                  <option value="true">已开启</option>
-                  <option value="false">未开启</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-500 mb-1">自动审批</label>
-                <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm">
-                  <option value="all">全部</option>
-                  <option value="true">是</option>
-                  <option value="false">否</option>
-                </select>
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-neutral-500">功能设置</label>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center justify-center gap-1">
+                    <Clock className="w-3 h-3" /> 时段外
+                  </label>
+                  <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                    <option value="all">全部</option>
+                    <option value="true">允许</option>
+                    <option value="false">不允许</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center justify-center gap-1">
+                    <FileCheck className="w-3 h-3" /> 白名单
+                  </label>
+                  <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                    <option value="all">全部</option>
+                    <option value="true">开启</option>
+                    <option value="false">未开启</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center justify-center gap-1">
+                    <Zap className="w-3 h-3" /> 自动审批
+                  </label>
+                  <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                    <option value="all">全部</option>
+                    <option value="true">是</option>
+                    <option value="false">否</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -451,28 +465,63 @@ export default function EquipmentManagementTab({
                   </div>
                 </th>
                 <th className="px-4 py-4 font-medium align-top">
-                  <div className="mb-2">时段外预约</div>
-                  <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-1 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
-                    <option value="all">全部</option>
-                    <option value="true">允许</option>
-                    <option value="false">不允许</option>
-                  </select>
-                </th>
-                <th className="px-4 py-4 font-medium align-top">
-                  <div className="mb-2">白名单</div>
-                  <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-1 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
-                    <option value="all">全部</option>
-                    <option value="true">已开启</option>
-                    <option value="false">未开启</option>
-                  </select>
-                </th>
-                <th className="px-4 py-4 font-medium align-top">
-                  <div className="mb-2">自动审批</div>
-                  <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-1 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
-                    <option value="all">全部</option>
-                    <option value="true">是</option>
-                    <option value="false">否</option>
-                  </select>
+                  <div className="mb-2">功能设置</div>
+                  <div className="relative" ref={eqFeaturesPopupRef}>
+                    <button 
+                      onClick={() => setShowEqFeaturesPopup(!showEqFeaturesPopup)}
+                      className="w-full text-left px-2 py-1 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 flex items-center justify-between"
+                    >
+                      <span className="truncate">
+                        {(eqFilterOutOfHours !== 'all' || eqFilterWhitelist !== 'all' || eqFilterAutoApprove !== 'all') ? '已筛选' : '全部'}
+                      </span>
+                      <ChevronDown className="w-3 h-3 ml-1 shrink-0" />
+                    </button>
+                  
+                  {showEqFeaturesPopup && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-neutral-200 z-50 p-3 font-normal">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> 时段外预约
+                          </label>
+                          <select value={eqFilterOutOfHours} onChange={e => setEqFilterOutOfHours(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                            <option value="all">全部</option>
+                            <option value="true">允许</option>
+                            <option value="false">不允许</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                            <FileCheck className="w-3 h-3" /> 白名单
+                          </label>
+                          <select value={eqFilterWhitelist} onChange={e => setEqFilterWhitelist(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                            <option value="all">全部</option>
+                            <option value="true">已开启</option>
+                            <option value="false">未开启</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                            <Zap className="w-3 h-3" /> 自动审批
+                          </label>
+                          <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                            <option value="all">全部</option>
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                          </select>
+                        </div>
+                        <div className="pt-2 border-t border-neutral-100 flex justify-end">
+                          <button onClick={() => {
+                            setEqFilterOutOfHours('all');
+                            setEqFilterWhitelist('all');
+                            setEqFilterAutoApprove('all');
+                          }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
+                          <button onClick={() => setShowEqFeaturesPopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  </div>
                 </th>
                 <th className="px-4 py-4 font-medium text-right align-top">操作</th>
               </tr>
@@ -582,37 +631,17 @@ export default function EquipmentManagementTab({
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <div className="flex justify-between items-center md:block">
-                      <span className="md:hidden font-medium text-neutral-500 text-xs">时段外预约</span>
-                      <div>
-                        {allowOutOfHours ? (
-                          <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">允许</span>
-                        ) : (
-                          <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">不允许</span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                    <div className="flex justify-between items-center md:block">
-                      <span className="md:hidden font-medium text-neutral-500 text-xs">白名单</span>
-                      <div>
-                        {eq.whitelist_enabled ? (
-                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">已开启</span>
-                        ) : (
-                          <span className="px-2 py-1 bg-neutral-100 text-neutral-500 rounded-full text-xs">未开启</span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                    <div className="flex justify-between items-center md:block">
-                      <span className="md:hidden font-medium text-neutral-500 text-xs">自动审批</span>
-                      <div>
-                        {eq.auto_approve ? (
-                          <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs">是</span>
-                        ) : (
-                          <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">否</span>
-                        )}
+                      <span className="md:hidden font-medium text-neutral-500 text-xs">功能设置</span>
+                      <div className="flex items-center gap-2">
+                        <div title="时段外预约" className={`p-1.5 rounded-full ${allowOutOfHours ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div title="白名单" className={`p-1.5 rounded-full ${eq.whitelist_enabled ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                          <FileCheck className="w-4 h-4" />
+                        </div>
+                        <div title="自动审批" className={`p-1.5 rounded-full ${eq.auto_approve ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                          <Zap className="w-4 h-4" />
+                        </div>
                       </div>
                     </div>
                   </td>
