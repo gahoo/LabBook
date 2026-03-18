@@ -283,7 +283,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
 
   // Fetch existing reservations for this date
   const reservations = db.prepare(`
-    SELECT start_time, end_time FROM reservations 
+    SELECT id, start_time, end_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
     AND date(start_time) = date(?)
   `).all(id, date);

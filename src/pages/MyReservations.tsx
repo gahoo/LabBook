@@ -326,14 +326,19 @@ export default function MyReservations() {
           const end = new Date(s.end);
           return timeDate >= start && timeDate < end;
         });
+        let isCurrentReservation = false;
         const isBooked = resvs.some((r: any) => {
           const start = new Date(r.start_time);
           const end = new Date(r.end_time);
+          const overlaps = timeDate >= start && timeDate < end;
           // Don't count the current reservation as booked
-          if (r.id === editingId) return false;
-          return timeDate >= start && timeDate < end;
+          if (overlaps && r.id === editingId) {
+            isCurrentReservation = true;
+            return false;
+          }
+          return overlaps;
         });
-        return { time: t, isAvailable, isBooked };
+        return { time: t, isAvailable, isBooked, isCurrentReservation };
       })
     };
   });
@@ -534,6 +539,12 @@ export default function MyReservations() {
                                           let bgColor = "bg-neutral-200";
                                           if (t.isBooked) {
                                             bgColor = "bg-red-500";
+                                          } else if (t.isCurrentReservation) {
+                                            if (isPast) {
+                                              bgColor = "bg-orange-200";
+                                            } else {
+                                              bgColor = isSelectedBlock ? "bg-emerald-400" : "bg-orange-400";
+                                            }
                                           } else if (t.isAvailable && !isPast) {
                                             bgColor = isSelectedBlock ? "bg-emerald-400" : "bg-emerald-500";
                                           }
@@ -568,10 +579,14 @@ export default function MyReservations() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
+                          <div className="flex flex-wrap gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
                             <div className="flex items-center gap-2">
                               <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
                               <span>可预约 (点击色块快速选择)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 bg-orange-400 rounded-sm"></div>
+                              <span>当前预约时间</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
