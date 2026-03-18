@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { Image as ImageIcon, MapPin, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-interface AddEquipmentTabProps {
+interface EquipmentFormProps {
   token: string | null;
   editingEquipment: any;
   setEditingEquipment: (eq: any) => void;
-  setActiveTab: (tab: any) => void;
+  onSuccess: () => void;
 }
 
 const daysOfWeek = [
@@ -19,12 +19,12 @@ const daysOfWeek = [
   { label: '周六', value: 6 },
 ];
 
-export default function AddEquipmentTab({
+export default function EquipmentForm({
   token,
   editingEquipment,
   setEditingEquipment,
-  setActiveTab
-}: AddEquipmentTabProps) {
+  onSuccess
+}: EquipmentFormProps) {
   const [formData, setFormData] = useState(() => {
     if (editingEquipment) {
       let avail = { advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [], allowOutOfHours: false };
@@ -162,7 +162,7 @@ export default function AddEquipmentTab({
           rules: []
         });
         setEditingEquipment(null);
-        setActiveTab('equipment');
+        onSuccess();
       }
     } catch (err) {
       toast.error('保存仪器失败');

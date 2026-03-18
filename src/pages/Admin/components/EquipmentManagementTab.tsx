@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import AddEquipmentTab from './AddEquipmentTab';
+import EquipmentForm from './EquipmentForm';
 
 interface EquipmentManagementTabProps {
   token: string | null;
@@ -170,7 +170,7 @@ export default function EquipmentManagementTab({
                 setEditingEquipment(null);
                 setIsDrawerOpen(true);
               }}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-red-700 transition-colors"
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-red-700 transition-colors"
             >
               <PlusCircle className="w-4 h-4" />
               添加仪器
@@ -692,11 +692,11 @@ export default function EquipmentManagementTab({
         </div>
         <div className="p-4 sm:p-6">
           {isDrawerOpen && (
-            <AddEquipmentTab 
+            <EquipmentForm 
               token={token}
               editingEquipment={editingEquipment}
               setEditingEquipment={setEditingEquipment}
-              setActiveTab={() => {
+              onSuccess={() => {
                 setIsDrawerOpen(false);
                 fetchEquipment();
               }}
