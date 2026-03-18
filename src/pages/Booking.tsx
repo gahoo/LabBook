@@ -463,7 +463,7 @@ export default function Booking() {
                                 <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
                               </button>
                               
-                              <div className="flex-1 flex h-8 bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                              <div className="flex-1 flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
                                 {row.times.map((t, i) => {
                                   const timeDate = new Date(`${row.date}T${t.time}`);
                                   const isPast = timeDate < new Date();
@@ -511,13 +511,15 @@ export default function Booking() {
                                       key={i}
                                       title={`${row.date} ${t.time}`}
                                       className={clsx(
-                                        "flex-1 transition-all",
+                                        "flex-1 aspect-square transition-all",
                                         bgColor,
                                         !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
                                         showRightGap && "border-r border-neutral-50",
-                                        isSelectedBlock && "border-y-2 border-emerald-700 shadow-sm z-10",
-                                        isFirstSelected && "border-l-2 border-emerald-700 rounded-l-sm",
-                                        isLastSelected && "border-r-2 border-emerald-700 rounded-r-sm"
+                                        isSelectedBlock && "z-10",
+                                        isSelectedBlock && isFirstSelected && isLastSelected ? "shadow-[0_0_0_2px_#047857] rounded-sm" :
+                                        isSelectedBlock && isFirstSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm" :
+                                        isSelectedBlock && isLastSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm" :
+                                        isSelectedBlock ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857]" : ""
                                       )}
                                       onClick={() => {
                                         if (!t.isBooked && !isPast && t.isAvailable) {

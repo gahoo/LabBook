@@ -35,6 +35,7 @@ export default function MyReservations() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState<any>(null);
+  const [selectionStep, setSelectionStep] = useState<0 | 1 | 2>(0);
   const [availabilityData, setAvailabilityData] = useState<any[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -234,6 +235,7 @@ export default function MyReservations() {
       start_time: toLocalISO(resv.start_time),
       end_time: toLocalISO(resv.end_time),
     });
+    setSelectionStep(2);
 
     setLoadingAvailability(true);
     try {
@@ -271,6 +273,43 @@ export default function MyReservations() {
     const m = (i % 2) * 30;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   });
+
+  const handleTimeGridClick = (dateStr: string, timeStr: string) => {
+    const clickedDate = parseISO(dateStr);
+    const currentStartDate = editData?.start_time ? parseISO(editData.start_time.split('T')[0]) : null;
+    const isDifferentDate = currentStartDate ? format(clickedDate, 'yyyy-MM-dd') !== format(currentStartDate, 'yyyy-MM-dd') : true;
+    
+    if (selectionStep === 0 || selectionStep === 2 || isDifferentDate) {
+      const start = new Date(`${dateStr}T${timeStr}`);
+      const end = addMinutes(start, 30);
+      setEditData({
+        ...editData,
+        start_time: format(start, "yyyy-MM-dd'T'HH:mm"),
+        end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+      });
+      setSelectionStep(1);
+    } else if (selectionStep === 1) {
+      const start = new Date(editData.start_time);
+      const clickedTime = new Date(`${dateStr}T${timeStr}`);
+      
+      if (clickedTime <= start) {
+        const end = addMinutes(clickedTime, 30);
+        setEditData({
+          ...editData,
+          start_time: format(clickedTime, "yyyy-MM-dd'T'HH:mm"),
+          end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+        });
+        setSelectionStep(1);
+      } else {
+        const end = addMinutes(clickedTime, 30);
+        setEditData({
+          ...editData,
+          end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+        });
+        setSelectionStep(2);
+      }
+    }
+  };
 
   const gridData = availabilityData.map(dayData => {
     const dateStr = dayData.date;
@@ -435,9 +474,10 @@ export default function MyReservations() {
                         {loadingAvailability ? (
                           <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div></div>
                         ) : (
-                          <div className="overflow-x-auto">
-                            <div className="min-w-[600px]">
-                              <div className="flex border-b border-neutral-100 pb-2 mb-2">
+                          <>
+                            <div className="overflow-x-auto">
+                              <div className="min-w-[600px]">
+                                <div className="flex border-b border-neutral-100 pb-2 mb-2">
                                 <div className="w-20 shrink-0"></div>
                                 <div className="flex-1 flex justify-between px-2 text-[10px] text-neutral-400 font-mono">
                                   {timeSteps.filter((_, i) => i % 2 === 0).map(t => (
@@ -455,28 +495,67 @@ export default function MyReservations() {
                                         <p className="text-[10px] font-bold uppercase opacity-70">{daysMap[dayStr] || dayStr}</p>
                                         <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
                                       </div>
-                                      <div className="flex-1 flex gap-px h-6 bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                                      <div className="flex-1 flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
                                         {row.times.map((t, i) => {
                                           const timeDate = new Date(`${row.date}T${t.time}`);
                                           const isPast = timeDate < new Date();
+                                          
+                                          let isSelectedBlock = false;
+                                          let isFirstSelected = false;
+                                          let isLastSelected = false;
+                                          let isNextSelected = false;
+
+                                          if (editData?.start_time && editData?.end_time) {
+                                            const blockStart = new Date(`${row.date}T${t.time}`);
+                                            const selStart = new Date(editData.start_time);
+                                            const selEnd = new Date(editData.end_time);
+                                            
+                                            if (blockStart >= selStart && blockStart < selEnd) {
+                                              isSelectedBlock = true;
+                                              if (blockStart.getTime() === selStart.getTime()) {
+                                                isFirstSelected = true;
+                                              }
+                                              const blockEnd = addMinutes(blockStart, 30);
+                                              if (blockEnd.getTime() === selEnd.getTime()) {
+                                                isLastSelected = true;
+                                              }
+                                            }
+
+                                            if (i < row.times.length - 1) {
+                                              const nextBlockStart = new Date(`${row.date}T${row.times[i+1].time}`);
+                                              if (nextBlockStart >= selStart && nextBlockStart < selEnd) {
+                                                isNextSelected = true;
+                                              }
+                                            }
+                                          }
+
+                                          const showRightGap = i !== row.times.length - 1 && !isSelectedBlock && !isNextSelected;
+
+                                          let bgColor = "bg-neutral-200";
+                                          if (t.isBooked) {
+                                            bgColor = "bg-red-500";
+                                          } else if (t.isAvailable && !isPast) {
+                                            bgColor = isSelectedBlock ? "bg-emerald-400" : "bg-emerald-500";
+                                          }
+
                                           return (
                                             <div 
                                               key={i}
                                               title={`${row.date} ${t.time}`}
                                               className={clsx(
-                                                "flex-1 transition-all",
-                                                t.isBooked ? "bg-red-500" : (t.isAvailable && !isPast ? "bg-emerald-500 hover:opacity-80 cursor-pointer" : "bg-neutral-200")
+                                                "flex-1 aspect-square transition-all",
+                                                bgColor,
+                                                !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
+                                                showRightGap && "border-r border-neutral-50",
+                                                isSelectedBlock && "z-10",
+                                                isSelectedBlock && isFirstSelected && isLastSelected ? "shadow-[0_0_0_2px_#047857] rounded-sm" :
+                                                isSelectedBlock && isFirstSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm" :
+                                                isSelectedBlock && isLastSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm" :
+                                                isSelectedBlock ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857]" : ""
                                               )}
                                               onClick={() => {
                                                 if (t.isAvailable && !t.isBooked && !isPast) {
-                                                  const maxDuration = row.maxDurationMinutes || 60;
-                                                  const start = new Date(`${row.date}T${t.time}`);
-                                                  const end = addMinutes(start, maxDuration);
-                                                  setEditData({
-                                                    ...editData,
-                                                    start_time: `${row.date}T${t.time}`,
-                                                    end_time: format(end, "yyyy-MM-dd'T'HH:mm")
-                                                  });
+                                                  handleTimeGridClick(row.date, t.time);
                                                 }
                                               }}
                                             />
@@ -489,6 +568,21 @@ export default function MyReservations() {
                               </div>
                             </div>
                           </div>
+                          <div className="flex gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
+                              <span>可预约 (点击色块快速选择)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
+                              <span>已被预约</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 bg-neutral-200 rounded-sm"></div>
+                              <span>未开放</span>
+                            </div>
+                          </div>
+                          </>
                         )}
                       </div>
 
