@@ -709,20 +709,20 @@ export default function EquipmentManagementTab({
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <div className="flex justify-between items-center md:block">
                       <span className="md:hidden font-medium text-neutral-500 text-xs">功能设置</span>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div title="时段外预约" className={`p-1.5 rounded-full ${allowOutOfHours ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <div title="时段外预约" className={`p-1 rounded-full ${allowOutOfHours ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <Clock className="w-4 h-4" />
                         </div>
-                        <div title="白名单" className={`p-1.5 rounded-full ${eq.whitelist_enabled ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        <div title="白名单" className={`p-1 rounded-full ${eq.whitelist_enabled ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <FileCheck className="w-4 h-4" />
                         </div>
-                        <div title="自动审批" className={`p-1.5 rounded-full ${eq.auto_approve ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        <div title="自动审批" className={`p-1 rounded-full ${eq.auto_approve ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <Zap className="w-4 h-4" />
                         </div>
-                        <div title="隐藏仪器" className={`p-1.5 rounded-full ${eq.is_hidden ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        <div title="隐藏仪器" className={`p-1 rounded-full ${eq.is_hidden ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <EyeOff className="w-4 h-4" />
                         </div>
-                        <div title="释放爽约" className={`p-1.5 rounded-full ${eq.release_noshow_slots ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        <div title="释放爽约" className={`p-1 rounded-full ${eq.release_noshow_slots ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <TimerReset className="w-4 h-4" />
                         </div>
                       </div>
