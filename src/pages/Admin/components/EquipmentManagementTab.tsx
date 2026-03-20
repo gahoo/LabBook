@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap } from 'lucide-react';
+import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EquipmentForm from './EquipmentForm';
+import BatchEditEquipmentForm from './BatchEditEquipmentForm';
 
 interface EquipmentManagementTabProps {
   token: string | null;
@@ -25,6 +26,7 @@ export default function EquipmentManagementTab({
   
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isBatchDrawerOpen, setIsBatchDrawerOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<any>(null);
 
   // Equipment Filters
@@ -172,10 +174,24 @@ export default function EquipmentManagementTab({
             <button
               type="button"
               onClick={() => {
+                if (filteredEquipmentList.length === 0) {
+                  toast.error('当前筛选条件下没有仪器');
+                  return;
+                }
+                setIsBatchDrawerOpen(true);
+              }}
+              className="px-3 py-1.5 bg-neutral-800 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-neutral-900 transition-colors"
+            >
+              <Edit3 className="w-4 h-4" />
+              批量修改 ({filteredEquipmentList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setEditingEquipment(null);
                 setIsDrawerOpen(true);
               }}
-              className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-red-700 transition-colors"
+              className="px-3 py-1.5 bg-black text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-neutral-800 transition-colors"
             >
               <PlusCircle className="w-4 h-4" />
               添加仪器
@@ -300,7 +316,7 @@ export default function EquipmentManagementTab({
                     placeholder="搜索名称..." 
                     value={eqFilterName}
                     onChange={e => setEqFilterName(e.target.value)}
-                    className="w-24 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                    className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                   />
                 </th>
                 <th className="px-4 py-4 font-medium align-top">
@@ -384,7 +400,7 @@ export default function EquipmentManagementTab({
                             setEqFilterPriceMin(''); setEqFilterPriceMax('');
                             setEqFilterConsumableMin(''); setEqFilterConsumableMax('');
                           }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
-                          <button onClick={() => setShowEqPricePopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
+                          <button onClick={() => setShowEqPricePopup(false)} className="px-3 py-1 bg-black text-white text-xs rounded hover:bg-neutral-800">确定</button>
                         </div>
                       </div>
                     )}
@@ -421,7 +437,7 @@ export default function EquipmentManagementTab({
                                     setEqFilterDaysOfWeek([...eqFilterDaysOfWeek, d.value]);
                                   }
                                 }}
-                                className={`px-2 py-1 text-xs rounded border transition-colors ${eqFilterDaysOfWeek.includes(d.value) ? 'bg-red-600 border-red-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-red-300'}`}
+                                className={`px-2 py-1 text-xs rounded border transition-colors ${eqFilterDaysOfWeek.includes(d.value) ? 'bg-black border-black text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-neutral-400'}`}
                               >
                                 {d.label.replace('周', '')}
                               </button>
@@ -458,7 +474,7 @@ export default function EquipmentManagementTab({
                             setEqFilterAdvanceDaysMin(''); 
                             setEqFilterAdvanceDaysMax('');
                           }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
-                          <button onClick={() => setShowEqAdvanceDaysPopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
+                          <button onClick={() => setShowEqAdvanceDaysPopup(false)} className="px-3 py-1 bg-black text-white text-xs rounded hover:bg-neutral-800">确定</button>
                         </div>
                       </div>
                     )}
@@ -516,7 +532,7 @@ export default function EquipmentManagementTab({
                             setEqFilterWhitelist('all');
                             setEqFilterAutoApprove('all');
                           }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
-                          <button onClick={() => setShowEqFeaturesPopup(false)} className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">确定</button>
+                          <button onClick={() => setShowEqFeaturesPopup(false)} className="px-3 py-1 bg-black text-white text-xs rounded hover:bg-neutral-800">确定</button>
                         </div>
                       </div>
                     </div>
@@ -541,7 +557,12 @@ export default function EquipmentManagementTab({
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <div className="flex justify-between items-center md:block">
                       <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
-                      <span className="font-medium">{eq.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{eq.name}</span>
+                        {eq.is_hidden ? (
+                          <span className="px-2 py-0.5 bg-neutral-100 text-neutral-500 text-xs rounded-full border border-neutral-200">已隐藏</span>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
@@ -732,6 +753,29 @@ export default function EquipmentManagementTab({
             />
           )}
         </div>
+      </div>
+
+      {/* Batch Edit Drawer Overlay */}
+      <div 
+        className={`fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${isBatchDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setIsBatchDrawerOpen(false)}
+      />
+
+      {/* Batch Edit Drawer Panel */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${isBatchDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        {isBatchDrawerOpen && (
+          <BatchEditEquipmentForm
+            token={token}
+            equipmentIds={filteredEquipmentList.map(eq => eq.id)}
+            onClose={() => setIsBatchDrawerOpen(false)}
+            onSuccess={() => {
+              setIsBatchDrawerOpen(false);
+              fetchEquipment();
+            }}
+          />
+        )}
       </div>
     </>
   );

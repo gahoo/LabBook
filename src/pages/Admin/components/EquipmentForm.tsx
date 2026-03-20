@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, MapPin, Trash2, Upload } from 'lucide-react';
+import { Image as ImageIcon, MapPin, Trash2, Upload, Clock, FileCheck, Zap, EyeOff, TimerReset } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface EquipmentFormProps {
@@ -44,6 +44,8 @@ export default function EquipmentForm({
         consumable_fee: editingEquipment.consumable_fee || 0,
         whitelist_enabled: editingEquipment.whitelist_enabled,
         whitelist_data: editingEquipment.whitelist_data || '',
+        is_hidden: editingEquipment.is_hidden || false,
+        release_noshow_slots: editingEquipment.release_noshow_slots || false,
         advanceDays: avail.advanceDays || 7,
         maxDurationMinutes: avail.maxDurationMinutes || 60,
         minDurationMinutes: avail.minDurationMinutes || 30,
@@ -62,6 +64,8 @@ export default function EquipmentForm({
       consumable_fee: 0,
       whitelist_enabled: false,
       whitelist_data: '',
+      is_hidden: false,
+      release_noshow_slots: false,
       advanceDays: 7,
       maxDurationMinutes: 60,
       minDurationMinutes: 30,
@@ -156,6 +160,8 @@ export default function EquipmentForm({
           consumable_fee: 0,
           whitelist_enabled: false,
           whitelist_data: '',
+          is_hidden: false,
+          release_noshow_slots: false,
           advanceDays: 7,
           maxDurationMinutes: 60,
           minDurationMinutes: 30,
@@ -257,7 +263,7 @@ export default function EquipmentForm({
                               setSelectedDays([...selectedDays, d.value]);
                             }
                           }}
-                          className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-red-600 border-red-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-red-300'}`}
+                          className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-black border-black text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-neutral-400'}`}
                         >
                           {d.label}
                         </button>
@@ -294,13 +300,16 @@ export default function EquipmentForm({
             <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700">人员白名单</h3>
-                  <p className="text-xs text-neutral-500">仅允许白名单内的人员预约此仪器</p>
+                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                    <FileCheck className="w-4 h-4 text-neutral-500" />
+                    人员白名单
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">仅允许白名单内的人员预约此仪器</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, whitelist_enabled: !formData.whitelist_enabled})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-black' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.whitelist_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -323,13 +332,16 @@ export default function EquipmentForm({
             <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700">自动审批预约</h3>
-                  <p className="text-xs text-neutral-500">开启后，预约将自动通过审批</p>
+                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-neutral-500" />
+                    自动审批预约
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，预约将自动通过审批</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, auto_approve: !formData.auto_approve})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-black' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -337,15 +349,52 @@ export default function EquipmentForm({
               
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700">允许可预约时段外预约</h3>
-                  <p className="text-xs text-neutral-500">开启后，用户可选择非开放时段，但需要管理员审批</p>
+                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-neutral-500" />
+                    允许可预约时段外预约
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，用户可选择非开放时段，但需要管理员审批</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, allow_out_of_hours: !formData.allow_out_of_hours})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.allow_out_of_hours ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.allow_out_of_hours ? 'bg-black' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.allow_out_of_hours ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                    <EyeOff className="w-4 h-4 text-neutral-500" />
+                    隐藏仪器
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，该仪器将在用户端隐藏，且无法被预约</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, is_hidden: !formData.is_hidden})}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.is_hidden ? 'bg-black' : 'bg-neutral-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_hidden ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                    <TimerReset className="w-4 h-4 text-neutral-500" />
+                    自动释放爽约时段
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，若预约爽约(超过开始时间15分钟未上机)，该时段将自动释放给其他人预约</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, release_noshow_slots: !formData.release_noshow_slots})}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.release_noshow_slots ? 'bg-black' : 'bg-neutral-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.release_noshow_slots ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
             </div>
@@ -371,7 +420,7 @@ export default function EquipmentForm({
           </div>
         </div>
 
-        <button type="submit" className="w-full py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors">
+        <button type="submit" className="w-full py-3 bg-black text-white rounded-xl font-medium hover:bg-neutral-800 transition-colors">
           {editingEquipment ? '更新仪器' : '保存仪器'}
         </button>
       </form>

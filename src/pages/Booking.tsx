@@ -68,6 +68,11 @@ export default function Booking() {
       .then(data => {
         const eq = data.find((e: any) => e.id === Number(id));
         if (eq) {
+          if (eq.is_hidden) {
+            toast.error('该仪器暂不开放预约');
+            navigate('/');
+            return;
+          }
           setEquipment(eq);
           try {
             const avail = JSON.parse(eq.availability_json);

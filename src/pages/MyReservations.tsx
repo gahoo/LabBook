@@ -23,6 +23,7 @@ interface Reservation {
   consumable_fee: number;
   consumable_quantity?: number;
   modified_count: number;
+  release_noshow_slots: number;
 }
 
 export default function MyReservations() {
@@ -678,21 +679,22 @@ export default function MyReservations() {
 
                   <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
                     {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (() => {
-                      const isPast30Mins = new Date().getTime() > new Date(resv.start_time).getTime() + 30 * 60000;
+                      const maxLateMinutes = resv.release_noshow_slots ? 15 : 30;
+                      const isPastGracePeriod = new Date().getTime() > new Date(resv.start_time).getTime() + maxLateMinutes * 60000;
                       return (
                         <>
                           <button 
                             onClick={() => startEdit(resv)} 
-                            disabled={resv.modified_count >= 1 || isPast30Mins}
-                            title={isPast30Mins ? '超过上机时间30分钟未上机的预约，不允许修改' : (resv.modified_count >= 1 ? '每个预约仅允许修改一次' : '修改预约时间')}
+                            disabled={resv.modified_count >= 1 || isPastGracePeriod}
+                            title={isPastGracePeriod ? `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许修改` : (resv.modified_count >= 1 ? '每个预约仅允许修改一次' : '修改预约时间')}
                             className="flex-1 min-w-[120px] py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Edit3 className="w-4 h-4" /> {resv.modified_count >= 1 ? '已修改过' : '修改信息'}
                           </button>
                           <button 
                             onClick={() => handleAction(resv, 'cancel')} 
-                            disabled={isPast30Mins}
-                            title={isPast30Mins ? '超过上机时间30分钟未上机的预约，不允许取消' : '取消此预约'}
+                            disabled={isPastGracePeriod}
+                            title={isPastGracePeriod ? `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消` : '取消此预约'}
                             className="flex-1 min-w-[120px] py-2.5 border border-red-100 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <XCircle className="w-4 h-4" /> 取消预约
@@ -700,11 +702,20 @@ export default function MyReservations() {
                         </>
                       );
                     })()}
-                    {resv.status === 'approved' && !editingId && (
-                      <button onClick={() => handleAction(resv, 'checkin')} className="flex-1 min-w-[120px] py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
-                        <Play className="w-4 h-4" /> 上机
-                      </button>
-                    )}
+                    {resv.status === 'approved' && !editingId && (() => {
+                      const maxLateMinutes = resv.release_noshow_slots ? 15 : 30;
+                      const isPastGracePeriod = new Date().getTime() > new Date(resv.start_time).getTime() + maxLateMinutes * 60000;
+                      return (
+                        <button 
+                          onClick={() => handleAction(resv, 'checkin')} 
+                          disabled={isPastGracePeriod}
+                          title={isPastGracePeriod ? `已超过预约开始时间${maxLateMinutes}分钟，不允许上机` : '开始上机'}
+                          className="flex-1 min-w-[120px] py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Play className="w-4 h-4" /> 上机
+                        </button>
+                      );
+                    })()}
                     {resv.status === 'active' && !editingId && (
                       <button 
                         onClick={() => {

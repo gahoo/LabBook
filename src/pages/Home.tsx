@@ -66,7 +66,12 @@ export default function Home() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   });
 
-  const gridData = availabilityToday.map(eqData => {
+  const gridData = availabilityToday
+    .filter(eqData => {
+      const eq = equipment.find(e => e.id === eqData.equipment_id);
+      return eq && !eq.is_hidden;
+    })
+    .map(eqData => {
     const slots = eqData.availableSlots || [];
     const resvs = eqData.reservations || [];
     const dateStr = format(new Date(), 'yyyy-MM-dd');
@@ -109,6 +114,7 @@ export default function Home() {
   }
 
   const filteredEquipment = equipment.filter(eq => {
+    if (eq.is_hidden) return false;
     if (showFavoritesOnly && !favorites.includes(eq.id)) return false;
     return eq.name.toLowerCase().includes(searchQuery.toLowerCase());
   });

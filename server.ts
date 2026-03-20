@@ -103,6 +103,10 @@ try {
   db.exec(`ALTER TABLE reservations ADD COLUMN consumable_quantity REAL DEFAULT 0`);
 } catch (e) {}
 try {
+  db.exec(`ALTER TABLE equipment ADD COLUMN is_hidden INTEGER DEFAULT 0`);
+  db.exec(`ALTER TABLE equipment ADD COLUMN release_noshow_slots INTEGER DEFAULT 0`);
+} catch (e) {}
+try {
   db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_enabled INTEGER DEFAULT 0`);
   db.exec(`ALTER TABLE equipment ADD COLUMN whitelist_data TEXT`);
 } catch (e) {}
@@ -155,13 +159,13 @@ app.post('/api/admin/login', (req, res) => {
 
 // 2. Add equipment (Admin)
 app.post('/api/admin/equipment', adminAuth, (req, res) => {
-  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
+  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots } = req.body;
   
   const stmt = db.prepare(`
-    INSERT INTO equipment (name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO equipment (name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const info = stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '');
+  const info = stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', is_hidden ? 1 : 0, release_noshow_slots ? 1 : 0);
   
   res.json({ id: info.lastInsertRowid });
 });
@@ -169,16 +173,83 @@ app.post('/api/admin/equipment', adminAuth, (req, res) => {
 // Update equipment (Admin)
 app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
   const { id } = req.params;
-  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data } = req.body;
+  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots } = req.body;
   
   const stmt = db.prepare(`
     UPDATE equipment 
-    SET name = ?, description = ?, image_url = ?, location = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?
+    SET name = ?, description = ?, image_url = ?, location = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?, is_hidden = ?, release_noshow_slots = ?
     WHERE id = ?
   `);
-  stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', id);
+  stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', is_hidden ? 1 : 0, release_noshow_slots ? 1 : 0, id);
   
   res.json({ success: true });
+});
+
+// Batch update equipment (Admin)
+app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
+  const { ids, updates } = req.body;
+  
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No equipment IDs provided' });
+  }
+
+  try {
+    const updateEquipment = db.transaction((idsToUpdate: number[], updateData: any) => {
+      for (const id of idsToUpdate) {
+        const currentEq = db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as any;
+        if (!currentEq) continue;
+
+        let avail: any = {};
+        try {
+          avail = JSON.parse(currentEq.availability_json || '{}');
+        } catch (e) {}
+
+        let availChanged = false;
+        if (updateData.advanceDays !== undefined) {
+          avail.advanceDays = updateData.advanceDays;
+          availChanged = true;
+        }
+        if (updateData.allowOutOfHours !== undefined) {
+          avail.allowOutOfHours = updateData.allowOutOfHours;
+          availChanged = true;
+        }
+
+        const updateFields = [];
+        const updateValues = [];
+
+        if (availChanged) {
+          updateFields.push('availability_json = ?');
+          updateValues.push(JSON.stringify(avail));
+        }
+
+        if (updateData.is_hidden !== undefined) {
+          updateFields.push('is_hidden = ?');
+          updateValues.push(updateData.is_hidden ? 1 : 0);
+        }
+
+        if (updateData.release_noshow_slots !== undefined) {
+          updateFields.push('release_noshow_slots = ?');
+          updateValues.push(updateData.release_noshow_slots ? 1 : 0);
+        }
+
+        if (updateFields.length > 0) {
+          updateValues.push(id);
+          const stmt = db.prepare(`
+            UPDATE equipment 
+            SET ${updateFields.join(', ')}
+            WHERE id = ?
+          `);
+          stmt.run(...updateValues);
+        }
+      }
+    });
+
+    updateEquipment(ids, updates);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Batch update error:', error);
+    res.status(500).json({ error: 'Failed to batch update equipment' });
+  }
 });
 
 app.get('/api/equipment/availability/today', (req, res) => {
@@ -211,12 +282,26 @@ app.get('/api/equipment/availability/today', (req, res) => {
       return { start: start.toISOString(), end: end.toISOString() };
     });
 
-    const reservations = db.prepare(`
+    const reservationsRaw = db.prepare(`
       SELECT * FROM reservations 
       WHERE equipment_id = ? 
       AND status IN ('pending', 'approved', 'active')
       AND date(start_time) = ?
     `).all(eq.id, date);
+
+    let reservations = reservationsRaw;
+    if (eq.release_noshow_slots) {
+      const now = new Date().getTime();
+      reservations = reservationsRaw.filter((res: any) => {
+        if (!res.actual_start_time) {
+          const startTime = new Date(res.start_time).getTime();
+          if (now > startTime + 15 * 60 * 1000) {
+            return false; // Filter out no-shows
+          }
+        }
+        return true;
+      });
+    }
 
     return {
       equipment_id: eq.id,
@@ -282,11 +367,25 @@ app.get('/api/equipment/:id/availability', (req, res) => {
   });
 
   // Fetch existing reservations for this date
-  const reservations = db.prepare(`
-    SELECT id, start_time, end_time FROM reservations 
+  const reservationsRaw = db.prepare(`
+    SELECT id, start_time, end_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
     AND date(start_time) = date(?)
   `).all(id, date);
+
+  let reservations = reservationsRaw;
+  if (equipment.release_noshow_slots) {
+    const now = new Date().getTime();
+    reservations = reservationsRaw.filter((res: any) => {
+      if (!res.actual_start_time) {
+        const startTime = new Date(res.start_time).getTime();
+        if (now > startTime + 15 * 60 * 1000) {
+          return false; // Filter out no-shows
+        }
+      }
+      return true;
+    });
+  }
 
   res.json({ 
     availableSlots, 
@@ -316,6 +415,10 @@ app.post('/api/reservations', (req, res) => {
   
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
+  
+  if (equipment.is_hidden) {
+    return res.status(403).json({ error: '该仪器暂不开放预约' });
+  }
 
   // Whitelist check
   if (equipment.whitelist_enabled) {
@@ -363,39 +466,62 @@ app.post('/api/reservations', (req, res) => {
   }
 
   const dayOfWeek = start.getDay();
-  const rule = availability.rules.find((r: any) => r.day === dayOfWeek);
+  const dayRules = availability.rules.filter((r: any) => r.day === dayOfWeek);
   
   let isOutOfHours = false;
-  if (!rule) {
+  if (dayRules.length === 0) {
     if (!availability.allowOutOfHours) {
       return res.status(400).json({ error: '所选日期仪器不开放' });
     }
     isOutOfHours = true;
   } else {
-    const ruleStart = new Date(start);
-    const [rsH, rsM] = rule.start.split(':').map(Number);
-    ruleStart.setHours(rsH, rsM, 0, 0);
+    const fallsWithinAnyRule = dayRules.some((rule: any) => {
+      const ruleStart = new Date(start);
+      const [rsH, rsM] = rule.start.split(':').map(Number);
+      ruleStart.setHours(rsH, rsM, 0, 0);
 
-    const ruleEnd = new Date(start);
-    const [reH, reM] = rule.end.split(':').map(Number);
-    ruleEnd.setHours(reH, reM, 0, 0);
+      const ruleEnd = new Date(start);
+      const [reH, reM] = rule.end.split(':').map(Number);
+      ruleEnd.setHours(reH, reM, 0, 0);
 
-    if (start < ruleStart || end > ruleEnd) {
+      return start >= ruleStart && end <= ruleEnd;
+    });
+
+    if (!fallsWithinAnyRule) {
       if (!availability.allowOutOfHours) {
-        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${rule.start}-${rule.end})` });
+        const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
+        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${validRanges})` });
       }
       isOutOfHours = true;
     }
   }
 
   // Check if slot is already booked
-  const existing = db.prepare(`
-    SELECT id FROM reservations 
+  const existingRaw = db.prepare(`
+    SELECT id, start_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
     AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))
-  `).get(equipment_id, start_time, start_time, end_time, end_time);
+  `).all(equipment_id, start_time, start_time, end_time, end_time);
 
-  if (existing) {
+  let hasConflict = false;
+  if (existingRaw.length > 0) {
+    if (equipment.release_noshow_slots) {
+      const nowTime = new Date().getTime();
+      hasConflict = existingRaw.some((res: any) => {
+        if (!res.actual_start_time) {
+          const resStartTime = new Date(res.start_time).getTime();
+          if (nowTime > resStartTime + 15 * 60 * 1000) {
+            return false; // This is a no-show, so it's not a conflict
+          }
+        }
+        return true;
+      });
+    } else {
+      hasConflict = true;
+    }
+  }
+
+  if (hasConflict) {
     return res.status(400).json({ error: '该时间段已被预约' });
   }
 
@@ -467,7 +593,7 @@ app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) =
 app.get('/api/reservations/:code', (req, res) => {
   const { code } = req.params;
   const reservation = db.prepare(`
-    SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee 
+    SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee, e.release_noshow_slots 
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     WHERE r.booking_code = ?
@@ -487,10 +613,13 @@ app.post('/api/reservations/cancel', (req, res) => {
     return res.status(400).json({ error: '无法取消进行中或已完成的预约' });
   }
   
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
+  const maxLateMinutes = equipment?.release_noshow_slots ? 15 : 30;
+  
   const startTime = new Date(reservation.start_time).getTime();
   const now = Date.now();
-  if (now > startTime + 30 * 60000) {
-    return res.status(400).json({ error: '超过上机时间30分钟未上机的预约，不允许取消或者修改' });
+  if (now > startTime + maxLateMinutes * 60000) {
+    return res.status(400).json({ error: `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改` });
   }
 
   // We need to record the cancellation time to determine if it's a late cancellation later
@@ -509,16 +638,18 @@ app.post('/api/reservations/update', (req, res) => {
     return res.status(400).json({ error: '无法修改进行中或已完成的预约' });
   }
   
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
+  const maxLateMinutes = equipment?.release_noshow_slots ? 15 : 30;
+  
   const startTime = new Date(reservation.start_time).getTime();
-  if (Date.now() > startTime + 30 * 60000) {
-    return res.status(400).json({ error: '超过上机时间30分钟未上机的预约，不允许取消或者修改' });
+  if (Date.now() > startTime + maxLateMinutes * 60000) {
+    return res.status(400).json({ error: `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改` });
   }
 
   if (reservation.modified_count >= 1) {
     return res.status(400).json({ error: '每个预约仅允许修改一次时间，请取消后重新预约' });
   }
 
-  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
   const start = new Date(start_time);
   const end = new Date(end_time);
   
@@ -554,39 +685,62 @@ app.post('/api/reservations/update', (req, res) => {
   }
 
   const dayOfWeek = start.getDay();
-  const rule = availability.rules.find((r: any) => r.day === dayOfWeek);
+  const dayRules = availability.rules.filter((r: any) => r.day === dayOfWeek);
   
   let isOutOfHours = false;
-  if (!rule) {
+  if (dayRules.length === 0) {
     if (!availability.allowOutOfHours) {
       return res.status(400).json({ error: '所选日期仪器不开放' });
     }
     isOutOfHours = true;
   } else {
-    const ruleStart = new Date(start);
-    const [rsH, rsM] = rule.start.split(':').map(Number);
-    ruleStart.setHours(rsH, rsM, 0, 0);
+    const fallsWithinAnyRule = dayRules.some((rule: any) => {
+      const ruleStart = new Date(start);
+      const [rsH, rsM] = rule.start.split(':').map(Number);
+      ruleStart.setHours(rsH, rsM, 0, 0);
 
-    const ruleEnd = new Date(start);
-    const [reH, reM] = rule.end.split(':').map(Number);
-    ruleEnd.setHours(reH, reM, 0, 0);
+      const ruleEnd = new Date(start);
+      const [reH, reM] = rule.end.split(':').map(Number);
+      ruleEnd.setHours(reH, reM, 0, 0);
 
-    if (start < ruleStart || end > ruleEnd) {
+      return start >= ruleStart && end <= ruleEnd;
+    });
+
+    if (!fallsWithinAnyRule) {
       if (!availability.allowOutOfHours) {
-        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${rule.start}-${rule.end})` });
+        const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
+        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${validRanges})` });
       }
       isOutOfHours = true;
     }
   }
 
   // Check conflicts (excluding self)
-  const conflict = db.prepare(`
-    SELECT id FROM reservations 
+  const conflictRaw = db.prepare(`
+    SELECT id, start_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
     AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))
-  `).get(reservation.equipment_id, reservation.id, start_time, start_time, end_time, end_time);
+  `).all(reservation.equipment_id, reservation.id, start_time, start_time, end_time, end_time);
 
-  if (conflict) {
+  let hasConflict = false;
+  if (conflictRaw.length > 0) {
+    if (equipment.release_noshow_slots) {
+      const nowTime = new Date().getTime();
+      hasConflict = conflictRaw.some((res: any) => {
+        if (!res.actual_start_time) {
+          const resStartTime = new Date(res.start_time).getTime();
+          if (nowTime > resStartTime + 15 * 60 * 1000) {
+            return false; // This is a no-show, so it's not a conflict
+          }
+        }
+        return true;
+      });
+    } else {
+      hasConflict = true;
+    }
+  }
+
+  if (hasConflict) {
     return res.status(400).json({ error: '所选时间段已有其他预约' });
   }
 
@@ -616,8 +770,11 @@ app.post('/api/reservations/checkin', (req, res) => {
   const startTime = new Date(reservation.start_time);
   const diffMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
 
-  if (diffMinutes > 30) {
-    return res.status(400).json({ error: '已超过预约开始时间30分钟，不允许上机' });
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
+  const maxLateMinutes = equipment?.release_noshow_slots ? 15 : 30;
+
+  if (diffMinutes > maxLateMinutes) {
+    return res.status(400).json({ error: `已超过预约开始时间${maxLateMinutes}分钟，不允许上机` });
   }
 
   const scheduledStart = new Date(reservation.start_time);
@@ -807,8 +964,11 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
       }
       return '已取消';
     }
+    
+    const maxLateMinutes = res.release_noshow_slots ? 15 : 30;
+    
     if (!res.actual_start_time) {
-      if (new Date() < new Date(res.start_time)) {
+      if (new Date().getTime() <= new Date(res.start_time).getTime() + maxLateMinutes * 60000) {
         return '待上机';
       }
       return '爽约';
@@ -842,7 +1002,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   };
 
   const allReservationsRaw = db.prepare(`
-    SELECT r.*, e.name as equipment_name 
+    SELECT r.*, e.name as equipment_name, e.release_noshow_slots 
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     ${whereClause}
