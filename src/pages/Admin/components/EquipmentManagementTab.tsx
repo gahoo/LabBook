@@ -107,6 +107,35 @@ export default function EquipmentManagementTab({
     }
   };
 
+  const toggleEquipmentSetting = async (id: number, field: string, currentValue: boolean) => {
+    try {
+      const updates: any = {};
+      updates[field] = !currentValue;
+      
+      const res = await fetch('/api/admin/equipment-batch', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ids: [id],
+          updates
+        })
+      });
+
+      if (res.ok) {
+        toast.success('设置已更新');
+        fetchEquipment();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || '更新失败');
+      }
+    } catch (err) {
+      toast.error('更新失败');
+    }
+  };
+
   const filteredEquipmentList = equipmentList.filter(eq => {
     let advanceDays = 7;
     let allowOutOfHours = false;
@@ -710,21 +739,21 @@ export default function EquipmentManagementTab({
                     <div className="flex justify-between items-center md:block">
                       <span className="md:hidden font-medium text-neutral-500 text-xs">功能设置</span>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div title="时段外预约" className={`p-1.5 rounded-full ${allowOutOfHours ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        <button onClick={() => toggleEquipmentSetting(eq.id, 'allowOutOfHours', allowOutOfHours)} title="时段外预约" className={`p-1.5 rounded-full transition-colors ${allowOutOfHours ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <Clock className="w-4 h-4" />
-                        </div>
-                        <div title="白名单" className={`p-1.5 rounded-full ${eq.whitelist_enabled ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        </button>
+                        <button onClick={() => toggleEquipmentSetting(eq.id, 'whitelist_enabled', Boolean(eq.whitelist_enabled))} title="白名单" className={`p-1.5 rounded-full transition-colors ${eq.whitelist_enabled ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <FileCheck className="w-4 h-4" />
-                        </div>
-                        <div title="自动审批" className={`p-1.5 rounded-full ${eq.auto_approve ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        </button>
+                        <button onClick={() => toggleEquipmentSetting(eq.id, 'auto_approve', Boolean(eq.auto_approve))} title="自动审批" className={`p-1.5 rounded-full transition-colors ${eq.auto_approve ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <Zap className="w-4 h-4" />
-                        </div>
-                        <div title="隐藏仪器" className={`p-1.5 rounded-full ${eq.is_hidden ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        </button>
+                        <button onClick={() => toggleEquipmentSetting(eq.id, 'is_hidden', Boolean(eq.is_hidden))} title="隐藏仪器" className={`p-1.5 rounded-full transition-colors ${eq.is_hidden ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <EyeOff className="w-4 h-4" />
-                        </div>
-                        <div title="释放爽约" className={`p-1.5 rounded-full ${eq.release_noshow_slots ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                        </button>
+                        <button onClick={() => toggleEquipmentSetting(eq.id, 'release_noshow_slots', Boolean(eq.release_noshow_slots))} title="释放爽约" className={`p-1.5 rounded-full transition-colors ${eq.release_noshow_slots ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <TimerReset className="w-4 h-4" />
-                        </div>
+                        </button>
                       </div>
                     </div>
                   </td>
