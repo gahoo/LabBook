@@ -213,6 +213,18 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
           avail.allowOutOfHours = updateData.allowOutOfHours;
           availChanged = true;
         }
+        if (updateData.minDurationMinutes !== undefined) {
+          avail.minDurationMinutes = updateData.minDurationMinutes;
+          availChanged = true;
+        }
+        if (updateData.maxDurationMinutes !== undefined) {
+          avail.maxDurationMinutes = updateData.maxDurationMinutes;
+          availChanged = true;
+        }
+        if (updateData.rules !== undefined) {
+          avail.rules = updateData.rules;
+          availChanged = true;
+        }
 
         const updateFields = [];
         const updateValues = [];
@@ -230,6 +242,21 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
         if (updateData.release_noshow_slots !== undefined) {
           updateFields.push('release_noshow_slots = ?');
           updateValues.push(updateData.release_noshow_slots ? 1 : 0);
+        }
+
+        if (updateData.whitelist_enabled !== undefined) {
+          updateFields.push('whitelist_enabled = ?');
+          updateValues.push(updateData.whitelist_enabled ? 1 : 0);
+        }
+
+        if (updateData.whitelist_data !== undefined) {
+          updateFields.push('whitelist_data = ?');
+          updateValues.push(updateData.whitelist_data);
+        }
+
+        if (updateData.auto_approve !== undefined) {
+          updateFields.push('auto_approve = ?');
+          updateValues.push(updateData.auto_approve ? 1 : 0);
         }
 
         if (updateFields.length > 0) {
