@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Save, AlertCircle } from 'lucide-react';
+import { X, Save, AlertCircle, Clock, EyeOff, TimerReset } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface BatchEditEquipmentFormProps {
@@ -15,12 +15,17 @@ export default function BatchEditEquipmentForm({
   onClose,
   onSuccess
 }: BatchEditEquipmentFormProps) {
-  const [formData, setFormData] = useState({
-    advanceDays: '',
-    allowOutOfHours: 'unchanged', // 'unchanged', 'true', 'false'
-    is_hidden: 'unchanged', // 'unchanged', 'true', 'false'
-    release_noshow_slots: 'unchanged' // 'unchanged', 'true', 'false'
-  });
+  const [modifyAdvanceDays, setModifyAdvanceDays] = useState(false);
+  const [advanceDays, setAdvanceDays] = useState<number>(7);
+
+  const [modifyAllowOutOfHours, setModifyAllowOutOfHours] = useState(false);
+  const [allowOutOfHours, setAllowOutOfHours] = useState(false);
+
+  const [modifyIsHidden, setModifyIsHidden] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
+
+  const [modifyReleaseNoshow, setModifyReleaseNoshow] = useState(false);
+  const [releaseNoshow, setReleaseNoshow] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,21 +36,13 @@ export default function BatchEditEquipmentForm({
     }
 
     const updates: any = {};
-    if (formData.advanceDays !== '') {
-      updates.advanceDays = Number(formData.advanceDays);
-    }
-    if (formData.allowOutOfHours !== 'unchanged') {
-      updates.allowOutOfHours = formData.allowOutOfHours === 'true';
-    }
-    if (formData.is_hidden !== 'unchanged') {
-      updates.is_hidden = formData.is_hidden === 'true';
-    }
-    if (formData.release_noshow_slots !== 'unchanged') {
-      updates.release_noshow_slots = formData.release_noshow_slots === 'true';
-    }
+    if (modifyAdvanceDays) updates.advanceDays = advanceDays;
+    if (modifyAllowOutOfHours) updates.allowOutOfHours = allowOutOfHours;
+    if (modifyIsHidden) updates.is_hidden = isHidden;
+    if (modifyReleaseNoshow) updates.release_noshow_slots = releaseNoshow;
 
     if (Object.keys(updates).length === 0) {
-      toast.error('未修改任何设置');
+      toast.error('未选择任何要修改的设置');
       return;
     }
 
@@ -75,12 +72,12 @@ export default function BatchEditEquipmentForm({
   };
 
   return (
-    <div className="flex flex-col h-full bg-neutral-50">
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-200 shrink-0">
+    <div className="flex flex-col h-full bg-white">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 shrink-0">
         <div>
           <h2 className="text-xl font-bold text-neutral-900">批量修改仪器设置</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            将对选中的 {equipmentIds.length} 台仪器应用以下修改。留空的项将保持原样。
+            将对选中的 {equipmentIds.length} 台仪器应用以下修改。未勾选的项将保持原样。
           </p>
         </div>
         <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full transition-colors">
@@ -89,87 +86,95 @@ export default function BatchEditEquipmentForm({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        <form id="batch-edit-form" onSubmit={handleSubmit} className="space-y-8 max-w-3xl mx-auto">
+        <form id="batch-edit-form" onSubmit={handleSubmit} className="space-y-6 max-w-3xl mx-auto w-full">
           
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50/50">
-              <h3 className="font-semibold text-neutral-900">预约规则设置</h3>
+          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-neutral-900">状态与规则设置</h3>
             </div>
-            <div className="p-6 space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">可提前预约天数</label>
-                <input 
-                  type="number" 
-                  min="1" 
-                  placeholder="保持原样"
-                  value={formData.advanceDays} 
-                  onChange={e => setFormData({...formData, advanceDays: e.target.value})} 
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 focus:ring-2 focus:ring-black focus:border-black transition-all" 
-                />
-                <p className="text-xs text-neutral-500 mt-1">留空则不修改此项</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">允许非工作时间预约</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="allowOutOfHours" value="unchanged" checked={formData.allowOutOfHours === 'unchanged'} onChange={e => setFormData({...formData, allowOutOfHours: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">保持原样</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="allowOutOfHours" value="true" checked={formData.allowOutOfHours === 'true'} onChange={e => setFormData({...formData, allowOutOfHours: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">允许</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="allowOutOfHours" value="false" checked={formData.allowOutOfHours === 'false'} onChange={e => setFormData({...formData, allowOutOfHours: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">不允许</span>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyAdvanceDays} onChange={e => setModifyAdvanceDays(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    修改可提前预约天数
                   </label>
                 </div>
+                {modifyAdvanceDays && (
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={advanceDays} 
+                    onChange={e => setAdvanceDays(Number(e.target.value))} 
+                    className="w-32 px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
+                  />
+                )}
               </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50/50">
-              <h3 className="font-semibold text-neutral-900">状态与控制</h3>
-            </div>
-            <div className="p-6 space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">隐藏仪器</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="is_hidden" value="unchanged" checked={formData.is_hidden === 'unchanged'} onChange={e => setFormData({...formData, is_hidden: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">保持原样</span>
+            <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyAllowOutOfHours} onChange={e => setModifyAllowOutOfHours(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    <Clock className="w-4 h-4 text-neutral-500" />
+                    修改非工作时间预约
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="is_hidden" value="true" checked={formData.is_hidden === 'true'} onChange={e => setFormData({...formData, is_hidden: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">隐藏</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="is_hidden" value="false" checked={formData.is_hidden === 'false'} onChange={e => setFormData({...formData, is_hidden: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">显示</span>
-                  </label>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">开启后，用户可选择非开放时段，但需要管理员审批</p>
                 </div>
-                <p className="text-xs text-neutral-500 mt-1">隐藏后，普通用户将无法在预约界面看到此仪器。</p>
+                {modifyAllowOutOfHours && (
+                  <button
+                    type="button"
+                    onClick={() => setAllowOutOfHours(!allowOutOfHours)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${allowOutOfHours ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${allowOutOfHours ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyIsHidden} onChange={e => setModifyIsHidden(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    <EyeOff className="w-4 h-4 text-neutral-500" />
+                    修改隐藏状态
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">隐藏后，普通用户将无法在预约界面看到此仪器</p>
+                </div>
+                {modifyIsHidden && (
+                  <button
+                    type="button"
+                    onClick={() => setIsHidden(!isHidden)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isHidden ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isHidden ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">释放爽约时段</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="release_noshow_slots" value="unchanged" checked={formData.release_noshow_slots === 'unchanged'} onChange={e => setFormData({...formData, release_noshow_slots: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">保持原样</span>
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyReleaseNoshow} onChange={e => setModifyReleaseNoshow(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    <TimerReset className="w-4 h-4 text-neutral-500" />
+                    修改释放爽约时段
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="release_noshow_slots" value="true" checked={formData.release_noshow_slots === 'true'} onChange={e => setFormData({...formData, release_noshow_slots: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">开启 (15分钟)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="release_noshow_slots" value="false" checked={formData.release_noshow_slots === 'false'} onChange={e => setFormData({...formData, release_noshow_slots: e.target.value})} className="text-black focus:ring-black" />
-                    <span className="text-sm">关闭 (30分钟)</span>
-                  </label>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">
+                    报表中超过15分钟算迟到，超过30分钟算爽约。<br/>
+                    开启此选项后，若用户爽约（超过30分钟未签到），系统将自动释放该时段给其他用户。
+                  </p>
                 </div>
-                <p className="text-xs text-neutral-500 mt-1">开启后，若用户迟到15分钟未签到，该预约时段将被释放给其他用户。</p>
+                {modifyReleaseNoshow && (
+                  <button
+                    type="button"
+                    onClick={() => setReleaseNoshow(!releaseNoshow)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${releaseNoshow ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${releaseNoshow ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -188,7 +193,7 @@ export default function BatchEditEquipmentForm({
         <button
           type="submit"
           form="batch-edit-form"
-          className="px-6 py-2.5 text-sm font-medium text-white bg-black rounded-xl hover:bg-neutral-800 transition-colors flex items-center gap-2"
+          className="px-6 py-2.5 text-sm font-medium text-white bg-red-600 rounded-xl hover:bg-red-700 transition-colors flex items-center gap-2"
         >
           <Save className="w-4 h-4" />
           保存修改

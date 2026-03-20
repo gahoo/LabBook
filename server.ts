@@ -295,7 +295,7 @@ app.get('/api/equipment/availability/today', (req, res) => {
       reservations = reservationsRaw.filter((res: any) => {
         if (!res.actual_start_time) {
           const startTime = new Date(res.start_time).getTime();
-          if (now > startTime + 15 * 60 * 1000) {
+          if (now > startTime + 30 * 60 * 1000) {
             return false; // Filter out no-shows
           }
         }
@@ -379,7 +379,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
     reservations = reservationsRaw.filter((res: any) => {
       if (!res.actual_start_time) {
         const startTime = new Date(res.start_time).getTime();
-        if (now > startTime + 15 * 60 * 1000) {
+        if (now > startTime + 30 * 60 * 1000) {
           return false; // Filter out no-shows
         }
       }
@@ -510,7 +510,7 @@ app.post('/api/reservations', (req, res) => {
       hasConflict = existingRaw.some((res: any) => {
         if (!res.actual_start_time) {
           const resStartTime = new Date(res.start_time).getTime();
-          if (nowTime > resStartTime + 15 * 60 * 1000) {
+          if (nowTime > resStartTime + 30 * 60 * 1000) {
             return false; // This is a no-show, so it's not a conflict
           }
         }
@@ -614,7 +614,7 @@ app.post('/api/reservations/cancel', (req, res) => {
   }
   
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
-  const maxLateMinutes = equipment?.release_noshow_slots ? 15 : 30;
+  const maxLateMinutes = 30;
   
   const startTime = new Date(reservation.start_time).getTime();
   const now = Date.now();
@@ -639,7 +639,7 @@ app.post('/api/reservations/update', (req, res) => {
   }
   
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
-  const maxLateMinutes = equipment?.release_noshow_slots ? 15 : 30;
+  const maxLateMinutes = 30;
   
   const startTime = new Date(reservation.start_time).getTime();
   if (Date.now() > startTime + maxLateMinutes * 60000) {
@@ -729,7 +729,7 @@ app.post('/api/reservations/update', (req, res) => {
       hasConflict = conflictRaw.some((res: any) => {
         if (!res.actual_start_time) {
           const resStartTime = new Date(res.start_time).getTime();
-          if (nowTime > resStartTime + 15 * 60 * 1000) {
+          if (nowTime > resStartTime + 30 * 60 * 1000) {
             return false; // This is a no-show, so it's not a conflict
           }
         }
@@ -771,7 +771,7 @@ app.post('/api/reservations/checkin', (req, res) => {
   const diffMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
-  const maxLateMinutes = equipment?.release_noshow_slots ? 15 : 30;
+  const maxLateMinutes = 30;
 
   if (diffMinutes > maxLateMinutes) {
     return res.status(400).json({ error: `已超过预约开始时间${maxLateMinutes}分钟，不允许上机` });
@@ -965,7 +965,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
       return '已取消';
     }
     
-    const maxLateMinutes = res.release_noshow_slots ? 15 : 30;
+    const maxLateMinutes = 30;
     
     if (!res.actual_start_time) {
       if (new Date().getTime() <= new Date(res.start_time).getTime() + maxLateMinutes * 60000) {

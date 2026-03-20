@@ -171,30 +171,32 @@ export default function EquipmentManagementTab({
             <h3 className="text-sm font-medium text-neutral-700">仪器列表</h3>
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            <button
-              type="button"
-              onClick={() => {
-                if (filteredEquipmentList.length === 0) {
-                  toast.error('当前筛选条件下没有仪器');
-                  return;
-                }
-                setIsBatchDrawerOpen(true);
-              }}
-              className="px-3 py-1.5 bg-neutral-800 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-neutral-900 transition-colors"
-            >
-              <Edit3 className="w-4 h-4" />
-              批量修改 ({filteredEquipmentList.length})
-            </button>
+            {(eqFilterName || eqFilterLocation || eqFilterPriceEnabled || eqFilterConsumableEnabled || eqFilterDaysOfWeek.length > 0 || eqFilterTimeRangeStart || eqFilterTimeRangeEnd || eqFilterAdvanceDaysMin || eqFilterAdvanceDaysMax || eqFilterOutOfHours !== 'all' || eqFilterWhitelist !== 'all' || eqFilterAutoApprove !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (filteredEquipmentList.length === 0) {
+                    toast.error('当前筛选条件下没有仪器');
+                    return;
+                  }
+                  setIsBatchDrawerOpen(true);
+                }}
+                className="p-2 md:px-3 md:py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-red-700 transition-colors"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span className="hidden md:inline">批量修改 ({filteredEquipmentList.length})</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
                 setEditingEquipment(null);
                 setIsDrawerOpen(true);
               }}
-              className="px-3 py-1.5 bg-black text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-neutral-800 transition-colors"
+              className="p-2 md:px-3 md:py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-red-700 transition-colors"
             >
               <PlusCircle className="w-4 h-4" />
-              添加仪器
+              <span className="hidden md:inline">添加仪器</span>
             </button>
             <button
               type="button"

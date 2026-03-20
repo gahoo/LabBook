@@ -263,7 +263,7 @@ export default function EquipmentForm({
                               setSelectedDays([...selectedDays, d.value]);
                             }
                           }}
-                          className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-black border-black text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-neutral-400'}`}
+                          className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-red-600 border-red-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-red-300'}`}
                         >
                           {d.label}
                         </button>
@@ -309,7 +309,7 @@ export default function EquipmentForm({
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, whitelist_enabled: !formData.whitelist_enabled})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-black' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.whitelist_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -341,7 +341,7 @@ export default function EquipmentForm({
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, auto_approve: !formData.auto_approve})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-black' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -358,7 +358,7 @@ export default function EquipmentForm({
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, allow_out_of_hours: !formData.allow_out_of_hours})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.allow_out_of_hours ? 'bg-black' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.allow_out_of_hours ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.allow_out_of_hours ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -375,7 +375,7 @@ export default function EquipmentForm({
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, is_hidden: !formData.is_hidden})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.is_hidden ? 'bg-black' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.is_hidden ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_hidden ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -387,12 +387,12 @@ export default function EquipmentForm({
                     <TimerReset className="w-4 h-4 text-neutral-500" />
                     自动释放爽约时段
                   </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">开启后，若预约爽约(超过开始时间15分钟未上机)，该时段将自动释放给其他人预约</p>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，若预约爽约(超过开始时间30分钟未上机)，该时段将自动释放给其他人预约</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFormData({...formData, release_noshow_slots: !formData.release_noshow_slots})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.release_noshow_slots ? 'bg-black' : 'bg-neutral-200'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.release_noshow_slots ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.release_noshow_slots ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
@@ -420,7 +420,7 @@ export default function EquipmentForm({
           </div>
         </div>
 
-        <button type="submit" className="w-full py-3 bg-black text-white rounded-xl font-medium hover:bg-neutral-800 transition-colors">
+        <button type="submit" className="w-full py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors">
           {editingEquipment ? '更新仪器' : '保存仪器'}
         </button>
       </form>
