@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3 } from 'lucide-react';
+import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3, EyeOff, TimerReset } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EquipmentForm from './EquipmentForm';
 import BatchEditEquipmentForm from './BatchEditEquipmentForm';
@@ -47,6 +47,8 @@ export default function EquipmentManagementTab({
   const [eqFilterOutOfHours, setEqFilterOutOfHours] = useState<string>('all');
   const [eqFilterWhitelist, setEqFilterWhitelist] = useState<string>('all');
   const [eqFilterAutoApprove, setEqFilterAutoApprove] = useState<string>('all');
+  const [eqFilterIsHidden, setEqFilterIsHidden] = useState<string>('all');
+  const [eqFilterReleaseNoshow, setEqFilterReleaseNoshow] = useState<string>('all');
   const [showEqPricePopup, setShowEqPricePopup] = useState(false);
   const [showEqAdvanceDaysPopup, setShowEqAdvanceDaysPopup] = useState(false);
   const [showEqFeaturesPopup, setShowEqFeaturesPopup] = useState(false);
@@ -159,6 +161,16 @@ export default function EquipmentManagementTab({
       if (Boolean(eq.auto_approve) !== isAuto) return false;
     }
 
+    if (eqFilterIsHidden !== 'all') {
+      const isHidden = eqFilterIsHidden === 'true';
+      if (Boolean(eq.is_hidden) !== isHidden) return false;
+    }
+
+    if (eqFilterReleaseNoshow !== 'all') {
+      const releaseNoshow = eqFilterReleaseNoshow === 'true';
+      if (Boolean(eq.release_noshow_slots) !== releaseNoshow) return false;
+    }
+
     return true;
   });
 
@@ -171,7 +183,7 @@ export default function EquipmentManagementTab({
             <h3 className="text-sm font-medium text-neutral-700">仪器列表</h3>
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            {(eqFilterName || eqFilterLocation || eqFilterPriceEnabled || eqFilterConsumableEnabled || eqFilterDaysOfWeek.length > 0 || eqFilterTimeRangeStart || eqFilterTimeRangeEnd || eqFilterAdvanceDaysMin || eqFilterAdvanceDaysMax || eqFilterOutOfHours !== 'all' || eqFilterWhitelist !== 'all' || eqFilterAutoApprove !== 'all') && (
+            {(eqFilterName || eqFilterLocation || eqFilterPriceEnabled || eqFilterConsumableEnabled || eqFilterDaysOfWeek.length > 0 || eqFilterTimeRangeStart || eqFilterTimeRangeEnd || eqFilterAdvanceDaysMin || eqFilterAdvanceDaysMax || eqFilterOutOfHours !== 'all' || eqFilterWhitelist !== 'all' || eqFilterAutoApprove !== 'all' || eqFilterIsHidden !== 'all' || eqFilterReleaseNoshow !== 'all') && (
               <button
                 type="button"
                 onClick={() => {
@@ -298,6 +310,26 @@ export default function EquipmentManagementTab({
                     <Zap className="w-3 h-3" /> 自动审批
                   </label>
                   <select value={eqFilterAutoApprove} onChange={e => setEqFilterAutoApprove(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                    <option value="all">全部</option>
+                    <option value="true">是</option>
+                    <option value="false">否</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center justify-center gap-1">
+                    <EyeOff className="w-3 h-3" /> 隐藏仪器
+                  </label>
+                  <select value={eqFilterIsHidden} onChange={e => setEqFilterIsHidden(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                    <option value="all">全部</option>
+                    <option value="true">是</option>
+                    <option value="false">否</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center justify-center gap-1">
+                    <TimerReset className="w-3 h-3" /> 释放爽约
+                  </label>
+                  <select value={eqFilterReleaseNoshow} onChange={e => setEqFilterReleaseNoshow(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
                     <option value="all">全部</option>
                     <option value="true">是</option>
                     <option value="false">否</option>
@@ -490,7 +522,7 @@ export default function EquipmentManagementTab({
                       className="w-full text-left px-2 py-1 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 flex items-center justify-between"
                     >
                       <span className="truncate">
-                        {(eqFilterOutOfHours !== 'all' || eqFilterWhitelist !== 'all' || eqFilterAutoApprove !== 'all') ? '已筛选' : '全部'}
+                        {(eqFilterOutOfHours !== 'all' || eqFilterWhitelist !== 'all' || eqFilterAutoApprove !== 'all' || eqFilterIsHidden !== 'all' || eqFilterReleaseNoshow !== 'all') ? '已筛选' : '全部'}
                       </span>
                       <ChevronDown className="w-3 h-3 ml-1 shrink-0" />
                     </button>
@@ -528,11 +560,33 @@ export default function EquipmentManagementTab({
                             <option value="false">否</option>
                           </select>
                         </div>
+                        <div>
+                          <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                            <EyeOff className="w-3 h-3" /> 隐藏仪器
+                          </label>
+                          <select value={eqFilterIsHidden} onChange={e => setEqFilterIsHidden(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                            <option value="all">全部</option>
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                            <TimerReset className="w-3 h-3" /> 释放爽约
+                          </label>
+                          <select value={eqFilterReleaseNoshow} onChange={e => setEqFilterReleaseNoshow(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none bg-white">
+                            <option value="all">全部</option>
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                          </select>
+                        </div>
                         <div className="pt-2 border-t border-neutral-100 flex justify-end">
                           <button onClick={() => {
                             setEqFilterOutOfHours('all');
                             setEqFilterWhitelist('all');
                             setEqFilterAutoApprove('all');
+                            setEqFilterIsHidden('all');
+                            setEqFilterReleaseNoshow('all');
                           }} className="text-xs text-neutral-500 hover:text-neutral-700 mr-3">重置</button>
                           <button onClick={() => setShowEqFeaturesPopup(false)} className="px-3 py-1 bg-black text-white text-xs rounded hover:bg-neutral-800">确定</button>
                         </div>
@@ -655,7 +709,7 @@ export default function EquipmentManagementTab({
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <div className="flex justify-between items-center md:block">
                       <span className="md:hidden font-medium text-neutral-500 text-xs">功能设置</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div title="时段外预约" className={`p-1.5 rounded-full ${allowOutOfHours ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <Clock className="w-4 h-4" />
                         </div>
@@ -664,6 +718,12 @@ export default function EquipmentManagementTab({
                         </div>
                         <div title="自动审批" className={`p-1.5 rounded-full ${eq.auto_approve ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
                           <Zap className="w-4 h-4" />
+                        </div>
+                        <div title="隐藏仪器" className={`p-1.5 rounded-full ${eq.is_hidden ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                          <EyeOff className="w-4 h-4" />
+                        </div>
+                        <div title="释放爽约" className={`p-1.5 rounded-full ${eq.release_noshow_slots ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}`}>
+                          <TimerReset className="w-4 h-4" />
                         </div>
                       </div>
                     </div>
