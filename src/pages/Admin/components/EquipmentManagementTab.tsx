@@ -644,9 +644,6 @@ export default function EquipmentManagementTab({
                       <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{eq.name}</span>
-                        {eq.is_hidden ? (
-                          <span className="px-2 py-0.5 bg-neutral-100 text-neutral-500 text-xs rounded-full border border-neutral-200">已隐藏</span>
-                        ) : null}
                       </div>
                     </div>
                   </td>
