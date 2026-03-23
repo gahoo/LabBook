@@ -209,7 +209,8 @@ export default function Booking() {
           equipment_id: id,
           ...formData,
           start_time: start.toISOString(),
-          end_time: end.toISOString()
+          end_time: end.toISOString(),
+          tz_offset: new Date().getTimezoneOffset()
         })
       });
 

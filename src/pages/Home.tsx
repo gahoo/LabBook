@@ -52,7 +52,7 @@ export default function Home() {
   useEffect(() => {
     Promise.all([
       fetch('/api/equipment').then(res => res.json()),
-      fetch('/api/equipment/availability/today').then(res => res.json())
+      fetch(`/api/equipment/availability/today?date=${format(new Date(), 'yyyy-MM-dd')}`).then(res => res.json())
     ]).then(([eqData, availData]) => {
       setEquipment(eqData);
       setAvailabilityToday(availData);

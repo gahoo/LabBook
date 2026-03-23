@@ -85,6 +85,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
           ...editingReservation,
           start_time: toUTC(editingReservation.start_time),
           end_time: toUTC(editingReservation.end_time),
+          tz_offset: new Date().getTimezoneOffset()
         })
       });
       if (res.ok) {

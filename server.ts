@@ -280,7 +280,7 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
 });
 
 app.get('/api/equipment/availability/today', (req, res) => {
-  const date = format(new Date(), 'yyyy-MM-dd');
+  const date = (req.query.date as string) || format(new Date(), 'yyyy-MM-dd');
   const targetDate = parseISO(date);
   const dayOfWeek = targetDate.getDay();
 
@@ -297,24 +297,18 @@ app.get('/api/equipment/availability/today', (req, res) => {
     const dayRules = availability.rules?.filter((r: any) => r.day === dayOfWeek) || [];
     
     const availableSlots = dayRules.map((rule: any) => {
-      const [startH, startM] = rule.start.split(':').map(Number);
-      const [endH, endM] = rule.end.split(':').map(Number);
-      
-      const start = new Date(targetDate);
-      start.setHours(startH, startM, 0, 0);
-      
-      const end = new Date(targetDate);
-      end.setHours(endH, endM, 0, 0);
-      
-      return { start: start.toISOString(), end: end.toISOString() };
+      return {
+        start: `${date}T${rule.start}:00`,
+        end: `${date}T${rule.end}:00`
+      };
     });
 
     const reservationsRaw = db.prepare(`
       SELECT * FROM reservations 
       WHERE equipment_id = ? 
       AND status IN ('pending', 'approved', 'active')
-      AND date(start_time) = ?
-    `).all(eq.id, date);
+      AND date(start_time) IN (date(?, '-1 day'), date(?), date(?, '+1 day'))
+    `).all(eq.id, date, date, date);
 
     let reservations = reservationsRaw;
     if (eq.release_noshow_slots) {
@@ -378,27 +372,18 @@ app.get('/api/equipment/:id/availability', (req, res) => {
   const availableSlots: { start: string, end: string }[] = [];
 
   rules.forEach((rule: any) => {
-    const [startH, startM] = rule.start.split(':').map(Number);
-    const [endH, endM] = rule.end.split(':').map(Number);
-    
-    const slotStart = new Date(targetDate);
-    slotStart.setHours(startH, startM, 0, 0);
-    
-    const slotEnd = new Date(targetDate);
-    slotEnd.setHours(endH, endM, 0, 0);
-
     availableSlots.push({
-      start: slotStart.toISOString(),
-      end: slotEnd.toISOString()
+      start: `${date}T${rule.start}:00`,
+      end: `${date}T${rule.end}:00`
     });
   });
 
-  // Fetch existing reservations for this date
+  // Fetch existing reservations for this date and adjacent dates to handle timezone offsets
   const reservationsRaw = db.prepare(`
     SELECT id, start_time, end_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-    AND date(start_time) = date(?)
-  `).all(id, date);
+    AND date(start_time) IN (date(?, '-1 day'), date(?), date(?, '+1 day'))
+  `).all(id, date, date, date);
 
   let reservations = reservationsRaw;
   if (equipment.release_noshow_slots) {
@@ -502,16 +487,15 @@ app.post('/api/reservations', (req, res) => {
     }
     isOutOfHours = true;
   } else {
+    const tz_offset = req.body.tz_offset || 0;
+    const startLocalMinutes = (start.getUTCHours() * 60 + start.getUTCMinutes() - tz_offset + 1440) % 1440;
+    let endLocalMinutes = (end.getUTCHours() * 60 + end.getUTCMinutes() - tz_offset + 1440) % 1440;
+    if (endLocalMinutes === 0) endLocalMinutes = 24 * 60;
+
     const fallsWithinAnyRule = dayRules.some((rule: any) => {
-      const ruleStart = new Date(start);
-      const [rsH, rsM] = rule.start.split(':').map(Number);
-      ruleStart.setHours(rsH, rsM, 0, 0);
-
-      const ruleEnd = new Date(start);
-      const [reH, reM] = rule.end.split(':').map(Number);
-      ruleEnd.setHours(reH, reM, 0, 0);
-
-      return start >= ruleStart && end <= ruleEnd;
+      const rsMins = parseInt(rule.start.split(':')[0]) * 60 + parseInt(rule.start.split(':')[1]);
+      const reMins = parseInt(rule.end.split(':')[0]) * 60 + parseInt(rule.end.split(':')[1]);
+      return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
     });
 
     if (!fallsWithinAnyRule) {
@@ -721,16 +705,15 @@ app.post('/api/reservations/update', (req, res) => {
     }
     isOutOfHours = true;
   } else {
+    const tz_offset = req.body.tz_offset || 0;
+    const startLocalMinutes = (start.getUTCHours() * 60 + start.getUTCMinutes() - tz_offset + 1440) % 1440;
+    let endLocalMinutes = (end.getUTCHours() * 60 + end.getUTCMinutes() - tz_offset + 1440) % 1440;
+    if (endLocalMinutes === 0) endLocalMinutes = 24 * 60;
+
     const fallsWithinAnyRule = dayRules.some((rule: any) => {
-      const ruleStart = new Date(start);
-      const [rsH, rsM] = rule.start.split(':').map(Number);
-      ruleStart.setHours(rsH, rsM, 0, 0);
-
-      const ruleEnd = new Date(start);
-      const [reH, reM] = rule.end.split(':').map(Number);
-      ruleEnd.setHours(reH, reM, 0, 0);
-
-      return start >= ruleStart && end <= ruleEnd;
+      const rsMins = parseInt(rule.start.split(':')[0]) * 60 + parseInt(rule.start.split(':')[1]);
+      const reMins = parseInt(rule.end.split(':')[0]) * 60 + parseInt(rule.end.split(':')[1]);
+      return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
     });
 
     if (!fallsWithinAnyRule) {

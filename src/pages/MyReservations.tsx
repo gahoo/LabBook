@@ -204,6 +204,7 @@ export default function MyReservations() {
           booking_code: myReservations.find(r => r.id === editingId)?.booking_code,
           start_time: toUTC(editData.start_time),
           end_time: toUTC(editData.end_time),
+          tz_offset: new Date().getTimezoneOffset()
         })
       });
       if (res.ok) {
