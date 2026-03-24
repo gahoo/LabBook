@@ -414,7 +414,9 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
                   <div className="flex justify-between items-center md:block">
                     <span className="md:hidden font-medium text-neutral-500 text-xs">用户</span>
                     <div className="text-right md:text-left">
-                      <p className="font-medium text-neutral-900">{res.student_name}</p>
+                      <p className="font-medium text-neutral-900">
+                        {res.student_name} <span className="text-xs text-neutral-500 font-normal">({res.student_id})</span>
+                      </p>
                       <p className="text-xs text-neutral-500">{res.supervisor}</p>
                     </div>
                   </div>
