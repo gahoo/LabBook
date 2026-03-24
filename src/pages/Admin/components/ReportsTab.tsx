@@ -568,8 +568,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">预约时间</span>
                             <div className="text-right md:text-left text-xs text-neutral-500">
-                              <p>{format(new Date(res.start_time), 'yyyy-MM-dd HH:mm')}</p>
-                              <p>{format(new Date(res.end_time), 'yyyy-MM-dd HH:mm')}</p>
+                              <p>{format(new Date(res.start_time), 'yyyy-MM-dd')}</p>
+                              <p>{format(new Date(res.start_time), 'HH:mm')} - {format(new Date(res.end_time), 'HH:mm')}</p>
                             </div>
                           </div>
                         </td>
@@ -579,8 +579,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                             <div className="text-right md:text-left text-xs text-neutral-500">
                               {res.actual_start_time ? (
                                 <>
-                                  <p>{format(new Date(res.actual_start_time), 'yyyy-MM-dd HH:mm')}</p>
-                                  <p>{format(new Date(res.actual_end_time), 'yyyy-MM-dd HH:mm')}</p>
+                                  <p>{format(new Date(res.actual_start_time), 'yyyy-MM-dd')}</p>
+                                  <p>{format(new Date(res.actual_start_time), 'HH:mm')} - {res.actual_end_time ? format(new Date(res.actual_end_time), 'HH:mm') : '至今'}</p>
                                 </>
                               ) : (
                                 <span className="text-neutral-400">-</span>
@@ -632,14 +632,14 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                                   actual_end_time: toLocal(res.actual_end_time)
                                 });
                               }}
-                              className="p-1.5 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="编辑记录"
                             >
                               <Edit3 className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => setDeleteConfirmId(res.id)}
-                              className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="删除记录"
                             >
                               <Trash2 className="w-4 h-4" />

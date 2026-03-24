@@ -432,7 +432,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
                   <div className="flex justify-between items-center md:block">
                     <span className="md:hidden font-medium text-neutral-500 text-xs">时间</span>
                     <div className="text-right md:text-left">
-                      <p className="text-neutral-900">{format(new Date(res.start_time), 'MM-dd')}</p>
+                      <p className="text-neutral-900">{format(new Date(res.start_time), 'yyyy-MM-dd')}</p>
                       <p className="text-xs text-neutral-500">{format(new Date(res.start_time), 'HH:mm')} - {format(new Date(res.end_time), 'HH:mm')}</p>
                     </div>
                   </div>
@@ -517,7 +517,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
                   </button>
                   <button 
                     onClick={() => setDeleteReservationConfirmId(res.id)}
-                    className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     title="删除预约"
                   >
                     <Trash2 className="w-4 h-4" />
