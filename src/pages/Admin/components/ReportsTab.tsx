@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle } from 'lucide-react';
+import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -37,9 +37,10 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'violations'>('detailed');
+  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'violations' | 'users' | 'supervisors'>('detailed');
   const [violationsData, setViolationsData] = useState<any[]>([]);
   const [loadingViolations, setLoadingViolations] = useState(false);
+  const [showCharts, setShowCharts] = useState(true);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -200,6 +201,17 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     );
   };
 
+  const exportViolations = () => {
+    if (!violationsData || violationsData.length === 0) return;
+    const headers = ['学号', '姓名', '迟到次数', '超时次数', '爽约次数', '取消次数', '违规总计', '建议处罚'];
+    exportToCSV(
+      violationsData,
+      `violations_stats_${format(subDays(startOfToday(), 30), 'yyyy-MM-dd')}_${format(startOfToday(), 'yyyy-MM-dd')}`,
+      headers,
+      (v: any) => [v.student_id, v.student_name, v.late_count, v.overtime_count, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
+    );
+  };
+
   const handleUpdateReportRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingReportRecord) return;
@@ -303,71 +315,85 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
           <div className="text-center py-12 text-neutral-500">加载报表中...</div>
         ) : reports ? (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Usage Duration Chart */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-red-600" />
-                  使用时长趋势 (小时)
-                </h3>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    {reportChartType === 'bar' ? (
-                      <BarChart data={reports.usageByTime} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                        <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                        <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                        <Tooltip cursor={{fill: '#f5f5f5'}} />
-                        <Bar dataKey="total_hours" name="时长" fill="#dc2626" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    ) : (
-                      <LineChart data={reports.usageByTime}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                        <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                        <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="total_hours" name="时长" stroke="#dc2626" strokeWidth={2} dot={{r: 4}} activeDot={{r: 6}} />
-                      </LineChart>
-                    )}
-                  </ResponsiveContainer>
-                </div>
-              </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+              <button 
+                onClick={() => setShowCharts(!showCharts)}
+                className="w-full p-4 flex items-center justify-between bg-neutral-50 hover:bg-neutral-100 transition-colors"
+              >
+                <span className="font-bold text-neutral-700">统计图表</span>
+                {showCharts ? <ChevronUp className="w-5 h-5 text-neutral-500" /> : <ChevronDown className="w-5 h-5 text-neutral-500" />}
+              </button>
+              
+              {showCharts && (
+                <div className="p-6 border-t border-neutral-200">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Usage Duration Chart */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
+                      <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-red-600" />
+                        使用时长趋势 (小时)
+                      </h3>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          {reportChartType === 'bar' ? (
+                            <BarChart data={reports.usageByTime} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
+                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                              <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
+                              <Tooltip cursor={{fill: '#f5f5f5'}} />
+                              <Bar dataKey="total_hours" name="时长" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                            </BarChart>
+                          ) : (
+                            <LineChart data={reports.usageByTime}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+                              <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                              <Tooltip />
+                              <Line type="monotone" dataKey="total_hours" name="时长" stroke="#dc2626" strokeWidth={2} dot={{r: 4}} activeDot={{r: 6}} />
+                            </LineChart>
+                          )}
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
 
-              {/* Revenue Chart */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-amber-600" />
-                  收入趋势 (¥)
-                </h3>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    {reportChartType === 'bar' ? (
-                      <BarChart data={reports.usageByTime} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                        <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                        <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                        <Tooltip cursor={{fill: '#f5f5f5'}} />
-                        <Bar dataKey="total_revenue" name="收入" fill="#d97706" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    ) : (
-                      <LineChart data={reports.usageByTime}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                        <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                        <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="total_revenue" name="收入" stroke="#d97706" strokeWidth={2} dot={{r: 4}} activeDot={{r: 6}} />
-                      </LineChart>
-                    )}
-                  </ResponsiveContainer>
+                    {/* Revenue Chart */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
+                      <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-amber-600" />
+                        收入趋势 (¥)
+                      </h3>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          {reportChartType === 'bar' ? (
+                            <BarChart data={reports.usageByTime} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
+                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                              <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
+                              <Tooltip cursor={{fill: '#f5f5f5'}} />
+                              <Bar dataKey="total_revenue" name="收入" fill="#d97706" radius={[0, 4, 4, 0]} />
+                            </BarChart>
+                          ) : (
+                            <LineChart data={reports.usageByTime}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+                              <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                              <Tooltip />
+                              <Line type="monotone" dataKey="total_revenue" name="收入" stroke="#d97706" strokeWidth={2} dot={{r: 4}} activeDot={{r: 6}} />
+                            </LineChart>
+                          )}
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Sub-tabs for Detailed vs Violations */}
-            <div className="flex border-b border-neutral-200">
+            <div className="flex border-b border-neutral-200 overflow-x-auto">
               <button
                 onClick={() => setActiveSubTab('detailed')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                   activeSubTab === 'detailed'
                     ? 'border-red-600 text-red-600'
                     : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
@@ -378,7 +404,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               </button>
               <button
                 onClick={() => setActiveSubTab('violations')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                   activeSubTab === 'violations'
                     ? 'border-red-600 text-red-600'
                     : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
@@ -386,6 +412,28 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               >
                 <AlertTriangle className="w-4 h-4" />
                 违规统计
+              </button>
+              <button
+                onClick={() => setActiveSubTab('users')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  activeSubTab === 'users'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                用户排行
+              </button>
+              <button
+                onClick={() => setActiveSubTab('supervisors')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  activeSubTab === 'supervisors'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                导师排行
               </button>
             </div>
 
@@ -804,6 +852,13 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                     <AlertTriangle className="w-5 h-5 text-red-600" />
                     违规统计 (近30天)
                   </h3>
+                  <button 
+                    onClick={exportViolations}
+                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                    title="导出违规记录"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
                 </div>
                 
                 {loadingViolations ? (
@@ -921,8 +976,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Top Users Table */}
+            {activeSubTab === 'users' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
                   <h3 className="font-bold">用户排行</h3>
@@ -978,7 +1032,9 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                   </table>
                 </div>
               </div>
-              {/* Top Supervisors Table */}
+            )}
+            
+            {activeSubTab === 'supervisors' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
                   <h3 className="font-bold">导师排行</h3>
@@ -1031,7 +1087,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                   </table>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         ) : null}
       </div>
