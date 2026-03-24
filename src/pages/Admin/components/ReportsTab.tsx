@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2 } from 'lucide-react';
+import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -37,6 +37,10 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
+  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'violations'>('detailed');
+  const [violationsData, setViolationsData] = useState<any[]>([]);
+  const [loadingViolations, setLoadingViolations] = useState(false);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (reportTimeFilterPopupRef.current && !reportTimeFilterPopupRef.current.contains(event.target as Node)) {
@@ -71,11 +75,33 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     }
   };
 
+  const fetchViolations = async () => {
+    setLoadingViolations(true);
+    try {
+      const res = await fetch(`/api/admin/reports/violations`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) return onLogout();
+      const data = await res.json();
+      setViolationsData(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingViolations(false);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchReports();
     }
   }, [reportPeriod, token]);
+
+  useEffect(() => {
+    if (activeSubTab === 'violations' && token) {
+      fetchViolations();
+    }
+  }, [activeSubTab, token]);
 
   const filteredReportReservations = useMemo(() => {
     return (reports?.allReservations || []).filter((res: any) => {
@@ -337,14 +363,41 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               </div>
             </div>
 
+            {/* Sub-tabs for Detailed vs Violations */}
+            <div className="flex border-b border-neutral-200">
+              <button
+                onClick={() => setActiveSubTab('detailed')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                  activeSubTab === 'detailed'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                详细预约记录
+              </button>
+              <button
+                onClick={() => setActiveSubTab('violations')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                  activeSubTab === 'violations'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                违规统计
+              </button>
+            </div>
+
             {/* Data Table */}
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-              <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
-                <h3 className="font-bold flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-red-600" />
-                  详细预约记录
-                </h3>
-                <div className="flex items-center gap-2">
+            {activeSubTab === 'detailed' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+                <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                  <h3 className="font-bold flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-red-600" />
+                    详细预约记录
+                  </h3>
+                  <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowReportMobileFilters(!showReportMobileFilters)}
@@ -742,6 +795,64 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 </div>
               )}
             </div>
+            )}
+
+            {activeSubTab === 'violations' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+                <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                  <h3 className="font-bold flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    违规统计 (近30天)
+                  </h3>
+                </div>
+                
+                {loadingViolations ? (
+                  <div className="text-center py-12 text-neutral-500">加载违规数据中...</div>
+                ) : violationsData.length === 0 ? (
+                  <div className="text-center py-12 text-neutral-500">近30天无违规记录</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                        <tr>
+                          <th className="px-4 py-4 font-medium">学号</th>
+                          <th className="px-4 py-4 font-medium">姓名</th>
+                          <th className="px-4 py-4 font-medium">迟到次数</th>
+                          <th className="px-4 py-4 font-medium">超时次数</th>
+                          <th className="px-4 py-4 font-medium">爽约次数</th>
+                          <th className="px-4 py-4 font-medium">取消次数</th>
+                          <th className="px-4 py-4 font-medium">违规总计</th>
+                          <th className="px-4 py-4 font-medium">建议处罚</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {violationsData.map((v: any, idx: number) => (
+                          <tr key={idx} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-neutral-600">{v.student_id}</td>
+                            <td className="px-4 py-3 font-medium text-neutral-900">{v.student_name}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.late_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.overtime_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.noshow_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.cancelled_count}</td>
+                            <td className="px-4 py-3 font-bold text-red-600">{v.total_violations}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                v.suggested_penalty === '无' ? 'bg-neutral-100 text-neutral-600' :
+                                v.suggested_penalty === '警告' ? 'bg-amber-100 text-amber-700' :
+                                v.suggested_penalty === '频繁取消警告' ? 'bg-orange-100 text-orange-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {v.suggested_penalty}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Edit Modal */}
             {editingReportRecord && (

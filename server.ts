@@ -937,6 +937,118 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
+  const VIOLATION_WINDOW_DAYS = 30;
+  const windowStart = new Date();
+  windowStart.setDate(windowStart.getDate() - VIOLATION_WINDOW_DAYS);
+  const windowStartStr = windowStart.toISOString();
+
+  const allReservationsRaw = db.prepare(`
+    SELECT r.*, e.name as equipment_name, e.release_noshow_slots 
+    FROM reservations r
+    JOIN equipment e ON r.equipment_id = e.id
+    WHERE r.start_time >= ?
+    ORDER BY r.equipment_id, r.start_time ASC
+  `).all(windowStartStr);
+
+  const calculateStatus = (res: any, prevRes: any) => {
+    if (res.status === 'cancelled') {
+      if (res.actual_end_time) {
+        const cancelTime = new Date(res.actual_end_time).getTime();
+        const startTime = new Date(res.start_time).getTime();
+        if (cancelTime >= startTime - 30 * 60 * 1000) {
+          return '临期取消';
+        }
+      }
+      return '已取消';
+    }
+    
+    const maxLateMinutes = 30;
+    
+    if (!res.actual_start_time) {
+      if (new Date().getTime() <= new Date(res.start_time).getTime() + maxLateMinutes * 60000) {
+        return '待上机';
+      }
+      return '爽约';
+    }
+    
+    const start = new Date(res.start_time);
+    const end = new Date(res.end_time);
+    const actualStart = new Date(res.actual_start_time);
+    const actualEnd = res.actual_end_time ? new Date(res.actual_end_time) : null;
+
+    let isDelayCausedByPrev = false;
+    if (prevRes && prevRes.actual_end_time) {
+      const prevActualEnd = new Date(prevRes.actual_end_time);
+      if (isAfter(prevActualEnd, start)) {
+        isDelayCausedByPrev = true;
+      }
+    }
+
+    const lateThreshold = 15 * 60 * 1000;
+    const overtimeThreshold = 30 * 60 * 1000;
+
+    if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
+      return '迟到';
+    }
+    if (actualEnd && actualEnd.getTime() > end.getTime() + overtimeThreshold) {
+      return '超时';
+    }
+    
+    return '正常';
+  };
+
+  const personMap = new Map();
+
+  allReservationsRaw.forEach((res: any, idx: number) => {
+    const prevRes = idx > 0 && (allReservationsRaw[idx-1] as any).equipment_id === res.equipment_id ? (allReservationsRaw[idx-1] as any) : null;
+    const reportStatus = calculateStatus(res, prevRes);
+
+    if (['迟到', '超时', '爽约', '已取消', '临期取消'].includes(reportStatus)) {
+      const personKey = `${res.student_id}_${res.student_name}`;
+      if (!personMap.has(personKey)) {
+        personMap.set(personKey, {
+          student_id: res.student_id,
+          student_name: res.student_name,
+          late_count: 0,
+          overtime_count: 0,
+          noshow_count: 0,
+          cancelled_count: 0
+        });
+      }
+      
+      const p = personMap.get(personKey);
+      if (reportStatus === '迟到') p.late_count++;
+      if (reportStatus === '超时') p.overtime_count++;
+      if (reportStatus === '爽约') p.noshow_count++;
+      if (reportStatus === '已取消' || reportStatus === '临期取消') p.cancelled_count++;
+    }
+  });
+
+  const violations = Array.from(personMap.values()).map(p => {
+    const penaltyScore = p.late_count + p.overtime_count + p.noshow_count;
+    let suggestedPenalty = '无';
+    
+    if (penaltyScore >= 5) {
+      suggestedPenalty = '暂停预约30天';
+    } else if (penaltyScore >= 3) {
+      suggestedPenalty = '暂停预约7天';
+    } else if (penaltyScore >= 1) {
+      suggestedPenalty = '警告';
+    } else if (p.cancelled_count >= 5) {
+      suggestedPenalty = '频繁取消警告';
+    }
+
+    return {
+      ...p,
+      total_violations: penaltyScore,
+      suggested_penalty: suggestedPenalty
+    };
+  }).sort((a, b) => b.total_violations - a.total_violations || b.cancelled_count - a.cancelled_count);
+
+  res.json(violations);
+});
+
 app.get('/api/admin/reports', adminAuth, (req, res) => {
   const { period, student_name, supervisor, startDate, endDate } = req.query;
   
