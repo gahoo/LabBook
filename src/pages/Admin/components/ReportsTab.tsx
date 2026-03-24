@@ -23,6 +23,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [reportFilterCostMin, setReportFilterCostMin] = useState('');
   const [reportFilterCostMax, setReportFilterCostMax] = useState('');
   const [reportFilterStatus, setReportFilterStatus] = useState<string[]>([]);
+  const [reportFilterNotes, setReportFilterNotes] = useState('');
   const [reportFilterCode, setReportFilterCode] = useState('');
   const [reportCurrentPage, setReportCurrentPage] = useState(1);
   const reportPageSize = 20;
@@ -98,9 +99,16 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       if (reportFilterCostMax && (res.total_cost || 0) > Number(reportFilterCostMax)) return false;
       
       if (reportFilterStatus.length > 0 && !reportFilterStatus.includes(res.reportStatus)) return false;
+      
+      if (reportFilterNotes) {
+        if (!res.notes || !res.notes.toLowerCase().includes(reportFilterNotes.toLowerCase())) {
+          return false;
+        }
+      }
+      
       return true;
     });
-  }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterStatus]);
+  }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterStatus, reportFilterNotes]);
 
   const reportTotalPages = Math.ceil(filteredReportReservations.length / reportPageSize);
   const paginatedReportReservations = filteredReportReservations.slice(
@@ -123,7 +131,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
 
   const exportDetailedReport = () => {
     if (!reports?.allReservations) return;
-    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约时间', '实际时间', '时长(小时)', '费用(¥)', '状态'];
+    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约时间', '实际时间', '时长(小时)', '费用(¥)', '状态', '备注'];
     exportToCSV(
       reports.allReservations,
       `detailed_report_${reportStartDate}_${reportEndDate}`,
@@ -138,7 +146,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
         r.actual_start_time ? `${format(new Date(r.actual_start_time), 'yyyy-MM-dd HH:mm')} - ${format(new Date(r.actual_end_time), 'yyyy-MM-dd HH:mm')}` : '-',
         (r.actual_duration_hours || r.duration_hours || 0).toFixed(2),
         (r.total_cost || 0).toFixed(2),
-        r.reportStatus
+        r.reportStatus,
+        r.notes || ''
       ]
     );
   };
@@ -187,7 +196,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
         body: JSON.stringify({
           actual_start_time: toUTC(editingReportRecord.actual_start_time),
           actual_end_time: toUTC(editingReportRecord.actual_end_time),
-          consumable_quantity: editingReportRecord.consumable_quantity
+          consumable_quantity: editingReportRecord.consumable_quantity,
+          notes: editingReportRecord.notes
         })
       });
       if (res.ok) {
@@ -489,13 +499,13 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                         </div>
                       </th>
                       <th className="px-4 py-4 font-medium align-top">
-                        <div className="mb-2">状态</div>
+                        <div className="mb-2">状态/备注</div>
                         <div className="relative" ref={reportStatusFilterPopupRef}>
                           <button 
                             onClick={() => setShowReportStatusFilterPopup(!showReportStatusFilterPopup)}
                             className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center"
                           >
-                            {reportFilterStatus.length > 0 ? (
+                            {reportFilterStatus.length > 0 || reportFilterNotes ? (
                               <>
                                 {reportFilterStatus.map(s => (
                                   <span key={s} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
@@ -509,28 +519,70 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                                     />
                                   </span>
                                 ))}
+                                {reportFilterNotes && (
+                                  <span className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                    备注: {reportFilterNotes}
+                                    <X 
+                                      className="w-3 h-3 cursor-pointer hover:text-red-500" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setReportFilterNotes('');
+                                      }}
+                                    />
+                                  </span>
+                                )}
                               </>
                             ) : (
                               <span className="text-neutral-400">全部状态</span>
                             )}
                           </button>
                           {showReportStatusFilterPopup && (
-                            <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10 font-normal">
-                              <div className="space-y-1 max-h-48 overflow-y-auto">
-                                {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
-                                  <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
-                                    <input 
-                                      type="checkbox" 
-                                      checked={reportFilterStatus.includes(value)}
-                                      onChange={e => {
-                                        if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
-                                        else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
-                                      }}
-                                      className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
-                                    />
-                                    <span className="text-xs text-neutral-700">{value}</span>
-                                  </label>
-                                ))}
+                            <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                              <div className="mb-3">
+                                <label className="block text-[10px] font-medium text-neutral-500 mb-1 uppercase tracking-wider">状态</label>
+                                <div className="space-y-1 max-h-48 overflow-y-auto">
+                                  {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
+                                    <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={reportFilterStatus.includes(value)}
+                                        onChange={e => {
+                                          if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
+                                          else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
+                                        }}
+                                        className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                      />
+                                      <span className="text-xs text-neutral-700">{value}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="mb-3">
+                                <label className="block text-[10px] font-medium text-neutral-500 mb-1 uppercase tracking-wider">备注</label>
+                                <input 
+                                  type="text" 
+                                  placeholder="搜索备注..."
+                                  value={reportFilterNotes}
+                                  onChange={e => setReportFilterNotes(e.target.value)}
+                                  className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 focus:border-transparent outline-none"
+                                />
+                              </div>
+                              <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                                <button 
+                                  onClick={() => {
+                                    setReportFilterStatus([]);
+                                    setReportFilterNotes('');
+                                  }}
+                                  className="text-xs text-neutral-500 hover:text-neutral-700"
+                                >
+                                  清空
+                                </button>
+                                <button 
+                                  onClick={() => setShowReportStatusFilterPopup(false)}
+                                  className="text-xs text-red-600 font-medium"
+                                >
+                                  确定
+                                </button>
                               </div>
                             </div>
                           )}
@@ -600,15 +652,20 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                         <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              res.reportStatus === '正常' ? 'bg-emerald-100 text-emerald-700' :
-                              res.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' :
-                              res.reportStatus === '超时' ? 'bg-orange-100 text-orange-700' :
-                              res.reportStatus === '待上机' ? 'bg-blue-100 text-blue-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>
-                              {res.reportStatus}
-                            </span>
+                            <div className="relative inline-block">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                res.reportStatus === '正常' ? 'bg-emerald-100 text-emerald-700' :
+                                res.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' :
+                                res.reportStatus === '超时' ? 'bg-orange-100 text-orange-700' :
+                                res.reportStatus === '待上机' ? 'bg-blue-100 text-blue-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {res.reportStatus}
+                              </span>
+                              {res.notes && (
+                                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" title={res.notes}></span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
@@ -732,6 +789,16 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                         value={editingReportRecord.consumable_quantity || 0} 
                         onChange={e => setEditingReportRecord({...editingReportRecord, consumable_quantity: Number(e.target.value)})} 
                         className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">备注</label>
+                      <textarea 
+                        rows={3}
+                        value={editingReportRecord.notes || ''} 
+                        onChange={e => setEditingReportRecord({...editingReportRecord, notes: e.target.value})} 
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300 resize-none"
+                        placeholder="添加备注信息..."
                       />
                     </div>
                     <div className="flex gap-4 mt-8">

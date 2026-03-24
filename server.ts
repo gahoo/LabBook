@@ -59,6 +59,7 @@ db.exec(`
     total_cost REAL,
     consumable_quantity REAL DEFAULT 0,
     modified_count INTEGER DEFAULT 0, -- New field
+    notes TEXT, -- New field
     FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
 
@@ -71,6 +72,12 @@ db.exec(`
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+try {
+  db.prepare("ALTER TABLE reservations ADD COLUMN notes TEXT").run();
+} catch (e) {
+  // Column might already exist
+}
 
 try {
   // Remove foreign key constraint from audit_logs
@@ -876,7 +883,7 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
 // 9. Admin Reports
 app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
-  const { actual_start_time, actual_end_time, consumable_quantity } = req.body;
+  const { actual_start_time, actual_end_time, consumable_quantity, notes } = req.body;
   
   const oldRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
   if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
@@ -900,17 +907,17 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?
+    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?, notes = ?
     WHERE id = ?
   `);
-  stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, id);
+  stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, id);
   
   const newRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
   
   db.prepare(`
     INSERT INTO audit_logs (reservation_id, action, old_data, new_data)
     VALUES (?, ?, ?, ?)
-  `).run(id, 'Admin modified actual times/consumables', JSON.stringify(oldRes), JSON.stringify(newRes));
+  `).run(id, 'Admin modified actual times/consumables/notes', JSON.stringify(oldRes), JSON.stringify(newRes));
   
   res.json({ success: true, total_cost });
 });
