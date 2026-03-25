@@ -16,7 +16,7 @@ export default function App() {
     <Router>
       <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans">
         <Toaster position="top-center" />
-        <header className="bg-white border-b border-neutral-200 sticky top-0 z-10">
+        <header className="bg-white border-b border-neutral-200 sticky top-0 z-50">
           <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2 text-red-600 font-semibold text-lg tracking-tight">
               <Beaker className="w-6 h-6" />

@@ -132,12 +132,8 @@ export default function WhitelistAppsTab({ token, handleLogout }: WhitelistAppsT
             <input type="text" placeholder="搜索仪器..." value={wlFilterEquipment} onChange={e => setWlFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">申请人</label>
-            <input type="text" placeholder="姓名/学号/工号..." value={wlFilterApplicant} onChange={e => setWlFilterApplicant(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">导师</label>
-            <input type="text" placeholder="搜索导师..." value={wlFilterSupervisor} onChange={e => setWlFilterSupervisor(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+            <label className="block text-xs font-medium text-neutral-500 mb-1">申请人/导师</label>
+            <input type="text" placeholder="姓名/学号/导师..." value={wlFilterApplicant} onChange={e => setWlFilterApplicant(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">联系方式</label>
@@ -174,23 +170,13 @@ export default function WhitelistAppsTab({ token, handleLogout }: WhitelistAppsT
                 />
               </th>
               <th className="px-4 py-4 font-medium align-top">
-                <div className="mb-2">申请人</div>
+                <div className="mb-2">申请人/导师</div>
                 <input 
                   type="text" 
-                  placeholder="姓名/学号/工号..." 
+                  placeholder="姓名/学号/导师..." 
                   value={wlFilterApplicant}
                   onChange={e => setWlFilterApplicant(e.target.value)}
                   className="w-24 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                />
-              </th>
-              <th className="px-4 py-4 font-medium align-top">
-                <div className="mb-2">导师</div>
-                <input 
-                  type="text" 
-                  placeholder="搜索导师..." 
-                  value={wlFilterSupervisor}
-                  onChange={e => setWlFilterSupervisor(e.target.value)}
-                  className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                 />
               </th>
               <th className="px-4 py-4 font-medium align-top">
@@ -282,17 +268,11 @@ export default function WhitelistAppsTab({ token, handleLogout }: WhitelistAppsT
                 </td>
                 <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                   <div className="flex justify-between items-center md:block">
-                    <span className="md:hidden font-medium text-neutral-500 text-xs">申请人</span>
+                    <span className="md:hidden font-medium text-neutral-500 text-xs">申请人/导师</span>
                     <div className="text-right md:text-left">
                       <p className="font-medium text-neutral-900">{app.student_name}</p>
-                      <p className="text-xs text-neutral-500">{app.student_id}</p>
+                      <p className="text-xs text-neutral-500">{app.student_id} | {app.supervisor}</p>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                  <div className="flex justify-between items-center md:block">
-                    <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
-                    <span className="text-neutral-900">{app.supervisor}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">

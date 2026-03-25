@@ -415,7 +415,7 @@ export default function Booking() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">导师</label>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">导师姓名</label>
                   <input required type="text" name="supervisor" value={formData.supervisor} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300" />
                 </div>
                 <div className="flex gap-4">
@@ -521,7 +521,7 @@ export default function Booking() {
                                         bgColor,
                                         !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
                                         showRightGap && "border-r border-neutral-50",
-                                        isSelectedBlock && "z-10",
+                                        isSelectedBlock && "relative",
                                         isSelectedBlock && isFirstSelected && isLastSelected ? "shadow-[0_0_0_2px_#047857] rounded-sm" :
                                         isSelectedBlock && isFirstSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm" :
                                         isSelectedBlock && isLastSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm" :

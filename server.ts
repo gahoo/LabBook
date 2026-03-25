@@ -905,12 +905,17 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     }
   }
 
+  let newStatus = oldRes.status;
+  if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
+    newStatus = 'completed';
+  }
+
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?, notes = ?
+    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?, notes = ?, status = ?
     WHERE id = ?
   `);
-  stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, id);
+  stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, newStatus, id);
   
   const newRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
   
@@ -1010,6 +1015,7 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
         personMap.set(personKey, {
           student_id: res.student_id,
           student_name: res.student_name,
+          supervisor: res.supervisor,
           late_count: 0,
           overtime_count: 0,
           noshow_count: 0,

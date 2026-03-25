@@ -637,8 +637,8 @@ export default function MyReservations() {
                       <div className="space-y-4">
                         <div>
                           <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">预约详情</p>
-                          <p className="text-sm font-medium text-neutral-900">{resv.student_name} ({resv.student_id})</p>
-                          <p className="text-xs text-neutral-500">导师: {resv.supervisor}</p>
+                          <p className="text-sm font-medium text-neutral-900">{resv.student_name}</p>
+                          <p className="text-xs text-neutral-500">{resv.student_id} | {resv.supervisor}</p>
                         </div>
                         <div>
                           <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">时间安排</p>

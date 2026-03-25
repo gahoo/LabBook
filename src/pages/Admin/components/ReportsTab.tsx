@@ -37,7 +37,14 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'violations' | 'users' | 'supervisors'>('detailed');
+  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'violations' | 'stats'>('detailed');
+  const [statsType, setStatsType] = useState<'user' | 'supervisor'>('user');
+  const [statsFilterUser, setStatsFilterUser] = useState('');
+  const [statsFilterSupervisor, setStatsFilterSupervisor] = useState('');
+  const [statsFilterDurationMin, setStatsFilterDurationMin] = useState('');
+  const [statsFilterDurationMax, setStatsFilterDurationMax] = useState('');
+  const [statsFilterCostMin, setStatsFilterCostMin] = useState('');
+  const [statsFilterCostMax, setStatsFilterCostMax] = useState('');
   const [violationsData, setViolationsData] = useState<any[]>([]);
   const [loadingViolations, setLoadingViolations] = useState(false);
   const [showCharts, setShowCharts] = useState(true);
@@ -96,13 +103,44 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     if (token) {
       fetchReports();
     }
-  }, [reportPeriod, token]);
+  }, [reportPeriod, reportStartDate, reportEndDate, token]);
 
   useEffect(() => {
     if (activeSubTab === 'violations' && token) {
       fetchViolations();
     }
   }, [activeSubTab, token]);
+
+  const filteredUsageByPerson = useMemo(() => {
+    if (!reports?.usageByPerson) return [];
+    return reports.usageByPerson.filter((u: any) => {
+      if (statsFilterUser) {
+        const search = statsFilterUser.toLowerCase();
+        if (!u.student_name.toLowerCase().includes(search) && 
+            !u.student_id.toLowerCase().includes(search) && 
+            !u.supervisor.toLowerCase().includes(search)) {
+          return false;
+        }
+      }
+      if (statsFilterDurationMin && u.total_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && u.total_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterCostMin && u.total_revenue < Number(statsFilterCostMin)) return false;
+      if (statsFilterCostMax && u.total_revenue > Number(statsFilterCostMax)) return false;
+      return true;
+    });
+  }, [reports?.usageByPerson, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterCostMin, statsFilterCostMax]);
+
+  const filteredUsageBySupervisor = useMemo(() => {
+    if (!reports?.usageBySupervisor) return [];
+    return reports.usageBySupervisor.filter((s: any) => {
+      if (statsFilterSupervisor && !s.supervisor.toLowerCase().includes(statsFilterSupervisor.toLowerCase())) return false;
+      if (statsFilterDurationMin && s.total_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && s.total_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterCostMin && s.total_revenue < Number(statsFilterCostMin)) return false;
+      if (statsFilterCostMax && s.total_revenue > Number(statsFilterCostMax)) return false;
+      return true;
+    });
+  }, [reports?.usageBySupervisor, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterCostMin, statsFilterCostMax]);
 
   const filteredReportReservations = useMemo(() => {
     return (reports?.allReservations || []).filter((res: any) => {
@@ -117,7 +155,9 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       }
       if (reportFilterEquipment && !res.equipment_name.toLowerCase().includes(reportFilterEquipment.toLowerCase())) return false;
       
-      const duration = res.actual_duration_hours || res.duration_hours;
+      const duration = res.actual_start_time && res.actual_end_time 
+        ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
+        : (new Date(res.end_time).getTime() - new Date(res.start_time).getTime()) / (1000 * 60 * 60);
       
       if (reportFilterDurationMin && duration < Number(reportFilterDurationMin)) return false;
       if (reportFilterDurationMax && duration > Number(reportFilterDurationMax)) return false;
@@ -171,7 +211,10 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
         r.supervisor,
         `${format(new Date(r.start_time), 'yyyy-MM-dd HH:mm')} - ${format(new Date(r.end_time), 'yyyy-MM-dd HH:mm')}`,
         r.actual_start_time ? `${format(new Date(r.actual_start_time), 'yyyy-MM-dd HH:mm')} - ${format(new Date(r.actual_end_time), 'yyyy-MM-dd HH:mm')}` : '-',
-        (r.actual_duration_hours || r.duration_hours || 0).toFixed(2),
+        (r.actual_start_time && r.actual_end_time 
+          ? (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60)
+          : (new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / (1000 * 60 * 60)
+        ).toFixed(2),
         (r.total_cost || 0).toFixed(2),
         r.reportStatus,
         r.notes || ''
@@ -179,36 +222,36 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     );
   };
 
-  const exportUserStats = () => {
-    if (!reports?.usageByPerson) return;
-    const headers = ['用户', '学号', '导师', '总时长(小时)', '总费用(¥)'];
-    exportToCSV(
-      reports.usageByPerson,
-      `user_stats_${reportStartDate}_${reportEndDate}`,
-      headers,
-      (u: any) => [u.student_name, u.student_id, u.supervisor, (u.total_hours || 0).toFixed(2), (u.total_revenue || 0).toFixed(2)]
-    );
-  };
-
-  const exportSupervisorStats = () => {
-    if (!reports?.usageBySupervisor) return;
-    const headers = ['导师', '总时长(小时)', '总费用(¥)'];
-    exportToCSV(
-      reports.usageBySupervisor,
-      `supervisor_stats_${reportStartDate}_${reportEndDate}`,
-      headers,
-      (s: any) => [s.supervisor, (s.total_hours || 0).toFixed(2), (s.total_revenue || 0).toFixed(2)]
-    );
+  const exportStats = () => {
+    if (statsType === 'user') {
+      if (!filteredUsageByPerson || filteredUsageByPerson.length === 0) return;
+      const headers = ['用户', '学号', '导师', '总时长(小时)', '总费用(¥)'];
+      exportToCSV(
+        filteredUsageByPerson,
+        `user_stats_${reportStartDate}_${reportEndDate}`,
+        headers,
+        (u: any) => [u.student_name, u.student_id, u.supervisor, (u.total_hours || 0).toFixed(2), (u.total_revenue || 0).toFixed(2)]
+      );
+    } else {
+      if (!filteredUsageBySupervisor || filteredUsageBySupervisor.length === 0) return;
+      const headers = ['导师', '总时长(小时)', '总费用(¥)'];
+      exportToCSV(
+        filteredUsageBySupervisor,
+        `supervisor_stats_${reportStartDate}_${reportEndDate}`,
+        headers,
+        (s: any) => [s.supervisor, (s.total_hours || 0).toFixed(2), (s.total_revenue || 0).toFixed(2)]
+      );
+    }
   };
 
   const exportViolations = () => {
     if (!violationsData || violationsData.length === 0) return;
-    const headers = ['学号', '姓名', '迟到次数', '超时次数', '爽约次数', '取消次数', '违规总计', '建议处罚'];
+    const headers = ['学号', '姓名', '导师', '迟到次数', '超时次数', '爽约次数', '取消次数', '违规总计', '建议处罚'];
     exportToCSV(
       violationsData,
       `violations_stats_${format(subDays(startOfToday(), 30), 'yyyy-MM-dd')}_${format(startOfToday(), 'yyyy-MM-dd')}`,
       headers,
-      (v: any) => [v.student_id, v.student_name, v.late_count, v.overtime_count, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
+      (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.overtime_count, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
     );
   };
 
@@ -302,12 +345,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 <button onClick={() => setReportChartType('line')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${reportChartType === 'line' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-500'}`}>折线图</button>
               </div>
             </div>
-            <button 
-              onClick={fetchReports}
-              className="px-6 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
-            >
-              查询
-            </button>
           </div>
         </div>
 
@@ -400,7 +437,18 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                详细预约记录
+                <span className={activeSubTab === 'detailed' ? '' : 'hidden md:inline'}>详细预约记录</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab('stats')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  activeSubTab === 'stats'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span className={activeSubTab === 'stats' ? '' : 'hidden md:inline'}>时长费用统计</span>
               </button>
               <button
                 onClick={() => setActiveSubTab('violations')}
@@ -411,29 +459,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 }`}
               >
                 <AlertTriangle className="w-4 h-4" />
-                违规统计
-              </button>
-              <button
-                onClick={() => setActiveSubTab('users')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-                  activeSubTab === 'users'
-                    ? 'border-red-600 text-red-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                用户排行
-              </button>
-              <button
-                onClick={() => setActiveSubTab('supervisors')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-                  activeSubTab === 'supervisors'
-                    ? 'border-red-600 text-red-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
-                }`}
-              >
-                <UserCheck className="w-4 h-4" />
-                导师排行
+                <span className={activeSubTab === 'violations' ? '' : 'hidden md:inline'}>违规统计</span>
               </button>
             </div>
 
@@ -745,7 +771,12 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">时长/费用</span>
                             <div className="text-right md:text-left">
-                              <p className="text-neutral-900">{(res.actual_duration_hours || res.duration_hours || 0).toFixed(2)}h</p>
+                              <p className="text-neutral-900">
+                                {(res.actual_start_time && res.actual_end_time 
+                                  ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
+                                  : (new Date(res.end_time).getTime() - new Date(res.start_time).getTime()) / (1000 * 60 * 60)
+                                ).toFixed(2)}h
+                              </p>
                               <p className="text-xs font-medium text-amber-600">¥{(res.total_cost || 0).toFixed(2)}</p>
                             </div>
                           </div>
@@ -845,70 +876,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
             </div>
             )}
 
-            {activeSubTab === 'violations' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
-                  <h3 className="font-bold flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-red-600" />
-                    违规统计 (近30天)
-                  </h3>
-                  <button 
-                    onClick={exportViolations}
-                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
-                    title="导出违规记录"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                {loadingViolations ? (
-                  <div className="text-center py-12 text-neutral-500">加载违规数据中...</div>
-                ) : violationsData.length === 0 ? (
-                  <div className="text-center py-12 text-neutral-500">近30天无违规记录</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
-                        <tr>
-                          <th className="px-4 py-4 font-medium">学号</th>
-                          <th className="px-4 py-4 font-medium">姓名</th>
-                          <th className="px-4 py-4 font-medium">迟到次数</th>
-                          <th className="px-4 py-4 font-medium">超时次数</th>
-                          <th className="px-4 py-4 font-medium">爽约次数</th>
-                          <th className="px-4 py-4 font-medium">取消次数</th>
-                          <th className="px-4 py-4 font-medium">违规总计</th>
-                          <th className="px-4 py-4 font-medium">建议处罚</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {violationsData.map((v: any, idx: number) => (
-                          <tr key={idx} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
-                            <td className="px-4 py-3 font-mono text-neutral-600">{v.student_id}</td>
-                            <td className="px-4 py-3 font-medium text-neutral-900">{v.student_name}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.late_count}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.overtime_count}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.noshow_count}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.cancelled_count}</td>
-                            <td className="px-4 py-3 font-bold text-red-600">{v.total_violations}</td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                v.suggested_penalty === '无' ? 'bg-neutral-100 text-neutral-600' :
-                                v.suggested_penalty === '警告' ? 'bg-amber-100 text-amber-700' :
-                                v.suggested_penalty === '频繁取消警告' ? 'bg-orange-100 text-orange-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>
-                                {v.suggested_penalty}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Edit Modal */}
             {editingReportRecord && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -978,14 +945,34 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               </div>
             )}
 
-            {activeSubTab === 'users' && (
+            {activeSubTab === 'stats' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
-                  <h3 className="font-bold">用户排行</h3>
+                <div className="p-6 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <h3 className="font-bold">时长费用统计</h3>
+                    <div className="flex bg-neutral-100 p-1 rounded-lg">
+                      <button
+                        onClick={() => setStatsType('user')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          statsType === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按用户
+                      </button>
+                      <button
+                        onClick={() => setStatsType('supervisor')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          statsType === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按导师
+                      </button>
+                    </div>
+                  </div>
                   <button 
-                    onClick={exportUserStats}
-                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
-                    title="导出用户"
+                    onClick={exportStats}
+                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors self-end sm:self-auto"
+                    title={`导出${statsType === 'user' ? '用户' : '导师'}统计`}
                   >
                     <Download className="w-4 h-4" />
                   </button>
@@ -994,38 +981,121 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                   <table className="w-full text-left text-sm block md:table">
                     <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                       <tr>
-                        <th className="px-4 py-4 font-medium">用户</th>
-                        <th className="px-4 py-4 font-medium">总时长</th>
-                        <th className="px-4 py-4 font-medium">总费用</th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">{statsType === 'user' ? '用户/导师' : '导师'}</div>
+                          {statsType === 'user' ? (
+                            <input 
+                              type="text" 
+                              placeholder="姓名/学号/导师..." 
+                              value={statsFilterUser}
+                              onChange={e => setStatsFilterUser(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          ) : (
+                            <input 
+                              type="text" 
+                              placeholder="搜索导师..." 
+                              value={statsFilterSupervisor}
+                              onChange={e => setStatsFilterSupervisor(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          )}
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">总时长</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min" 
+                              value={statsFilterDurationMin}
+                              onChange={e => setStatsFilterDurationMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max" 
+                              value={statsFilterDurationMax}
+                              onChange={e => setStatsFilterDurationMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">总费用</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min" 
+                              value={statsFilterCostMin}
+                              onChange={e => setStatsFilterCostMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max" 
+                              value={statsFilterCostMax}
+                              onChange={e => setStatsFilterCostMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
-                      {reports.usageByPerson.map((u: any, i: number) => (
-                        <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                          <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                            <div className="flex justify-between items-center md:block">
-                              <span className="md:hidden font-medium text-neutral-500 text-xs">用户</span>
-                              <div className="text-right md:text-left">
-                                <p className="font-medium text-neutral-900">{u.student_name}</p>
-                                <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
+                      {statsType === 'user' ? (
+                        filteredUsageByPerson.map((u: any, i: number) => (
+                          <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
+                                <div className="text-right md:text-left">
+                                  <p className="font-medium text-neutral-900">{u.student_name}</p>
+                                  <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                            <div className="flex justify-between items-center md:block">
-                              <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
-                              <span className="text-neutral-900">{u.total_hours.toFixed(1)}h</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 md:py-4 block md:table-cell">
-                            <div className="flex justify-between items-center md:block">
-                              <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                              <span className="font-bold text-neutral-900">¥{u.total_revenue.toFixed(2)}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {reports.usageByPerson.length === 0 && (
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
+                                <span className="text-neutral-900">{u.total_hours.toFixed(1)}h</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                <span className="font-bold text-neutral-900">¥{u.total_revenue.toFixed(2)}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        filteredUsageBySupervisor.map((s: any, i: number) => (
+                          <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
+                                <span className="font-medium text-neutral-900">{s.supervisor}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
+                                <span className="text-neutral-900">{s.total_hours.toFixed(1)}h</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 md:py-4 block md:table-cell">
+                              <div className="flex justify-between items-center md:block">
+                                <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                <span className="font-bold text-neutral-900">¥{s.total_revenue.toFixed(2)}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                      {((statsType === 'user' && filteredUsageByPerson.length === 0) || 
+                        (statsType === 'supervisor' && filteredUsageBySupervisor.length === 0)) && (
                         <tr className="block md:table-row">
                           <td colSpan={3} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
                         </tr>
@@ -1035,59 +1105,69 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 </div>
               </div>
             )}
-            
-            {activeSubTab === 'supervisors' && (
+
+            {activeSubTab === 'violations' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
-                  <h3 className="font-bold">导师排行</h3>
+                <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                  <h3 className="font-bold flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    违规统计 (近30天)
+                  </h3>
                   <button 
-                    onClick={exportSupervisorStats}
+                    onClick={exportViolations}
                     className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
-                    title="导出导师"
+                    title="导出违规记录"
                   >
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm block md:table">
-                    <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
-                      <tr>
-                        <th className="px-4 py-4 font-medium">导师</th>
-                        <th className="px-4 py-4 font-medium">总时长</th>
-                        <th className="px-4 py-4 font-medium">总费用</th>
-                      </tr>
-                    </thead>
-                    <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
-                      {reports.usageBySupervisor.map((s: any, i: number) => (
-                        <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                          <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                            <div className="flex justify-between items-center md:block">
-                              <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
-                              <span className="font-medium text-neutral-900">{s.supervisor}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                            <div className="flex justify-between items-center md:block">
-                              <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
-                              <span className="text-neutral-900">{s.total_hours.toFixed(1)}h</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 md:py-4 block md:table-cell">
-                            <div className="flex justify-between items-center md:block">
-                              <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                              <span className="font-bold text-neutral-900">¥{s.total_revenue.toFixed(2)}</span>
-                            </div>
-                          </td>
+                
+                {loadingViolations ? (
+                  <div className="text-center py-12 text-neutral-500">加载违规数据中...</div>
+                ) : violationsData.length === 0 ? (
+                  <div className="text-center py-12 text-neutral-500">近30天无违规记录</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                        <tr>
+                          <th className="px-4 py-4 font-medium">用户/导师</th>
+                          <th className="px-4 py-4 font-medium">迟到次数</th>
+                          <th className="px-4 py-4 font-medium">超时次数</th>
+                          <th className="px-4 py-4 font-medium">爽约次数</th>
+                          <th className="px-4 py-4 font-medium">取消次数</th>
+                          <th className="px-4 py-4 font-medium">违规总计</th>
+                          <th className="px-4 py-4 font-medium">建议处罚</th>
                         </tr>
-                      ))}
-                      {reports.usageBySupervisor.length === 0 && (
-                        <tr className="block md:table-row">
-                          <td colSpan={3} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {violationsData.map((v: any, idx: number) => (
+                          <tr key={idx} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-neutral-900">{v.student_name}</p>
+                              <p className="text-xs text-neutral-500">{v.student_id} | {v.supervisor}</p>
+                            </td>
+                            <td className="px-4 py-3 text-neutral-600">{v.late_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.overtime_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.noshow_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.cancelled_count}</td>
+                            <td className="px-4 py-3 font-bold text-red-600">{v.total_violations}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                v.suggested_penalty === '无' ? 'bg-neutral-100 text-neutral-600' :
+                                v.suggested_penalty === '警告' ? 'bg-amber-100 text-amber-700' :
+                                v.suggested_penalty === '频繁取消警告' ? 'bg-orange-100 text-orange-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {v.suggested_penalty}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>
