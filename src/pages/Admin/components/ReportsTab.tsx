@@ -920,9 +920,11 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                     </button>
                   </div>
                   <form onSubmit={handleUpdateReportRecord} className="space-y-4">
-                    <div className="bg-neutral-50 p-4 rounded-xl mb-6">
-                      <p className="text-sm text-neutral-500 mb-1">预约码: <span className="font-mono text-neutral-900">{editingReportRecord.booking_code}</span></p>
-                      <p className="text-sm text-neutral-500 mb-1">用户: <span className="text-neutral-900">{editingReportRecord.student_name} ({editingReportRecord.student_id})</span></p>
+                    <div className="bg-neutral-50 p-4 rounded-xl mb-6 space-y-1.5">
+                      <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{editingReportRecord.booking_code}</span></p>
+                      <p className="text-sm text-neutral-500">姓名: <span className="text-neutral-900">{editingReportRecord.student_name}</span></p>
+                      <p className="text-sm text-neutral-500">学号: <span className="text-neutral-900">{editingReportRecord.student_id}</span></p>
+                      <p className="text-sm text-neutral-500">导师: <span className="text-neutral-900">{editingReportRecord.supervisor}</span></p>
                       <p className="text-sm text-neutral-500">仪器: <span className="text-neutral-900">{editingReportRecord.equipment_name}</span></p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1004,10 +1006,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                             <div className="flex justify-between items-center md:block">
                               <span className="md:hidden font-medium text-neutral-500 text-xs">用户</span>
                               <div className="text-right md:text-left">
-                                <p className="font-medium text-neutral-900">
-                                  {u.student_name} <span className="text-xs text-neutral-500 font-normal">({u.student_id})</span>
-                                </p>
-                                <p className="text-xs text-neutral-500">{u.supervisor}</p>
+                                <p className="font-medium text-neutral-900">{u.student_name}</p>
+                                <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
                               </div>
                             </div>
                           </td>

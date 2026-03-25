@@ -176,7 +176,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
         <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">预约码</label>
-            <input type="text" placeholder="搜索预约码..." value={resFilterCode} onChange={e => setResFilterCode(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+            <input type="text" placeholder="搜索预约码..." value={resFilterCode} onChange={e => setResFilterCode(e.target.value)} className="w-16 px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
@@ -414,10 +414,8 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
                   <div className="flex justify-between items-center md:block">
                     <span className="md:hidden font-medium text-neutral-500 text-xs">用户</span>
                     <div className="text-right md:text-left">
-                      <p className="font-medium text-neutral-900">
-                        {res.student_name} <span className="text-xs text-neutral-500 font-normal">({res.student_id})</span>
-                      </p>
-                      <p className="text-xs text-neutral-500">{res.supervisor}</p>
+                      <p className="font-medium text-neutral-900">{res.student_name}</p>
+                      <p className="text-xs text-neutral-500">{res.student_id} | {res.supervisor}</p>
                     </div>
                   </div>
                 </td>
