@@ -314,17 +314,11 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   return (
     <>
       <div className="space-y-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 space-y-6">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div>
-              <label className="block text-xs font-medium text-neutral-500 mb-1">开始日期</label>
-              <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="px-4 py-2 rounded-xl border border-neutral-300 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-500 mb-1">结束日期</label>
-              <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="px-4 py-2 rounded-xl border border-neutral-300 text-sm" />
-            </div>
-          </div>
+        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-neutral-200 shadow-sm w-fit">
+          <span className="text-sm font-medium text-neutral-500">统计区间</span>
+          <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium" />
+          <span className="text-neutral-300">-</span>
+          <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium" />
         </div>
 
         {loadingReports ? (
