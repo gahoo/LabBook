@@ -157,7 +157,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       
       const duration = res.actual_start_time && res.actual_end_time 
         ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
-        : (new Date(res.end_time).getTime() - new Date(res.start_time).getTime()) / (1000 * 60 * 60);
+        : 0;
       
       if (reportFilterDurationMin && duration < Number(reportFilterDurationMin)) return false;
       if (reportFilterDurationMax && duration > Number(reportFilterDurationMax)) return false;
@@ -213,7 +213,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
         r.actual_start_time ? `${format(new Date(r.actual_start_time), 'yyyy-MM-dd HH:mm')} - ${format(new Date(r.actual_end_time), 'yyyy-MM-dd HH:mm')}` : '-',
         (r.actual_start_time && r.actual_end_time 
           ? (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60)
-          : (new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / (1000 * 60 * 60)
+          : 0
         ).toFixed(2),
         (r.total_cost || 0).toFixed(2),
         r.reportStatus,
@@ -774,7 +774,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               <p className="text-neutral-900">
                                 {(res.actual_start_time && res.actual_end_time 
                                   ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
-                                  : (new Date(res.end_time).getTime() - new Date(res.start_time).getTime()) / (1000 * 60 * 60)
+                                  : 0
                                 ).toFixed(2)}h
                               </p>
                               <p className="text-xs font-medium text-amber-600">¥{(res.total_cost || 0).toFixed(2)}</p>
