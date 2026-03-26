@@ -1137,7 +1137,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   };
 
   const allReservationsRaw = db.prepare(`
-    SELECT r.*, e.name as equipment_name, e.release_noshow_slots 
+    SELECT r.*, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     ${whereClause}
@@ -1147,30 +1147,48 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   const allReservations = allReservationsRaw.map((res: any, idx: number) => {
     const prevRes = idx > 0 && (allReservationsRaw[idx-1] as any).equipment_id === res.equipment_id ? (allReservationsRaw[idx-1] as any) : null;
     const reportStatus = calculateStatus(res, prevRes);
-    return { ...res, reportStatus };
+    
+    let finalCost = res.total_cost || 0;
+    if (reportStatus === '爽约') {
+      finalCost = res.price;
+    }
+
+    return { ...res, reportStatus, total_cost: finalCost };
   }).filter((res: any) => res.reportStatus !== '已取消');
 
-  // Filter for stats: exclude no-shows and cancelled
-  const statsReservations = allReservations.filter(r => r.actual_start_time && r.status === 'completed');
+  // Filter for stats: exclude cancelled, include completed and no-shows
+  const statsReservations = allReservations.filter(r => (r.actual_start_time && r.status === 'completed') || r.reportStatus === '爽约');
 
-  const usageByTime = db.prepare(`
-    SELECT ${periodExpr} as period, 
-           SUM((julianday(actual_end_time) - julianday(actual_start_time)) * 24) as total_hours,
-           SUM(total_cost) as total_revenue
-    FROM reservations
-    ${whereClause} AND status = 'completed' AND actual_start_time IS NOT NULL
-    GROUP BY period
-    ORDER BY period ASC
-  `).all(...params);
-
+  // Grouping by time
+  const timeMap = new Map();
+  
   // Grouping by person and supervisor manually to ensure correct sorting and filtering
   const personMap = new Map();
   const supervisorMap = new Map();
 
   statsReservations.forEach(r => {
-    const hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+    let hours = 0;
+    if (r.actual_start_time && r.actual_end_time) {
+      hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+    }
     const revenue = r.total_cost || 0;
 
+    // Time grouping
+    const dateToUse = r.actual_start_time ? new Date(r.actual_start_time) : new Date(r.start_time);
+    let pStr = format(dateToUse, 'yyyy-MM-dd');
+    if (period === 'week') pStr = format(dateToUse, "yyyy-'W'II");
+    if (period === 'month') pStr = format(dateToUse, 'yyyy-MM');
+    if (period === 'quarter') pStr = format(dateToUse, "yyyy-'Q'Q");
+    if (period === 'year') pStr = format(dateToUse, 'yyyy');
+
+    if (!timeMap.has(pStr)) {
+      timeMap.set(pStr, { period: pStr, total_hours: 0, total_revenue: 0 });
+    }
+    const t = timeMap.get(pStr);
+    t.total_hours += hours;
+    t.total_revenue += revenue;
+
+    // Person grouping
     const personKey = `${r.student_id}_${r.student_name}`;
     if (!personMap.has(personKey)) {
       personMap.set(personKey, { student_name: r.student_name, student_id: r.student_id, supervisor: r.supervisor, total_hours: 0, total_revenue: 0 });
@@ -1179,6 +1197,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     p.total_hours += hours;
     p.total_revenue += revenue;
 
+    // Supervisor grouping
     if (!supervisorMap.has(r.supervisor)) {
       supervisorMap.set(r.supervisor, { supervisor: r.supervisor, total_hours: 0, total_revenue: 0 });
     }
@@ -1187,6 +1206,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     s.total_revenue += revenue;
   });
 
+  const usageByTime = Array.from(timeMap.values()).sort((a, b) => a.period.localeCompare(b.period));
   const usageByPerson = Array.from(personMap.values()).sort((a, b) => b.total_hours - a.total_hours);
   const usageBySupervisor = Array.from(supervisorMap.values()).sort((a, b) => b.total_hours - a.total_hours);
 

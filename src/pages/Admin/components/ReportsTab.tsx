@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck } from 'lucide-react';
+import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -37,7 +37,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'violations' | 'stats'>('detailed');
+  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations'>('detailed');
+  const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
   const [statsType, setStatsType] = useState<'user' | 'supervisor'>('user');
   const [statsFilterUser, setStatsFilterUser] = useState('');
   const [statsFilterSupervisor, setStatsFilterSupervisor] = useState('');
@@ -47,7 +48,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [statsFilterCostMax, setStatsFilterCostMax] = useState('');
   const [violationsData, setViolationsData] = useState<any[]>([]);
   const [loadingViolations, setLoadingViolations] = useState(false);
-  const [showCharts, setShowCharts] = useState(true);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -324,27 +324,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               <label className="block text-xs font-medium text-neutral-500 mb-1">结束日期</label>
               <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="px-4 py-2 rounded-xl border border-neutral-300 text-sm" />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-500 mb-1">时间维度</label>
-              <select 
-                value={reportPeriod} 
-                onChange={e => setReportPeriod(e.target.value)}
-                className="px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
-              >
-                <option value="day">按天</option>
-                <option value="week">按周</option>
-                <option value="month">按月</option>
-                <option value="quarter">按季度</option>
-                <option value="year">按年</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-500 mb-1">图表类型</label>
-              <div className="flex bg-neutral-100 p-1 rounded-xl">
-                <button onClick={() => setReportChartType('bar')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${reportChartType === 'bar' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-500'}`}>柱状图</button>
-                <button onClick={() => setReportChartType('line')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${reportChartType === 'line' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-500'}`}>折线图</button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -352,80 +331,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
           <div className="text-center py-12 text-neutral-500">加载报表中...</div>
         ) : reports ? (
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-              <button 
-                onClick={() => setShowCharts(!showCharts)}
-                className="w-full p-4 flex items-center justify-between bg-neutral-50 hover:bg-neutral-100 transition-colors"
-              >
-                <span className="font-bold text-neutral-700">统计图表</span>
-                {showCharts ? <ChevronUp className="w-5 h-5 text-neutral-500" /> : <ChevronDown className="w-5 h-5 text-neutral-500" />}
-              </button>
-              
-              {showCharts && (
-                <div className="p-6 border-t border-neutral-200">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Usage Duration Chart */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-                      <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-red-600" />
-                        使用时长趋势 (小时)
-                      </h3>
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          {reportChartType === 'bar' ? (
-                            <BarChart data={reports.usageByTime} layout="vertical">
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                              <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                              <Tooltip cursor={{fill: '#f5f5f5'}} />
-                              <Bar dataKey="total_hours" name="时长" fill="#dc2626" radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                          ) : (
-                            <LineChart data={reports.usageByTime}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                              <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                              <Tooltip />
-                              <Line type="monotone" dataKey="total_hours" name="时长" stroke="#dc2626" strokeWidth={2} dot={{r: 4}} activeDot={{r: 6}} />
-                            </LineChart>
-                          )}
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Revenue Chart */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-200">
-                      <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                        <DollarSign className="w-5 h-5 text-amber-600" />
-                        收入趋势 (¥)
-                      </h3>
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          {reportChartType === 'bar' ? (
-                            <BarChart data={reports.usageByTime} layout="vertical">
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                              <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                              <Tooltip cursor={{fill: '#f5f5f5'}} />
-                              <Bar dataKey="total_revenue" name="收入" fill="#d97706" radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                          ) : (
-                            <LineChart data={reports.usageByTime}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                              <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                              <Tooltip />
-                              <Line type="monotone" dataKey="total_revenue" name="收入" stroke="#d97706" strokeWidth={2} dot={{r: 4}} activeDot={{r: 6}} />
-                            </LineChart>
-                          )}
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Sub-tabs for Detailed vs Violations */}
             <div className="flex border-b border-neutral-200 overflow-x-auto">
               <button
@@ -449,6 +354,17 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               >
                 <Users className="w-4 h-4" />
                 <span className={activeSubTab === 'stats' ? '' : 'hidden md:inline'}>时长费用统计</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab('charts')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  activeSubTab === 'charts'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <BarChart2 className="w-4 h-4" />
+                <span className={activeSubTab === 'charts' ? '' : 'hidden md:inline'}>统计图表</span>
               </button>
               <button
                 onClick={() => setActiveSubTab('violations')}
@@ -1102,6 +1018,96 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                       )}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {activeSubTab === 'charts' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+                <div className="p-6 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <h3 className="font-bold flex items-center gap-2">
+                      <BarChart2 className="w-5 h-5 text-red-600" />
+                      统计图表
+                    </h3>
+                    <div className="flex bg-neutral-100 p-1 rounded-lg">
+                      <button
+                        onClick={() => setChartMetric('duration')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          chartMetric === 'duration' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按时长
+                      </button>
+                      <button
+                        onClick={() => setChartMetric('revenue')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          chartMetric === 'revenue' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按费用
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-neutral-500">时间维度</label>
+                      <select 
+                        value={reportPeriod} 
+                        onChange={e => setReportPeriod(e.target.value)}
+                        className="px-3 py-1.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
+                      >
+                        <option value="day">按天</option>
+                        <option value="week">按周</option>
+                        <option value="month">按月</option>
+                        <option value="quarter">按季度</option>
+                        <option value="year">按年</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-neutral-500">图表类型</label>
+                      <div className="flex bg-neutral-100 p-1 rounded-xl">
+                        <button onClick={() => setReportChartType('bar')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportChartType === 'bar' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-500'}`}>柱状图</button>
+                        <button onClick={() => setReportChartType('line')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportChartType === 'line' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-500'}`}>折线图</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {reportChartType === 'bar' ? (
+                        <BarChart data={reports.usageByTime} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
+                          <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                          <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
+                          <Tooltip cursor={{fill: '#f5f5f5'}} />
+                          <Bar 
+                            dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
+                            name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
+                            fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
+                            radius={[0, 4, 4, 0]} 
+                          />
+                        </BarChart>
+                      ) : (
+                        <LineChart data={reports.usageByTime}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+                          <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                          <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                          <Tooltip />
+                          <Line 
+                            type="monotone" 
+                            dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
+                            name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
+                            stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
+                            strokeWidth={2} 
+                            dot={{r: 4}} 
+                            activeDot={{r: 6}} 
+                          />
+                        </LineChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             )}
