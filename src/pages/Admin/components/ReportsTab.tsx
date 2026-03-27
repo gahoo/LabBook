@@ -14,6 +14,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [loadingReports, setLoadingReports] = useState(false);
   const [reportPeriod, setReportPeriod] = useState('day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
+  const [syncWithFilters, setSyncWithFilters] = useState(false);
   const [reportStartDate, setReportStartDate] = useState(format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
   const [reportFilterUser, setReportFilterUser] = useState('');
@@ -177,6 +178,39 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       return true;
     });
   }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterStatus, reportFilterNotes]);
+
+  const syncedUsageByTime = useMemo(() => {
+    if (!syncWithFilters) return reports?.usageByTime || [];
+    
+    const timeMap = new Map();
+    const statsReservations = filteredReportReservations.filter((r: any) => 
+      (r.actual_start_time && r.status === 'completed') || r.reportStatus === '爽约'
+    );
+
+    statsReservations.forEach((r: any) => {
+      let hours = 0;
+      if (r.actual_start_time && r.actual_end_time) {
+        hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+      }
+      const revenue = r.total_cost || 0;
+
+      const dateToUse = r.actual_start_time ? new Date(r.actual_start_time) : new Date(r.start_time);
+      let pStr = format(dateToUse, 'yyyy-MM-dd');
+      if (reportPeriod === 'week') pStr = format(dateToUse, "yyyy-'W'II");
+      if (reportPeriod === 'month') pStr = format(dateToUse, 'yyyy-MM');
+      if (reportPeriod === 'quarter') pStr = format(dateToUse, "yyyy-'Q'Q");
+      if (reportPeriod === 'year') pStr = format(dateToUse, 'yyyy');
+
+      if (!timeMap.has(pStr)) {
+        timeMap.set(pStr, { period: pStr, total_hours: 0, total_revenue: 0 });
+      }
+      const t = timeMap.get(pStr);
+      t.total_hours += hours;
+      t.total_revenue += revenue;
+    });
+
+    return Array.from(timeMap.values()).sort((a: any, b: any) => a.period.localeCompare(b.period));
+  }, [syncWithFilters, reports?.usageByTime, filteredReportReservations, reportPeriod]);
 
   const reportTotalPages = Math.ceil(filteredReportReservations.length / reportPageSize);
   const paginatedReportReservations = filteredReportReservations.slice(
@@ -1062,6 +1096,21 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-neutral-500">与详细记录筛选联动</label>
+                      <button
+                        onClick={() => setSyncWithFilters(!syncWithFilters)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
+                          syncWithFilters ? 'bg-red-600' : 'bg-neutral-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            syncWithFilters ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <label className="text-xs font-medium text-neutral-500">时间维度</label>
                       <select 
                         value={reportPeriod} 
@@ -1088,7 +1137,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                   <div className="h-96">
                     <ResponsiveContainer width="100%" height="100%">
                       {reportChartType === 'bar' ? (
-                        <BarChart data={reports.usageByTime} layout="vertical">
+                        <BarChart data={syncedUsageByTime} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
                           <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
                           <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
@@ -1101,7 +1150,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                           />
                         </BarChart>
                       ) : (
-                        <LineChart data={reports.usageByTime}>
+                        <LineChart data={syncedUsageByTime}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
                           <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
                           <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
