@@ -51,6 +51,16 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [violationsData, setViolationsData] = useState<any[]>([]);
   const [loadingViolations, setLoadingViolations] = useState(false);
 
+  const [violationFilterUser, setViolationFilterUser] = useState('');
+  const [violationFilterLate, setViolationFilterLate] = useState<number>(0);
+  const [violationFilterOvertime, setViolationFilterOvertime] = useState<number>(0);
+  const [violationFilterNoshow, setViolationFilterNoshow] = useState<number>(0);
+  const [violationFilterCancel, setViolationFilterCancel] = useState<number>(0);
+  const [violationFilterTotal, setViolationFilterTotal] = useState<number>(0);
+  const [violationFilterPenalty, setViolationFilterPenalty] = useState<string[]>([]);
+  const [showViolationPenaltyFilterPopup, setShowViolationPenaltyFilterPopup] = useState(false);
+  const violationPenaltyFilterPopupRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (reportTimeFilterPopupRef.current && !reportTimeFilterPopupRef.current.contains(event.target as Node)) {
@@ -58,6 +68,9 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       }
       if (reportStatusFilterPopupRef.current && !reportStatusFilterPopupRef.current.contains(event.target as Node)) {
         setShowReportStatusFilterPopup(false);
+      }
+      if (violationPenaltyFilterPopupRef.current && !violationPenaltyFilterPopupRef.current.contains(event.target as Node)) {
+        setShowViolationPenaltyFilterPopup(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -143,6 +156,26 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       return true;
     });
   }, [reports?.usageBySupervisor, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterCostMin, statsFilterCostMax]);
+
+  const filteredViolationsData = useMemo(() => {
+    return violationsData.filter((v: any) => {
+      if (violationFilterUser) {
+        const search = violationFilterUser.toLowerCase();
+        if (!v.student_name.toLowerCase().includes(search) && 
+            !v.student_id.toLowerCase().includes(search) && 
+            !v.supervisor.toLowerCase().includes(search)) {
+          return false;
+        }
+      }
+      if (v.late_count < violationFilterLate) return false;
+      if (v.overtime_count < violationFilterOvertime) return false;
+      if (v.noshow_count < violationFilterNoshow) return false;
+      if (v.cancelled_count < violationFilterCancel) return false;
+      if (v.total_violations < violationFilterTotal) return false;
+      if (violationFilterPenalty.length > 0 && !violationFilterPenalty.includes(v.suggested_penalty)) return false;
+      return true;
+    });
+  }, [violationsData, violationFilterUser, violationFilterLate, violationFilterOvertime, violationFilterNoshow, violationFilterCancel, violationFilterTotal, violationFilterPenalty]);
 
   const filteredReportReservations = useMemo(() => {
     return (reports?.allReservations || []).filter((res: any) => {
@@ -280,10 +313,10 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   };
 
   const exportViolations = () => {
-    if (!violationsData || violationsData.length === 0) return;
+    if (!filteredViolationsData || filteredViolationsData.length === 0) return;
     const headers = ['学号', '姓名', '导师', '迟到次数', '超时次数', '爽约次数', '取消次数', '违规总计', '建议处罚'];
     exportToCSV(
-      violationsData,
+      filteredViolationsData,
       `violations_stats_${format(subDays(startOfToday(), 30), 'yyyy-MM-dd')}_${format(startOfToday(), 'yyyy-MM-dd')}`,
       headers,
       (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.overtime_count, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
@@ -1197,17 +1230,141 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                         <tr>
-                          <th className="px-4 py-4 font-medium">用户/导师</th>
-                          <th className="px-4 py-4 font-medium">迟到次数</th>
-                          <th className="px-4 py-4 font-medium">超时次数</th>
-                          <th className="px-4 py-4 font-medium">爽约次数</th>
-                          <th className="px-4 py-4 font-medium">取消次数</th>
-                          <th className="px-4 py-4 font-medium">违规总计</th>
-                          <th className="px-4 py-4 font-medium">建议处罚</th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">用户/导师</div>
+                            <input 
+                              type="text" 
+                              placeholder="搜索..." 
+                              value={violationFilterUser}
+                              onChange={e => setViolationFilterUser(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                            />
+                          </th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">迟到次数</div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max={Math.max(0, ...violationsData.map(v => v.late_count))} 
+                                value={violationFilterLate}
+                                onChange={e => setViolationFilterLate(Number(e.target.value))}
+                                className="w-16 accent-red-600"
+                              />
+                              <span className="text-xs font-normal">≥{violationFilterLate}</span>
+                            </div>
+                          </th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">超时次数</div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max={Math.max(0, ...violationsData.map(v => v.overtime_count))} 
+                                value={violationFilterOvertime}
+                                onChange={e => setViolationFilterOvertime(Number(e.target.value))}
+                                className="w-16 accent-red-600"
+                              />
+                              <span className="text-xs font-normal">≥{violationFilterOvertime}</span>
+                            </div>
+                          </th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">爽约次数</div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max={Math.max(0, ...violationsData.map(v => v.noshow_count))} 
+                                value={violationFilterNoshow}
+                                onChange={e => setViolationFilterNoshow(Number(e.target.value))}
+                                className="w-16 accent-red-600"
+                              />
+                              <span className="text-xs font-normal">≥{violationFilterNoshow}</span>
+                            </div>
+                          </th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">取消次数</div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max={Math.max(0, ...violationsData.map(v => v.cancelled_count))} 
+                                value={violationFilterCancel}
+                                onChange={e => setViolationFilterCancel(Number(e.target.value))}
+                                className="w-16 accent-red-600"
+                              />
+                              <span className="text-xs font-normal">≥{violationFilterCancel}</span>
+                            </div>
+                          </th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">违规总计</div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max={Math.max(0, ...violationsData.map(v => v.total_violations))} 
+                                value={violationFilterTotal}
+                                onChange={e => setViolationFilterTotal(Number(e.target.value))}
+                                className="w-16 accent-red-600"
+                              />
+                              <span className="text-xs font-normal">≥{violationFilterTotal}</span>
+                            </div>
+                          </th>
+                          <th className="px-4 py-4 font-medium align-top">
+                            <div className="mb-2">建议处罚</div>
+                            <div className="relative" ref={violationPenaltyFilterPopupRef}>
+                              <button 
+                                onClick={() => setShowViolationPenaltyFilterPopup(!showViolationPenaltyFilterPopup)}
+                                className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center font-normal"
+                              >
+                                {violationFilterPenalty.length > 0 ? (
+                                  <>
+                                    {violationFilterPenalty.map(p => (
+                                      <span key={p} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                        {p}
+                                        <X 
+                                          className="w-3 h-3 cursor-pointer hover:text-red-500" 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setViolationFilterPenalty(violationFilterPenalty.filter(st => st !== p));
+                                          }}
+                                        />
+                                      </span>
+                                    ))}
+                                  </>
+                                ) : (
+                                  <span className="text-neutral-400">全部处罚</span>
+                                )}
+                              </button>
+                              {showViolationPenaltyFilterPopup && (
+                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10 font-normal">
+                                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                                    {['无', '警告', '频繁取消警告', '暂停预约7天', '暂停预约30天'].map(penalty => (
+                                      <label key={penalty} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                                        <input 
+                                          type="checkbox"
+                                          checked={violationFilterPenalty.includes(penalty)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setViolationFilterPenalty([...violationFilterPenalty, penalty]);
+                                            } else {
+                                              setViolationFilterPenalty(violationFilterPenalty.filter(st => st !== penalty));
+                                            }
+                                          }}
+                                          className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                        />
+                                        <span className="text-sm text-neutral-700">{penalty}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {violationsData.map((v: any, idx: number) => (
+                        {filteredViolationsData.map((v: any, idx: number) => (
                           <tr key={idx} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
                             <td className="px-4 py-3">
                               <p className="font-medium text-neutral-900">{v.student_name}</p>
