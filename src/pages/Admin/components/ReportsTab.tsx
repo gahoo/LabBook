@@ -313,7 +313,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-1">
         <div className="flex justify-end">
           <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-neutral-200 shadow-sm w-fit">
             <Calendar className="w-4 h-4 text-neutral-400" />

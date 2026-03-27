@@ -952,7 +952,7 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
     SELECT r.*, e.name as equipment_name, e.release_noshow_slots 
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
-    WHERE r.start_time >= ?
+    WHERE r.start_time >= ? AND r.status IN ('approved', 'active', 'completed', 'cancelled')
     ORDER BY r.equipment_id, r.start_time ASC
   `).all(windowStartStr);
 
