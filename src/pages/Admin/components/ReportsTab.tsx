@@ -1090,9 +1090,9 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                       {reportChartType === 'bar' ? (
                         <BarChart data={reports.usageByTime} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                          <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                          <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
                           <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                          <Tooltip cursor={{fill: '#f5f5f5'}} />
+                          <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
                           <Bar 
                             dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
                             name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
@@ -1104,8 +1104,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                         <LineChart data={reports.usageByTime}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
                           <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                          <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                          <Tooltip />
+                          <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
+                          <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                           <Line 
                             type="monotone" 
                             dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
