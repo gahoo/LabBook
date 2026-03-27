@@ -22,6 +22,7 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
     return d.toISOString();
   });
   const [auditFilterResId, setAuditFilterResId] = useState('');
+  const [auditFilterAction, setAuditFilterAction] = useState('');
   const [auditFilterBefore, setAuditFilterBefore] = useState('');
   const [auditFilterAfter, setAuditFilterAfter] = useState('');
   const [showAuditMobileFilters, setShowAuditMobileFilters] = useState(false);
@@ -87,9 +88,21 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
     }
   };
 
+  const simplifyAction = (action: string) => {
+    if (!action) return '-';
+    const lower = action.toLowerCase();
+    if (lower.includes('delete')) return '删除';
+    if (lower.includes('modif') || lower.includes('update')) return '修改';
+    if (lower.includes('create') || lower.includes('add')) return '创建';
+    return action;
+  };
+
   const filteredAuditLogs = auditLogs.filter(log => {
     if (auditFilterResId && !String(log.booking_code || log.reservation_id).includes(auditFilterResId)) return false;
     
+    const simplifiedAction = simplifyAction(log.action);
+    if (auditFilterAction && !simplifiedAction.includes(auditFilterAction)) return false;
+
     const { diffOld, diffNew } = getDiff(log.old_data, log.new_data);
     
     if (auditFilterBefore && !diffOld.toLowerCase().includes(auditFilterBefore.toLowerCase())) return false;
@@ -133,6 +146,10 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">预约码</label>
             <input type="text" placeholder="搜索预约码..." value={auditFilterResId} onChange={e => setAuditFilterResId(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-500 mb-1">操作</label>
+            <input type="text" placeholder="搜索操作..." value={auditFilterAction} onChange={e => setAuditFilterAction(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">修改前</label>
@@ -221,6 +238,16 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
                 />
               </th>
               <th className="px-4 py-4 font-medium align-top">
+                <div className="mb-2">操作</div>
+                <input 
+                  type="text" 
+                  placeholder="搜索操作..." 
+                  value={auditFilterAction}
+                  onChange={e => setAuditFilterAction(e.target.value)}
+                  className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                />
+              </th>
+              <th className="px-4 py-4 font-medium align-top">
                 <div className="mb-2">修改前</div>
                 <input 
                   type="text" 
@@ -260,6 +287,18 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
                   </div>
                 </td>
                 <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                  <div className="flex justify-between items-center md:block">
+                    <span className="md:hidden font-medium text-neutral-500 text-xs">操作</span>
+                    <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                      simplifyAction(log.action) === '删除' ? 'bg-red-100 text-red-700' : 
+                      simplifyAction(log.action) === '修改' ? 'bg-blue-100 text-blue-700' : 
+                      'bg-neutral-100 text-neutral-700'
+                    }`}>
+                      {simplifyAction(log.action)}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                   <div className="flex flex-col md:block gap-2">
                     <span className="md:hidden font-medium text-neutral-500 text-xs">修改前</span>
                     <div className="max-h-24 overflow-y-auto w-full md:w-64 text-xs font-mono text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100 whitespace-pre-wrap">
@@ -279,7 +318,7 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
             )})}
             {auditLogs.length === 0 && (
               <tr className="block md:table-row">
-                <td colSpan={4} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无审计日志</td>
+                <td colSpan={5} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无审计日志</td>
               </tr>
             )}
           </tbody>
