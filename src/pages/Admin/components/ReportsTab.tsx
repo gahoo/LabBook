@@ -1357,6 +1357,14 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                                       </label>
                                     ))}
                                   </div>
+                                  <div className="mt-2 pt-2 border-t border-neutral-100 flex justify-end">
+                                    <button
+                                      onClick={() => setViolationFilterPenalty([])}
+                                      className="text-xs text-neutral-500 hover:text-neutral-700 px-2 py-1"
+                                    >
+                                      清空
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>

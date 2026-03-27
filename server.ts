@@ -1214,11 +1214,27 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
-  const logs = db.prepare(`
-    SELECT * FROM audit_logs
-    ORDER BY created_at DESC
-    LIMIT 100
-  `).all();
+  const { start_date, end_date } = req.query;
+  let query = `
+    SELECT a.*, r.booking_code 
+    FROM audit_logs a
+    LEFT JOIN reservations r ON a.reservation_id = r.id
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+  
+  if (start_date) {
+    query += ` AND a.created_at >= ?`;
+    params.push(start_date);
+  }
+  if (end_date) {
+    query += ` AND a.created_at <= ?`;
+    params.push(end_date);
+  }
+  
+  query += ` ORDER BY a.created_at DESC`;
+  
+  const logs = db.prepare(query).all(...params);
   res.json(logs);
 });
 
