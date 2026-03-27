@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2 } from 'lucide-react';
+import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -314,11 +314,14 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   return (
     <>
       <div className="space-y-6">
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-neutral-200 shadow-sm w-fit">
-          <span className="text-sm font-medium text-neutral-500">统计区间</span>
-          <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium" />
-          <span className="text-neutral-300">-</span>
-          <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium" />
+        <div className="flex justify-end">
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-neutral-200 shadow-sm w-fit">
+            <Calendar className="w-4 h-4 text-neutral-400" />
+            <span className="hidden sm:inline text-sm font-medium text-neutral-500">统计区间</span>
+            <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium w-[110px]" />
+            <span className="text-neutral-300">-</span>
+            <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium w-[110px]" />
+          </div>
         </div>
 
         {loadingReports ? (
