@@ -12,6 +12,7 @@ interface ReservationsTabProps {
 export default function ReservationsTab({ token, onLogout, statusMap }: ReservationsTabProps) {
   const [reservations, setReservations] = useState<any[]>([]);
   const [editingReservation, setEditingReservation] = useState<any>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteReservationConfirmId, setDeleteReservationConfirmId] = useState<number | null>(null);
 
   // Reservation Filters
@@ -90,7 +91,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
       });
       if (res.ok) {
         toast.success('预约更新成功');
-        setEditingReservation(null);
+        setIsDrawerOpen(false);
         fetchReservations();
       }
     } catch (err) {
@@ -133,6 +134,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
       start_time: toLocalISO(res.start_time),
       end_time: toLocalISO(res.end_time),
     });
+    setIsDrawerOpen(true);
   };
 
   const filteredReservations = reservations.filter(res => {
@@ -535,10 +537,27 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
         </table>
       </div>
 
-      {editingReservation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">修改预约信息</h3>
+      {/* Drawer Overlay */}
+      <div 
+        className={`fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setIsDrawerOpen(false)}
+      />
+
+      {/* Drawer Panel */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out overflow-y-auto ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="p-4 border-b border-neutral-200 flex items-center justify-between sticky top-0 bg-white z-10">
+          <h2 className="text-lg font-bold text-neutral-900">修改预约信息</h2>
+          <button 
+            onClick={() => setIsDrawerOpen(false)}
+            className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4 sm:p-6">
+          {editingReservation && (
             <form onSubmit={handleUpdateReservation} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -595,13 +614,13 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
                 </select>
               </div>
               <div className="flex gap-4 mt-8">
-                <button type="button" onClick={() => setEditingReservation(null)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
+                <button type="button" onClick={() => setIsDrawerOpen(false)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
                 <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700">保存修改</button>
               </div>
             </form>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {deleteReservationConfirmId !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

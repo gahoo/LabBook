@@ -35,6 +35,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const reportStatusFilterPopupRef = useRef<HTMLDivElement>(null);
   
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations'>('detailed');
@@ -283,7 +284,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       });
       if (res.ok) {
         toast.success('记录更新成功');
-        setEditingReportRecord(null);
+        setIsDrawerOpen(false);
         fetchReports();
       } else {
         toast.error('更新失败');
@@ -733,6 +734,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                                   actual_start_time: toLocal(res.actual_start_time),
                                   actual_end_time: toLocal(res.actual_end_time)
                                 });
+                                setIsDrawerOpen(true);
                               }}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="编辑记录"
@@ -789,16 +791,28 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
             </div>
             )}
 
-            {/* Edit Modal */}
-            {editingReportRecord && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold">编辑预约记录</h3>
-                    <button onClick={() => setEditingReportRecord(null)} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
+            {/* Edit Drawer */}
+            {/* Drawer Overlay */}
+            <div 
+              className={`fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              onClick={() => setIsDrawerOpen(false)}
+            />
+
+            {/* Drawer Panel */}
+            <div 
+              className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out overflow-y-auto ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+            >
+              <div className="p-4 border-b border-neutral-200 flex items-center justify-between sticky top-0 bg-white z-10">
+                <h2 className="text-lg font-bold text-neutral-900">编辑预约记录</h2>
+                <button 
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 sm:p-6">
+                {editingReportRecord && (
                   <form onSubmit={handleUpdateReportRecord} className="space-y-4">
                     <div className="bg-neutral-50 p-4 rounded-xl mb-6 space-y-1.5">
                       <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{editingReportRecord.booking_code}</span></p>
@@ -850,13 +864,13 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                       />
                     </div>
                     <div className="flex gap-4 mt-8">
-                      <button type="button" onClick={() => setEditingReportRecord(null)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
+                      <button type="button" onClick={() => setIsDrawerOpen(false)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
                       <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700">保存修改</button>
                     </div>
                   </form>
-                </div>
+                )}
               </div>
-            )}
+            </div>
 
             {activeSubTab === 'stats' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
