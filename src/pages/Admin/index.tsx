@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { BarChart3, CalendarDays, List, Lock, FileText } from 'lucide-react';
+import { BarChart3, CalendarDays, List, Lock, FileText, Settings } from 'lucide-react';
 import AuditLogsTab from './components/AuditLogsTab';
 import WhitelistAppsTab from './components/WhitelistAppsTab';
 import ReservationsTab from './components/ReservationsTab';
 import ReportsTab from './components/ReportsTab';
 import EquipmentManagementTab from './components/EquipmentManagementTab';
+import SettingsTab from './components/SettingsTab';
 
 export default function Admin() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings'>('reservations');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +122,13 @@ export default function Admin() {
               <FileText className="w-4 h-4" />
               <span className={activeTab === 'audit_logs' ? 'inline' : 'hidden sm:inline'}>审计日志</span>
             </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'settings' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+            >
+              <Settings className="w-4 h-4" />
+              <span className={activeTab === 'settings' ? 'inline' : 'hidden sm:inline'}>设置</span>
+            </button>
           </div>
           <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline shrink-0">退出</button>
         </div>
@@ -145,6 +153,9 @@ export default function Admin() {
       )}
       {activeTab === 'audit_logs' && (
         <AuditLogsTab token={token} handleLogout={handleLogout} />
+      )}
+      {activeTab === 'settings' && (
+        <SettingsTab token={token} />
       )}
     </div>
   );

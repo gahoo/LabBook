@@ -71,6 +71,11 @@ db.exec(`
     new_data TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 try {
@@ -137,6 +142,21 @@ try {
   `);
 } catch (e) {}
 
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+  
+  // Insert default settings if they don't exist
+  const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  insertSetting.run('app_name', 'LabBook');
+  insertSetting.run('default_route', '/');
+  insertSetting.run('app_logo', '');
+} catch (e) {}
+
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
   if (authHeader === `Bearer ${ADMIN_PASSWORD}`) {
@@ -147,6 +167,36 @@ const adminAuth = (req: any, res: any, next: any) => {
 };
 
 // API Routes
+
+// Get settings
+app.get('/api/settings', (req, res) => {
+  const settings = db.prepare('SELECT * FROM settings').all();
+  const settingsMap = settings.reduce((acc: any, curr: any) => {
+    acc[curr.key] = curr.value;
+    return acc;
+  }, {});
+  res.json(settingsMap);
+});
+
+// Update settings (Admin)
+app.post('/api/admin/settings', adminAuth, (req, res) => {
+  const { app_name, default_route, app_logo } = req.body;
+  const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
+  const insertStmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  
+  if (app_name !== undefined) {
+    stmt.run(app_name, 'app_name');
+  }
+  if (default_route !== undefined) {
+    stmt.run(default_route, 'default_route');
+  }
+  if (app_logo !== undefined) {
+    insertStmt.run('app_logo', app_logo);
+    stmt.run(app_logo, 'app_logo');
+  }
+  
+  res.json({ success: true });
+});
 
 // 1. Get all equipment
 app.get('/api/equipment', (req, res) => {
@@ -836,6 +886,12 @@ app.post('/api/reservations/checkout', (req, res) => {
     total_cost += reservation.price;
   }
 
+  const overtimeThreshold = 30 * 60 * 1000;
+  const end = new Date(reservation.end_time);
+  if (actualEnd.getTime() > end.getTime() + overtimeThreshold) {
+    total_cost *= 2;
+  }
+
   db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ?, consumable_quantity = ? WHERE booking_code = ?").run(now, total_cost, finalConsumableQty, booking_code);
   res.json({ success: true, actual_end_time: now, total_cost, consumable_quantity: finalConsumableQty });
 });
@@ -902,6 +958,12 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     }
     if (eq.consumable_fee > 0 && consumable_quantity > 0) {
       total_cost += eq.consumable_fee * consumable_quantity;
+    }
+
+    const overtimeThreshold = 30 * 60 * 1000;
+    const scheduledEnd = new Date(oldRes.end_time);
+    if (end.getTime() > scheduledEnd.getTime() + overtimeThreshold) {
+      total_cost *= 2;
     }
   }
 
@@ -993,11 +1055,16 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
     const lateThreshold = 15 * 60 * 1000;
     const overtimeThreshold = 30 * 60 * 1000;
 
+    const statuses = [];
     if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
-      return '迟到';
+      statuses.push('迟到');
     }
     if (actualEnd && actualEnd.getTime() > end.getTime() + overtimeThreshold) {
-      return '超时';
+      statuses.push('超时');
+    }
+    
+    if (statuses.length > 0) {
+      return statuses.join(', ');
     }
     
     return '正常';
@@ -1009,7 +1076,7 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
     const prevRes = idx > 0 && (allReservationsRaw[idx-1] as any).equipment_id === res.equipment_id ? (allReservationsRaw[idx-1] as any) : null;
     const reportStatus = calculateStatus(res, prevRes);
 
-    if (['迟到', '超时', '爽约', '已取消', '临期取消'].includes(reportStatus)) {
+    if (reportStatus.includes('迟到') || reportStatus.includes('超时') || reportStatus.includes('爽约') || reportStatus.includes('已取消') || reportStatus.includes('临期取消')) {
       const personKey = `${res.student_id}_${res.student_name}`;
       if (!personMap.has(personKey)) {
         personMap.set(personKey, {
@@ -1017,17 +1084,33 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
           student_name: res.student_name,
           supervisor: res.supervisor,
           late_count: 0,
+          late_duration: 0,
           overtime_count: 0,
+          overtime_duration: 0,
           noshow_count: 0,
           cancelled_count: 0
         });
       }
       
       const p = personMap.get(personKey);
-      if (reportStatus === '迟到') p.late_count++;
-      if (reportStatus === '超时') p.overtime_count++;
-      if (reportStatus === '爽约') p.noshow_count++;
-      if (reportStatus === '已取消' || reportStatus === '临期取消') p.cancelled_count++;
+      if (reportStatus.includes('迟到')) {
+        p.late_count++;
+        if (res.actual_start_time) {
+          const start = new Date(res.start_time).getTime();
+          const actualStart = new Date(res.actual_start_time).getTime();
+          p.late_duration += Math.floor((actualStart - start) / 60000);
+        }
+      }
+      if (reportStatus.includes('超时')) {
+        p.overtime_count++;
+        if (res.actual_end_time) {
+          const end = new Date(res.end_time).getTime();
+          const actualEnd = new Date(res.actual_end_time).getTime();
+          p.overtime_duration += Math.floor((actualEnd - end) / 60000);
+        }
+      }
+      if (reportStatus.includes('爽约')) p.noshow_count++;
+      if (reportStatus.includes('已取消') || reportStatus.includes('临期取消')) p.cancelled_count++;
     }
   });
 
@@ -1126,11 +1209,16 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     const overtimeThreshold = 30 * 60 * 1000;
     const normalThreshold = 30 * 60 * 1000;
 
+    const statuses = [];
     if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
-      return '迟到';
+      statuses.push('迟到');
     }
     if (actualEnd && actualEnd.getTime() > end.getTime() + overtimeThreshold) {
-      return '超时';
+      statuses.push('超时');
+    }
+    
+    if (statuses.length > 0) {
+      return statuses.join(', ');
     }
     
     return '正常';
@@ -1149,15 +1237,24 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     const reportStatus = calculateStatus(res, prevRes);
     
     let finalCost = res.total_cost || 0;
-    if (reportStatus === '爽约') {
+    if (reportStatus.includes('爽约')) {
       finalCost = res.price;
     }
 
-    return { ...res, reportStatus, total_cost: finalCost };
-  }).filter((res: any) => res.reportStatus !== '已取消');
+    let late_mins = 0;
+    let overtime_mins = 0;
+    if (reportStatus.includes('迟到') && res.actual_start_time) {
+      late_mins = Math.floor((new Date(res.actual_start_time).getTime() - new Date(res.start_time).getTime()) / 60000);
+    }
+    if (reportStatus.includes('超时') && res.actual_end_time) {
+      overtime_mins = Math.floor((new Date(res.actual_end_time).getTime() - new Date(res.end_time).getTime()) / 60000);
+    }
+
+    return { ...res, reportStatus, total_cost: finalCost, late_mins, overtime_mins };
+  }).filter((res: any) => !res.reportStatus.includes('已取消'));
 
   // Filter for stats: exclude cancelled, include completed and no-shows
-  const statsReservations = allReservations.filter(r => (r.actual_start_time && r.status === 'completed') || r.reportStatus === '爽约');
+  const statsReservations = allReservations.filter(r => (r.actual_start_time && r.status === 'completed') || r.reportStatus.includes('爽约'));
 
   // Grouping by time
   const timeMap = new Map();

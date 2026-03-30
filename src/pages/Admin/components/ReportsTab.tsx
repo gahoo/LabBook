@@ -200,7 +200,12 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       if (reportFilterCostMin && (res.total_cost || 0) < Number(reportFilterCostMin)) return false;
       if (reportFilterCostMax && (res.total_cost || 0) > Number(reportFilterCostMax)) return false;
       
-      if (reportFilterStatus.length > 0 && !reportFilterStatus.includes(res.reportStatus)) return false;
+      if (reportFilterStatus.length > 0) {
+        const statuses = res.reportStatus.split(', ');
+        if (!statuses.some((s: string) => reportFilterStatus.includes(s))) {
+          return false;
+        }
+      }
       
       if (reportFilterNotes) {
         if (!res.notes || !res.notes.toLowerCase().includes(reportFilterNotes.toLowerCase())) {
@@ -217,7 +222,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     
     const timeMap = new Map();
     const statsReservations = filteredReportReservations.filter((r: any) => 
-      (r.actual_start_time && r.status === 'completed') || r.reportStatus === '爽约'
+      (r.actual_start_time && r.status === 'completed') || r.reportStatus?.includes('爽约')
     );
 
     statsReservations.forEach((r: any) => {
@@ -266,7 +271,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
 
   const exportDetailedReport = () => {
     if (!reports?.allReservations) return;
-    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约时间', '实际时间', '时长(小时)', '费用(¥)', '状态', '备注'];
+    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约时间', '实际时间', '时长(小时)', '费用(¥)', '状态', '迟到时长(小时)', '超时时长(小时)', '备注'];
     exportToCSV(
       reports.allReservations,
       `detailed_report_${reportStartDate}_${reportEndDate}`,
@@ -285,6 +290,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
         ).toFixed(2),
         (r.total_cost || 0).toFixed(2),
         r.reportStatus,
+        r.late_mins ? Number((r.late_mins / 60).toFixed(1)) : 0,
+        r.overtime_mins ? Number((r.overtime_mins / 60).toFixed(1)) : 0,
         r.notes || ''
       ]
     );
@@ -314,12 +321,12 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
 
   const exportViolations = () => {
     if (!filteredViolationsData || filteredViolationsData.length === 0) return;
-    const headers = ['学号', '姓名', '导师', '迟到次数', '超时次数', '爽约次数', '取消次数', '违规总计', '建议处罚'];
+    const headers = ['学号', '姓名', '导师', '迟到次数', '累计迟到时长(小时)', '超时次数', '累计超时时长(小时)', '爽约次数', '取消次数', '违规总计', '建议处罚'];
     exportToCSV(
       filteredViolationsData,
       `violations_stats_${format(subDays(startOfToday(), 30), 'yyyy-MM-dd')}_${format(startOfToday(), 'yyyy-MM-dd')}`,
       headers,
-      (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.overtime_count, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
+      (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.late_duration ? Number((v.late_duration / 60).toFixed(1)) : 0, v.overtime_count, v.overtime_duration ? Number((v.overtime_duration / 60).toFixed(1)) : 0, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
     );
   };
 
@@ -765,16 +772,20 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                         <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
-                            <div className="relative inline-block">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                res.reportStatus === '正常' ? 'bg-emerald-100 text-emerald-700' :
-                                res.reportStatus === '迟到' ? 'bg-amber-100 text-amber-700' :
-                                res.reportStatus === '超时' ? 'bg-orange-100 text-orange-700' :
-                                res.reportStatus === '待上机' ? 'bg-blue-100 text-blue-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>
-                                {res.reportStatus}
-                              </span>
+                            <div className="relative inline-flex flex-wrap gap-1">
+                              {res.reportStatus?.split(', ').map((status: string, index: number) => (
+                                <span key={index} className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  status === '正常' ? 'bg-emerald-100 text-emerald-700' :
+                                  status === '迟到' ? 'bg-amber-100 text-amber-700' :
+                                  status === '超时' ? 'bg-orange-100 text-orange-700' :
+                                  status === '待上机' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {status}
+                                  {status === '迟到' && res.late_mins ? ` (${Number((res.late_mins / 60).toFixed(1))}h)` : ''}
+                                  {status === '超时' && res.overtime_mins ? ` (${Number((res.overtime_mins / 60).toFixed(1))}h)` : ''}
+                                </span>
+                              ))}
                               {res.notes && (
                                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" title={res.notes}></span>
                               )}
@@ -1378,8 +1389,14 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               <p className="font-medium text-neutral-900">{v.student_name}</p>
                               <p className="text-xs text-neutral-500">{v.student_id} | {v.supervisor}</p>
                             </td>
-                            <td className="px-4 py-3 text-neutral-600">{v.late_count}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.overtime_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">
+                              {v.late_count}
+                              {v.late_duration > 0 && <span className="text-xs text-neutral-400 ml-1">({Number((v.late_duration / 60).toFixed(1))}h)</span>}
+                            </td>
+                            <td className="px-4 py-3 text-neutral-600">
+                              {v.overtime_count}
+                              {v.overtime_duration > 0 && <span className="text-xs text-neutral-400 ml-1">({Number((v.overtime_duration / 60).toFixed(1))}h)</span>}
+                            </td>
                             <td className="px-4 py-3 text-neutral-600">{v.noshow_count}</td>
                             <td className="px-4 py-3 text-neutral-600">{v.cancelled_count}</td>
                             <td className="px-4 py-3 font-bold text-red-600">{v.total_violations}</td>
