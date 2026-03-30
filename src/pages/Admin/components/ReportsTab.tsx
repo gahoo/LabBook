@@ -321,12 +321,12 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
 
   const exportViolations = () => {
     if (!filteredViolationsData || filteredViolationsData.length === 0) return;
-    const headers = ['学号', '姓名', '导师', '迟到次数', '累计迟到时长(小时)', '超时次数', '累计超时时长(小时)', '爽约次数', '取消次数', '违规总计', '建议处罚'];
+    const headers = ['学号', '姓名', '导师', '迟到次数', '累计迟到时长(小时)', '超时次数', '累计超时时长(小时)', '爽约次数', '取消次数(临期)', '违规总计', '建议处罚'];
     exportToCSV(
       filteredViolationsData,
       `violations_stats_${format(subDays(startOfToday(), 30), 'yyyy-MM-dd')}_${format(startOfToday(), 'yyyy-MM-dd')}`,
       headers,
-      (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.late_duration ? Number((v.late_duration / 60).toFixed(1)) : 0, v.overtime_count, v.overtime_duration ? Number((v.overtime_duration / 60).toFixed(1)) : 0, v.noshow_count, v.cancelled_count, v.total_violations, v.suggested_penalty]
+      (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.late_duration ? Number((v.late_duration / 60).toFixed(1)) : 0, v.overtime_count, v.overtime_duration ? Number((v.overtime_duration / 60).toFixed(1)) : 0, v.noshow_count, v.late_cancelled_count > 0 ? `${v.cancelled_count} (${v.late_cancelled_count})` : v.cancelled_count, v.total_violations, v.suggested_penalty]
     );
   };
 
@@ -1294,7 +1294,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                             </div>
                           </th>
                           <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">取消次数</div>
+                            <div className="mb-2">取消次数(临期)</div>
                             <div className="flex items-center gap-2">
                               <input 
                                 type="range" 
@@ -1398,7 +1398,10 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               {v.overtime_duration > 0 && <span className="text-xs text-neutral-400 ml-1">({Number((v.overtime_duration / 60).toFixed(1))}h)</span>}
                             </td>
                             <td className="px-4 py-3 text-neutral-600">{v.noshow_count}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.cancelled_count}</td>
+                            <td className="px-4 py-3 text-neutral-600">
+                              {v.cancelled_count}
+                              {v.late_cancelled_count > 0 && <span className="text-xs text-neutral-400 ml-1">({v.late_cancelled_count})</span>}
+                            </td>
                             <td className="px-4 py-3 font-bold text-red-600">{v.total_violations}</td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${

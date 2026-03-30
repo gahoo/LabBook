@@ -1088,7 +1088,8 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
           overtime_count: 0,
           overtime_duration: 0,
           noshow_count: 0,
-          cancelled_count: 0
+          cancelled_count: 0,
+          late_cancelled_count: 0
         });
       }
       
@@ -1110,7 +1111,10 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
         }
       }
       if (reportStatus.includes('爽约')) p.noshow_count++;
-      if (reportStatus.includes('已取消') || reportStatus.includes('临期取消')) p.cancelled_count++;
+      if (reportStatus.includes('已取消') || reportStatus.includes('临期取消')) {
+        p.cancelled_count++;
+        if (reportStatus.includes('临期取消')) p.late_cancelled_count++;
+      }
     }
   });
 
