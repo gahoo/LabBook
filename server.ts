@@ -1259,8 +1259,6 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   `);
   stmt.run(student_id, student_name, supervisor, phone, email, start_time, end_time, status, id);
   
-  updateReservationViolation(Number(id));
-  
   res.json({ success: true });
 });
 
@@ -1328,8 +1326,6 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     VALUES (?, ?, ?, ?)
   `).run(id, 'Admin modified actual times/consumables/notes', JSON.stringify(oldRes), JSON.stringify(newRes));
   
-  updateReservationViolation(Number(id));
-  
   res.json({ success: true, total_cost });
 });
 
@@ -1366,17 +1362,26 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
-  const VIOLATION_WINDOW_DAYS = 30;
-  const windowStart = new Date();
-  windowStart.setDate(windowStart.getDate() - VIOLATION_WINDOW_DAYS);
-  const windowStartStr = windowStart.toISOString();
-
-  const violationsRaw = db.prepare(`
+  const { startDate, endDate } = req.query;
+  
+  let query = `
     SELECT v.*, r.student_name, r.supervisor
     FROM violation_records v
     LEFT JOIN reservations r ON v.reservation_id = r.id
-    WHERE v.violation_time >= ? AND v.status = 'active'
-  `).all(windowStartStr) as any[];
+    WHERE v.status = 'active'
+  `;
+  const params: any[] = [];
+
+  if (startDate) {
+    query += ` AND v.violation_time >= ?`;
+    params.push(`${startDate}T00:00:00.000Z`);
+  }
+  if (endDate) {
+    query += ` AND v.violation_time <= ?`;
+    params.push(`${endDate}T23:59:59.999Z`);
+  }
+
+  const violationsRaw = db.prepare(query).all(...params) as any[];
 
   const personMap = new Map();
 

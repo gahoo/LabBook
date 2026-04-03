@@ -95,7 +95,10 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
       if (res.ok) {
         toast.success('预约更新成功');
         setIsDrawerOpen(false);
+        setEditingReservation(null);
         fetchReservations();
+      } else {
+        toast.error('更新失败');
       }
     } catch (err) {
       toast.error('更新失败');

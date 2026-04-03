@@ -38,6 +38,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [revokeConfirmId, setRevokeConfirmId] = useState<number | null>(null);
 
   const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations' | 'violation_records'>('detailed');
   const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
@@ -102,7 +103,11 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const fetchViolations = async () => {
     setLoadingViolations(true);
     try {
-      const res = await fetch(`/api/admin/reports/violations`, {
+      const params = new URLSearchParams();
+      if (reportStartDate) params.append('startDate', reportStartDate);
+      if (reportEndDate) params.append('endDate', reportEndDate);
+
+      const res = await fetch(`/api/admin/reports/violations?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
@@ -135,7 +140,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   };
 
   const handleRevokeViolation = async (id: number) => {
-    if (!confirm('确定要撤销这条违规记录吗？撤销后将不再计入惩罚统计。')) return;
     try {
       const res = await fetch(`/api/admin/violation-records/${id}/revoke`, {
         method: 'POST',
@@ -143,6 +147,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       });
       if (res.ok) {
         toast.success('撤销成功');
+        setRevokeConfirmId(null);
         fetchViolationRecords();
         if (activeSubTab === 'violations') fetchViolations();
       } else {
@@ -165,7 +170,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     } else if (activeSubTab === 'violation_records' && token) {
       fetchViolationRecords();
     }
-  }, [activeSubTab, token]);
+  }, [activeSubTab, token, reportStartDate, reportEndDate]);
 
   const filteredUsageByPerson = useMemo(() => {
     if (!reports?.usageByPerson) return [];
@@ -1526,7 +1531,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                             <td className="px-4 py-3">
                               {v.status === 'active' && (
                                 <button
-                                  onClick={() => handleRevokeViolation(v.id)}
+                                  onClick={() => setRevokeConfirmId(v.id)}
                                   className="text-red-600 hover:text-red-800 font-medium text-sm transition-colors"
                                 >
                                   撤销
@@ -1569,6 +1574,36 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
               >
                 确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revokeConfirmId !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-orange-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认撤销</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              确定要撤销这条违规记录吗？撤销后将不再计入惩罚统计。
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setRevokeConfirmId(null)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => handleRevokeViolation(revokeConfirmId)} 
+                className="flex-1 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700 transition-colors"
+              >
+                确认撤销
               </button>
             </div>
           </div>
