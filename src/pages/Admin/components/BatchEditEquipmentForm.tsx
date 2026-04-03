@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Save, AlertCircle, Clock, EyeOff, TimerReset, FileCheck, Zap, Trash2 } from 'lucide-react';
+import { X, Save, AlertCircle, Clock, EyeOff, TimerReset, FileCheck, Zap, Trash2, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface BatchEditEquipmentFormProps {
@@ -71,7 +71,7 @@ export default function BatchEditEquipmentForm({
       updates.whitelist_enabled = whitelistEnabled;
       updates.whitelist_data = whitelistData;
     }
-    if (modifyAutoApprove) updates.auto_approve = autoApprove;
+    if (modifyAutoApprove) updates.auto_approve = autoApprove ? 1 : 0;
     if (modifyAllowOutOfHours) updates.allowOutOfHours = allowOutOfHours;
     if (modifyIsHidden) updates.is_hidden = isHidden;
     if (modifyReleaseNoshow) updates.release_noshow_slots = releaseNoshow;
@@ -295,9 +295,9 @@ export default function BatchEditEquipmentForm({
                   <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
                     <input type="checkbox" checked={modifyAutoApprove} onChange={e => setModifyAutoApprove(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
                     <Zap className="w-4 h-4 text-neutral-500" />
-                    修改自动审批预约
+                    修改自动审批
                   </label>
-                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">开启后，预约将自动通过审批</p>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">开启后，该仪器的预约将自动通过（非开放时段除外）</p>
                 </div>
                 {modifyAutoApprove && (
                   <button

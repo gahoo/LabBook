@@ -46,8 +46,11 @@ export default function WhitelistAppsTab({ token, handleLogout }: WhitelistAppsT
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return handleLogout();
+      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setWhitelistApps(data);
+      if (Array.isArray(data)) {
+        setWhitelistApps(data);
+      }
     } catch (err) {
       toast.error('获取白名单申请失败');
     }

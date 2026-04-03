@@ -207,16 +207,23 @@ export default function MyReservations() {
           tz_offset: new Date().getTimezoneOffset()
         })
       });
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('服务器响应格式错误');
+      }
+
       if (res.ok) {
         toast.success('修改成功');
         setEditingId(null);
         fetchMyReservations();
       } else {
-        const data = await res.json();
         toast.error(data.error || '修改失败');
       }
-    } catch (err) {
-      toast.error('修改失败');
+    } catch (err: any) {
+      toast.error(err.message || '修改失败');
     }
   };
 

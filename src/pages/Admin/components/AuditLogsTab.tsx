@@ -49,8 +49,11 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return handleLogout();
+      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setAuditLogs(data);
+      if (Array.isArray(data)) {
+        setAuditLogs(data);
+      }
     } catch (err) {
       console.error(err);
     }

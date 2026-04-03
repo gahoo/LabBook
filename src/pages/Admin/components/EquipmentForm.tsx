@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, MapPin, Trash2, Upload, Clock, FileCheck, Zap, EyeOff, TimerReset } from 'lucide-react';
+import { Image as ImageIcon, MapPin, Trash2, Upload, Clock, FileCheck, Zap, EyeOff, TimerReset, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface EquipmentFormProps {
@@ -27,9 +27,15 @@ export default function EquipmentForm({
 }: EquipmentFormProps) {
   const [formData, setFormData] = useState(() => {
     if (editingEquipment) {
-      let avail = { advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [], allowOutOfHours: false };
+      let avail = { advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [] as any[], allowOutOfHours: false };
       try {
-        if (editingEquipment.availability_json) avail = JSON.parse(editingEquipment.availability_json);
+        if (editingEquipment.availability_json) {
+          const parsed = JSON.parse(editingEquipment.availability_json);
+          avail = { ...avail, ...parsed };
+          if (!Array.isArray(avail.rules)) {
+            avail.rules = [];
+          }
+        }
       } catch (e) {}
       
       return {
@@ -37,7 +43,7 @@ export default function EquipmentForm({
         description: editingEquipment.description || '',
         image_url: editingEquipment.image_url || '',
         location: editingEquipment.location || '',
-        auto_approve: editingEquipment.auto_approve,
+        auto_approve: editingEquipment.auto_approve === 1,
         allow_out_of_hours: avail.allowOutOfHours || false,
         price_type: editingEquipment.price_type,
         price: editingEquipment.price,
@@ -334,9 +340,9 @@ export default function EquipmentForm({
                 <div>
                   <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
                     <Zap className="w-4 h-4 text-neutral-500" />
-                    自动审批预约
+                    自动审批
                   </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">开启后，预约将自动通过审批</p>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，该仪器的预约将自动通过（非开放时段除外）</p>
                 </div>
                 <button
                   type="button"
@@ -346,7 +352,7 @@ export default function EquipmentForm({
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">

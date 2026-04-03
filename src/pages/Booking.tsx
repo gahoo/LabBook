@@ -214,26 +214,37 @@ export default function Booking() {
         })
       });
 
-      const data = await res.json();
-      if (data.needs_whitelist_application) {
-        setNeedsWhitelist(true);
-        toast.error('您不在白名单中，请先申请使用权限');
-      } else if (data.error) {
-        toast.error(data.error);
-      } else {
-        setBookingCode(data.booking_code);
-        setBookingStatus(data.status);
-        
-        // Save booking code to cookies
-        const existingCodes = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('lab_booking_codes='))
-          ?.split('=')[1] || '';
-        const newCodes = existingCodes ? `${existingCodes},${data.booking_code}` : data.booking_code;
-        document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('服务器响应格式错误');
       }
-    } catch (err) {
-      toast.error('预约失败，请重试');
+
+      if (!res.ok) {
+        if (data.needs_whitelist_application) {
+          setNeedsWhitelist(true);
+          throw new Error('您不在白名单中，请先申请使用权限');
+        }
+        throw new Error(data.error || '预约请求失败');
+      }
+
+      setBookingCode(data.booking_code);
+      setBookingStatus(data.status);
+      if (data.message) {
+        toast(data.message, { icon: '⚠️', duration: 5000 });
+      }
+      
+      // Save booking code to cookies
+      const existingCodes = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('lab_booking_codes='))
+        ?.split('=')[1] || '';
+      const newCodes = existingCodes ? `${existingCodes},${data.booking_code}` : data.booking_code;
+      document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
+    } catch (err: any) {
+      console.error('Reservation error:', err);
+      toast.error(err.message || '预约失败，请重试');
     }
   };
 

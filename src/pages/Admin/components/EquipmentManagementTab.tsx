@@ -60,8 +60,11 @@ export default function EquipmentManagementTab({
   const fetchEquipment = async () => {
     try {
       const res = await fetch('/api/equipment');
+      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setEquipmentList(data);
+      if (Array.isArray(data)) {
+        setEquipmentList(data);
+      }
     } catch (err) {
       toast.error('获取仪器列表失败');
     }
@@ -187,7 +190,7 @@ export default function EquipmentManagementTab({
 
     if (eqFilterAutoApprove !== 'all') {
       const isAuto = eqFilterAutoApprove === 'true';
-      if (Boolean(eq.auto_approve) !== isAuto) return false;
+      if (Boolean(eq.auto_approve === 1) !== isAuto) return false;
     }
 
     if (eqFilterIsHidden !== 'all') {
@@ -742,7 +745,7 @@ export default function EquipmentManagementTab({
                         <button onClick={() => toggleEquipmentSetting(eq.id, 'whitelist_enabled', Boolean(eq.whitelist_enabled))} title="白名单" className={`p-1.5 rounded-full transition-colors ${eq.whitelist_enabled ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <FileCheck className="w-4 h-4" />
                         </button>
-                        <button onClick={() => toggleEquipmentSetting(eq.id, 'auto_approve', Boolean(eq.auto_approve))} title="自动审批" className={`p-1.5 rounded-full transition-colors ${eq.auto_approve ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
+                        <button onClick={() => toggleEquipmentSetting(eq.id, 'auto_approve', Boolean(eq.auto_approve === 1))} title="自动审批" className={`p-1.5 rounded-full transition-colors ${eq.auto_approve === 1 ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
                           <Zap className="w-4 h-4" />
                         </button>
                         <button onClick={() => toggleEquipmentSetting(eq.id, 'is_hidden', Boolean(eq.is_hidden))} title="隐藏仪器" className={`p-1.5 rounded-full transition-colors ${eq.is_hidden ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>

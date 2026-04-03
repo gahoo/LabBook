@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Save, Upload, X } from 'lucide-react';
+import { Save, Upload, X, Settings, ShieldAlert } from 'lucide-react';
+import PenaltyRulesTab from './PenaltyRulesTab';
 
 interface SettingsTabProps {
   token: string;
 }
 
 export default function SettingsTab({ token }: SettingsTabProps) {
+  const [activeSubTab, setActiveSubTab] = useState<'system' | 'penalty'>('system');
   const [appName, setAppName] = useState('LabBook');
   const [defaultRoute, setDefaultRoute] = useState('/');
   const [appLogo, setAppLogo] = useState('');
+  const [lateGraceMinutes, setLateGraceMinutes] = useState(15);
+  const [overtimeGraceMinutes, setOvertimeGraceMinutes] = useState(15);
+  const [lateCancelHours, setLateCancelHours] = useState(2);
+  const [noShowGraceMinutes, setNoShowGraceMinutes] = useState(30);
+  const [cronIntervalMinutes, setCronIntervalMinutes] = useState(15);
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -24,6 +31,11 @@ export default function SettingsTab({ token }: SettingsTabProps) {
       if (data.app_name) setAppName(data.app_name);
       if (data.default_route) setDefaultRoute(data.default_route);
       if (data.app_logo) setAppLogo(data.app_logo);
+      if (data.violation_late_grace_minutes) setLateGraceMinutes(Number(data.violation_late_grace_minutes));
+      if (data.violation_overtime_grace_minutes) setOvertimeGraceMinutes(Number(data.violation_overtime_grace_minutes));
+      if (data.violation_late_cancel_hours) setLateCancelHours(Number(data.violation_late_cancel_hours));
+      if (data.violation_no_show_grace_minutes) setNoShowGraceMinutes(Number(data.violation_no_show_grace_minutes));
+      if (data.cron_no_show_scan_interval_minutes) setCronIntervalMinutes(Number(data.cron_no_show_scan_interval_minutes));
     } catch (err) {
       console.error('Failed to fetch settings', err);
     } finally {
@@ -57,7 +69,12 @@ export default function SettingsTab({ token }: SettingsTabProps) {
         body: JSON.stringify({
           app_name: appName,
           default_route: defaultRoute,
-          app_logo: appLogo
+          app_logo: appLogo,
+          violation_late_grace_minutes: lateGraceMinutes,
+          violation_overtime_grace_minutes: overtimeGraceMinutes,
+          violation_late_cancel_hours: lateCancelHours,
+          violation_no_show_grace_minutes: noShowGraceMinutes,
+          cron_no_show_scan_interval_minutes: cronIntervalMinutes
         })
       });
 
@@ -89,14 +106,39 @@ export default function SettingsTab({ token }: SettingsTabProps) {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-      <div className="p-6 border-b border-neutral-200">
-        <h2 className="text-xl font-bold text-neutral-900">系统设置</h2>
-        <p className="text-sm text-neutral-500 mt-1">配置应用的基本信息和默认行为</p>
+      <div className="border-b border-neutral-200">
+        <div className="flex gap-6 px-6 pt-4">
+          <button
+            onClick={() => setActiveSubTab('system')}
+            className={`pb-4 text-sm font-medium transition-colors relative ${activeSubTab === 'system' ? 'text-red-600' : 'text-neutral-500 hover:text-neutral-900'}`}
+          >
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              系统设置
+            </div>
+            {activeSubTab === 'system' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded-t-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveSubTab('penalty')}
+            className={`pb-4 text-sm font-medium transition-colors relative ${activeSubTab === 'penalty' ? 'text-red-600' : 'text-neutral-500 hover:text-neutral-900'}`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4" />
+              惩罚规则
+            </div>
+            {activeSubTab === 'penalty' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded-t-full" />
+            )}
+          </button>
+        </div>
       </div>
       
-      <div className="p-6 space-y-6 max-w-2xl">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-2">
+      {activeSubTab === 'system' && (
+        <div className="p-6 space-y-6 max-w-2xl">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
             应用名称
           </label>
           <input
@@ -169,16 +211,99 @@ export default function SettingsTab({ token }: SettingsTabProps) {
           </p>
         </div>
 
-        <div className="pt-4">
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            保存设置
-          </button>
+        <div className="pt-6 border-t border-neutral-200">
+          <h3 className="text-lg font-bold text-neutral-900 mb-4">违规判定与宽限期设置</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                迟到宽限期 (分钟)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={lateGraceMinutes}
+                onChange={(e) => setLateGraceMinutes(Number(e.target.value))}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+              />
+              <p className="text-xs text-neutral-500 mt-1">超过预约开始时间多少分钟后上机记为迟到。</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                超时宽限期 (分钟)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={overtimeGraceMinutes}
+                onChange={(e) => setOvertimeGraceMinutes(Number(e.target.value))}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+              />
+              <p className="text-xs text-neutral-500 mt-1">超过预约结束时间多少分钟后下机记为超时。</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                临期取消阈值 (小时)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={lateCancelHours}
+                onChange={(e) => setLateCancelHours(Number(e.target.value))}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+              />
+              <p className="text-xs text-neutral-500 mt-1">距离预约开始时间不足多少小时取消记为临期取消。</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                爽约宽限期 (分钟)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={noShowGraceMinutes}
+                onChange={(e) => setNoShowGraceMinutes(Number(e.target.value))}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+              />
+              <p className="text-xs text-neutral-500 mt-1">超过预约开始时间多少分钟未上机记为爽约（建议大于迟到宽限期）。</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                爽约扫描频率 (分钟)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={cronIntervalMinutes}
+                onChange={(e) => setCronIntervalMinutes(Number(e.target.value))}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+              />
+              <p className="text-xs text-neutral-500 mt-1">系统后台每隔多少分钟扫描一次爽约记录。</p>
+            </div>
+          </div>
         </div>
-      </div>
+
+          <div className="pt-4">
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              保存设置
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'penalty' && (
+        <div className="p-6">
+          <PenaltyRulesTab token={token} />
+        </div>
+      )}
     </div>
   );
 }

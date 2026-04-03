@@ -99,7 +99,7 @@ export default function Home() {
   const getAvailabilitySummary = (jsonStr: string) => {
     try {
       const data = JSON.parse(jsonStr);
-      if (!data.rules || data.rules.length === 0) return '未设置开放时间';
+      if (!data.rules || !Array.isArray(data.rules) || data.rules.length === 0) return '未设置开放时间';
       
       const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
       const summary = data.rules.map((r: any) => `${days[r.day]} ${r.start}-${r.end}`).join(', ');

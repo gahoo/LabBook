@@ -39,7 +39,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations'>('detailed');
+  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations' | 'violation_records'>('detailed');
   const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
   const [statsType, setStatsType] = useState<'user' | 'supervisor'>('user');
   const [statsFilterUser, setStatsFilterUser] = useState('');
@@ -49,6 +49,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [statsFilterCostMin, setStatsFilterCostMin] = useState('');
   const [statsFilterCostMax, setStatsFilterCostMax] = useState('');
   const [violationsData, setViolationsData] = useState<any[]>([]);
+  const [violationRecordsData, setViolationRecordsData] = useState<any[]>([]);
   const [loadingViolations, setLoadingViolations] = useState(false);
 
   const [violationFilterUser, setViolationFilterUser] = useState('');
@@ -105,12 +106,50 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
+      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setViolationsData(data);
+      if (Array.isArray(data)) {
+        setViolationsData(data);
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingViolations(false);
+    }
+  };
+
+  const fetchViolationRecords = async () => {
+    try {
+      const res = await fetch(`/api/admin/violation-records`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) return onLogout();
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setViolationRecordsData(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRevokeViolation = async (id: number) => {
+    if (!confirm('确定要撤销这条违规记录吗？撤销后将不再计入惩罚统计。')) return;
+    try {
+      const res = await fetch(`/api/admin/violation-records/${id}/revoke`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success('撤销成功');
+        fetchViolationRecords();
+        if (activeSubTab === 'violations') fetchViolations();
+      } else {
+        toast.error('撤销失败');
+      }
+    } catch (err) {
+      toast.error('撤销失败');
     }
   };
 
@@ -123,6 +162,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   useEffect(() => {
     if (activeSubTab === 'violations' && token) {
       fetchViolations();
+    } else if (activeSubTab === 'violation_records' && token) {
+      fetchViolationRecords();
     }
   }, [activeSubTab, token]);
 
@@ -448,6 +489,17 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               >
                 <AlertTriangle className="w-4 h-4" />
                 <span className={activeSubTab === 'violations' ? '' : 'hidden md:inline'}>违规统计</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab('violation_records')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  activeSubTab === 'violation_records'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                <span className={activeSubTab === 'violation_records' ? '' : 'hidden md:inline'}>违规明细</span>
               </button>
             </div>
 
@@ -1412,6 +1464,74 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               }`}>
                                 {v.suggested_penalty}
                               </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            {activeSubTab === 'violation_records' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-bold text-neutral-900">违规明细</h3>
+                </div>
+                
+                {violationRecordsData.length === 0 ? (
+                  <div className="text-center py-12 text-neutral-500">暂无违规记录</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="text-xs text-neutral-500 bg-neutral-50 border-y border-neutral-200">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">违规时间</th>
+                          <th className="px-4 py-3 font-medium">学生姓名</th>
+                          <th className="px-4 py-3 font-medium">设备</th>
+                          <th className="px-4 py-3 font-medium">违规类型</th>
+                          <th className="px-4 py-3 font-medium">状态</th>
+                          <th className="px-4 py-3 font-medium">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200">
+                        {violationRecordsData.map((v: any) => (
+                          <tr key={v.id} className="hover:bg-neutral-50 transition-colors">
+                            <td className="px-4 py-3 text-neutral-600">
+                              {format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-neutral-900">{v.student_name || v.student_id}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.equipment_name || '-'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                v.violation_type === 'late' ? 'bg-amber-100 text-amber-700' :
+                                v.violation_type === 'overdue' ? 'bg-orange-100 text-orange-700' :
+                                v.violation_type === 'no-show' ? 'bg-red-100 text-red-700' :
+                                'bg-neutral-100 text-neutral-700'
+                              }`}>
+                                {v.violation_type === 'late' ? '迟到' :
+                                 v.violation_type === 'overdue' ? '超时' :
+                                 v.violation_type === 'no-show' ? '爽约' :
+                                 v.violation_type === 'late_cancel' ? '临期取消' :
+                                 v.violation_type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                v.status === 'active' ? 'bg-red-100 text-red-700' : 'bg-neutral-100 text-neutral-500'
+                              }`}>
+                                {v.status === 'active' ? '生效中' : '已撤销'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {v.status === 'active' && (
+                                <button
+                                  onClick={() => handleRevokeViolation(v.id)}
+                                  className="text-red-600 hover:text-red-800 font-medium text-sm transition-colors"
+                                >
+                                  撤销
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

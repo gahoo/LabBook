@@ -50,8 +50,11 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
+      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setReservations(data);
+      if (Array.isArray(data)) {
+        setReservations(data);
+      }
     } catch (err) {
       console.error(err);
     }
