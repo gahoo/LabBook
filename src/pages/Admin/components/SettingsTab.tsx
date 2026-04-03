@@ -59,6 +59,14 @@ export default function SettingsTab({ token }: SettingsTabProps) {
   };
 
   const handleSave = async () => {
+    if (noShowGraceMinutes < lateGraceMinutes) {
+      toast.error('爽约宽限期不能小于迟到宽限期');
+      return;
+    }
+    if (noShowGraceMinutes < overtimeGraceMinutes) {
+      toast.error('爽约宽限期不能小于超时宽限期');
+      return;
+    }
     try {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',

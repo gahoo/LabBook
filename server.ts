@@ -1346,7 +1346,7 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
   const records = db.prepare(`
-    SELECT v.*, r.student_name, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time
+    SELECT v.*, r.student_name, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time
     FROM violation_records v
     LEFT JOIN reservations r ON v.reservation_id = r.id
     LEFT JOIN equipment e ON r.equipment_id = e.id
@@ -1358,6 +1358,12 @@ app.get('/api/admin/violation-records', adminAuth, (req, res) => {
 app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
   db.prepare("UPDATE violation_records SET status = 'revoked' WHERE id = ?").run(id);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
+  const { id } = req.params;
+  db.prepare("UPDATE violation_records SET status = 'active' WHERE id = ?").run(id);
   res.json({ success: true });
 });
 

@@ -39,6 +39,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [revokeConfirmId, setRevokeConfirmId] = useState<number | null>(null);
+  const [restoreConfirmId, setRestoreConfirmId] = useState<number | null>(null);
 
   const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations' | 'violation_records'>('detailed');
   const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
@@ -155,6 +156,25 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       }
     } catch (err) {
       toast.error('撤销失败');
+    }
+  };
+
+  const handleRestoreViolation = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/violation-records/${id}/restore`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success('恢复成功');
+        setRestoreConfirmId(null);
+        fetchViolationRecords();
+        if (activeSubTab === 'violations') fetchViolations();
+      } else {
+        toast.error('恢复失败');
+      }
+    } catch (err) {
+      toast.error('恢复失败');
     }
   };
 
@@ -1278,7 +1298,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
                   <h3 className="font-bold flex items-center gap-2">
                     <AlertTriangle className="w-5 h-5 text-red-600" />
-                    违规统计 (近30天)
+                    违规统计
                   </h3>
                   <button 
                     onClick={exportViolations}
@@ -1292,7 +1312,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 {loadingViolations ? (
                   <div className="text-center py-12 text-neutral-500">加载违规数据中...</div>
                 ) : violationsData.length === 0 ? (
-                  <div className="text-center py-12 text-neutral-500">近30天无违规记录</div>
+                  <div className="text-center py-12 text-neutral-500">统计区间内无违规记录</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
@@ -1493,6 +1513,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                         <tr>
                           <th className="px-4 py-3 font-medium">违规时间</th>
                           <th className="px-4 py-3 font-medium">学生姓名</th>
+                          <th className="px-4 py-3 font-medium">预约码</th>
                           <th className="px-4 py-3 font-medium">设备</th>
                           <th className="px-4 py-3 font-medium">违规类型</th>
                           <th className="px-4 py-3 font-medium">状态</th>
@@ -1506,6 +1527,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               {format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}
                             </td>
                             <td className="px-4 py-3 font-medium text-neutral-900">{v.student_name || v.student_id}</td>
+                            <td className="px-4 py-3 text-neutral-600">{v.booking_code || '-'}</td>
                             <td className="px-4 py-3 text-neutral-600">{v.equipment_name || '-'}</td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -1529,12 +1551,19 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              {v.status === 'active' && (
+                              {v.status === 'active' ? (
                                 <button
                                   onClick={() => setRevokeConfirmId(v.id)}
                                   className="text-red-600 hover:text-red-800 font-medium text-sm transition-colors"
                                 >
                                   撤销
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setRestoreConfirmId(v.id)}
+                                  className="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors"
+                                >
+                                  取消撤销
                                 </button>
                               )}
                             </td>
@@ -1604,6 +1633,36 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 className="flex-1 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700 transition-colors"
               >
                 确认撤销
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {restoreConfirmId !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">确认取消撤销</h3>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              确定要恢复这条违规记录吗？恢复后将重新计入惩罚统计。
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setRestoreConfirmId(null)} 
+                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => handleRestoreViolation(restoreConfirmId)} 
+                className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                确认恢复
               </button>
             </div>
           </div>
