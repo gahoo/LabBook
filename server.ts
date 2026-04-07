@@ -1476,24 +1476,36 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     params.push(`${endDate}T23:59:59.999Z`);
   }
 
+  // Fetch settings for grace periods
+  const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_hours', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
+  const settingsMap = settingsRows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+  const lateCancelHours = settingsMap['violation_late_cancel_hours'] ? parseInt(settingsMap['violation_late_cancel_hours'], 10) : 24;
+  const noShowGraceMinutes = settingsMap['violation_no_show_grace_minutes'] ? parseInt(settingsMap['violation_no_show_grace_minutes'], 10) : 30;
+  const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
+  const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
+
   // Helper to calculate report status
   const calculateStatus = (res: any, prevRes: any) => {
     if (res.status === 'cancelled') {
-      // If cancelled, check if it was cancelled within 30 minutes before start time or after start time
       if (res.actual_end_time) {
         const cancelTime = new Date(res.actual_end_time).getTime();
         const startTime = new Date(res.start_time).getTime();
-        if (cancelTime >= startTime - 30 * 60 * 1000) {
+        
+        const lateCancelThreshold = startTime - (lateCancelHours * 60 * 60 * 1000);
+        const noShowThreshold = startTime + (noShowGraceMinutes * 60 * 1000);
+
+        if (cancelTime >= noShowThreshold) {
+          return '爽约';
+        } else if (cancelTime >= lateCancelThreshold) {
           return '临期取消';
         }
       }
       return '已取消';
     }
     
-    const maxLateMinutes = 30;
-    
     if (!res.actual_start_time) {
-      if (new Date().getTime() <= new Date(res.start_time).getTime() + maxLateMinutes * 60000) {
+      const noShowThreshold = new Date(res.start_time).getTime() + (noShowGraceMinutes * 60 * 1000);
+      if (new Date().getTime() <= noShowThreshold) {
         return '待上机';
       }
       return '爽约';
@@ -1512,9 +1524,8 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
       }
     }
 
-    const lateThreshold = 15 * 60 * 1000;
-    const overtimeThreshold = 30 * 60 * 1000;
-    const normalThreshold = 30 * 60 * 1000;
+    const lateThreshold = lateGraceMinutes * 60 * 1000;
+    const overtimeThreshold = overtimeGraceMinutes * 60 * 1000;
 
     const statuses = [];
     if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
