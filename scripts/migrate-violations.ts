@@ -42,8 +42,8 @@ console.log(`- 迟到宽限期: ${lateGraceMinutes} 分钟`);
 console.log(`- 超时宽限期: ${overtimeGraceMinutes} 分钟`);
 
 // 2. 核心判定逻辑 (与 server.ts 保持一致)
-const calculateViolations = (res: any, prevRes: any): Array<{ type: string, time: string }> => {
-  const violations: Array<{ type: string, time: string }> = [];
+const calculateViolations = (res: any, prevRes: any): Array<{ type: string, time: string, duration?: number }> => {
+  const violations: Array<{ type: string, time: string, duration?: number }> = [];
   
   if (res.status === 'cancelled') {
     if (res.actual_end_time) {
@@ -90,11 +90,13 @@ const calculateViolations = (res: any, prevRes: any): Array<{ type: string, time
   const overtimeThreshold = overtimeGraceMinutes * 60 * 1000;
 
   if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
-    violations.push({ type: 'late', time: res.actual_start_time });
+    const durationMinutes = Math.round((actualStart.getTime() - start.getTime()) / (1000 * 60));
+    violations.push({ type: 'late', time: res.actual_start_time, duration: durationMinutes });
   }
   
   if (actualEnd && actualEnd.getTime() > end.getTime() + overtimeThreshold) {
-    violations.push({ type: 'overdue', time: res.actual_end_time });
+    const durationMinutes = Math.round((actualEnd.getTime() - end.getTime()) / (1000 * 60));
+    violations.push({ type: 'overdue', time: res.actual_end_time, duration: durationMinutes });
   }
   
   return violations;
@@ -114,8 +116,8 @@ let addedCount = 0;
 let skippedCount = 0;
 
 const insertViolation = db.prepare(`
-  INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, status)
-  VALUES (?, ?, ?, ?, 'active')
+  INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes, status)
+  VALUES (?, ?, ?, ?, ?, 'active')
 `);
 
 const checkViolationExists = db.prepare(`
@@ -136,7 +138,7 @@ db.transaction(() => {
       if (exists) {
         skippedCount++;
       } else {
-        insertViolation.run(res.student_id, res.id, v.type, v.time);
+        insertViolation.run(res.student_id, res.id, v.type, v.time, v.duration || null);
         addedCount++;
       }
     }

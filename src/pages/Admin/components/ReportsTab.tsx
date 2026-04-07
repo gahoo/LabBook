@@ -1427,7 +1427,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                               {showViolationPenaltyFilterPopup && (
                                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10 font-normal">
                                   <div className="space-y-1 max-h-48 overflow-y-auto">
-                                    {['无', '警告', '频繁取消警告', '暂停预约7天', '暂停预约30天'].map(penalty => (
+                                    {['无', '受限制', '需审批', '已封禁'].map(penalty => (
                                       <label key={penalty} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
                                         <input 
                                           type="checkbox"
@@ -1483,8 +1483,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                 v.suggested_penalty === '无' ? 'bg-neutral-100 text-neutral-600' :
-                                v.suggested_penalty === '警告' ? 'bg-amber-100 text-amber-700' :
-                                v.suggested_penalty === '频繁取消警告' ? 'bg-orange-100 text-orange-700' :
+                                v.suggested_penalty === '受限制' ? 'bg-amber-100 text-amber-700' :
+                                v.suggested_penalty === '需审批' ? 'bg-orange-100 text-orange-700' :
                                 'bg-red-100 text-red-700'
                               }`}>
                                 {v.suggested_penalty}

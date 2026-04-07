@@ -148,48 +148,37 @@ try {
 } catch (e) {}
 
 try {
+  // Check if old columns exist
+  const tableInfo = db.prepare("PRAGMA table_info(penalty_rules)").all() as any[];
+  const hasTriggerType = tableInfo.some(col => col.name === 'trigger_type');
+  if (hasTriggerType) {
+    db.exec(`
+      ALTER TABLE penalty_rules RENAME TO penalty_rules_old;
+    `);
+  }
+} catch(e) {}
+
+try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS penalty_rules (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       description TEXT,
-      trigger_type TEXT NOT NULL,
-      threshold INTEGER NOT NULL,
-      window_type TEXT NOT NULL,
-      window_value INTEGER NOT NULL,
-      window_unit TEXT NOT NULL,
-      duration_type TEXT NOT NULL,
-      duration_value INTEGER,
-      duration_unit TEXT,
+      violation_type TEXT NOT NULL,
+      trigger_config TEXT NOT NULL,
+      action_config TEXT NOT NULL,
       is_active INTEGER DEFAULT 1
     )
   `);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS user_penalties (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      student_id TEXT NOT NULL,
-      rule_id INTEGER NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      status TEXT DEFAULT 'active',
-      FOREIGN KEY (rule_id) REFERENCES penalty_rules(id)
-    )
-  `);
-  
-  try {
-    db.prepare('ALTER TABLE penalty_rules ADD COLUMN penalty_method TEXT DEFAULT \'BAN\'').run();
-  } catch (e) {
-    // Column might already exist
-  }
   
   const rulesCount = db.prepare('SELECT COUNT(*) as count FROM penalty_rules').get() as any;
   if (rulesCount.count === 0) {
     const insertRule = db.prepare(`
-      INSERT INTO penalty_rules (name, description, trigger_type, threshold, window_type, window_value, window_unit, duration_type, duration_value, duration_unit, is_active, penalty_method)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    insertRule.run('频繁逾期限制', '近30天内逾期达到3次，将限制借用（需管理员审批），直到旧的逾期记录移出统计周期。', 'overdue', 3, 'ROLLING', 30, 'days', 'DYNAMIC', null, null, 1, 'REQUIRE_APPROVAL');
-    insertRule.run('频繁爽约封禁', '近30天内爽约达到2次，固定封禁7天。', 'no-show', 2, 'ROLLING', 30, 'days', 'FIXED', 7, 'days', 1, 'BAN');
+    insertRule.run('频繁爽约封禁', '近30天内爽约达到2次，固定封禁', 'no-show', '{"metric":"count","threshold":2,"period_days":30}', '{"type":"ban"}', 1);
+    insertRule.run('频繁逾期限制', '近30天内逾期达到3次，将限制借用（需管理员审批）', 'overdue', '{"metric":"count","threshold":3,"period_days":30}', '{"type":"require_approval"}', 1);
   }
 } catch (e) {}
 
@@ -221,11 +210,17 @@ try {
         reservation_id INTEGER,             
         violation_type TEXT NOT NULL,       
         violation_time DATETIME NOT NULL,   
+        duration_minutes INTEGER,
         status TEXT DEFAULT 'active',       
         remark TEXT,                        
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  try {
+    db.prepare('ALTER TABLE violation_records ADD COLUMN duration_minutes INTEGER').run();
+  } catch (e) {}
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_violation_stats ON violation_records(student_id, violation_type, status, violation_time)
   `);
@@ -240,122 +235,82 @@ const adminAuth = (req: any, res: any, next: any) => {
   }
 };
 
-function evaluatePenaltiesOnViolation(student_id: string, trigger_type: string) {
-  const rules = db.prepare('SELECT * FROM penalty_rules WHERE trigger_type = ? AND is_active = 1').all(trigger_type) as any[];
-  
-  for (const rule of rules) {
-    let windowStart = new Date();
-    if (rule.window_type === 'ROLLING') {
-      if (rule.window_unit === 'days') windowStart.setDate(windowStart.getDate() - rule.window_value);
-      if (rule.window_unit === 'weeks') windowStart.setDate(windowStart.getDate() - rule.window_value * 7);
-      if (rule.window_unit === 'months') windowStart.setMonth(windowStart.getMonth() - rule.window_value);
-    } else if (rule.window_type === 'NATURAL') {
-      if (rule.window_unit === 'months') {
-        windowStart = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
-      } else if (rule.window_unit === 'weeks') {
-        const day = windowStart.getDay();
-        const diff = windowStart.getDate() - day + (day === 0 ? -6 : 1);
-        windowStart = new Date(windowStart.setDate(diff));
-        windowStart.setHours(0,0,0,0);
-      } else if (rule.window_unit === 'days') {
-        windowStart.setHours(0,0,0,0);
-      }
-    }
-
-    const windowStartStr = windowStart.toISOString();
-    
-    const countRow = db.prepare(`
-      SELECT COUNT(*) as count 
-      FROM violation_records 
-      WHERE student_id = ? 
-        AND status = 'active' 
-        AND violation_type = ? 
-        AND violation_time >= ?
-    `).get(student_id, trigger_type, windowStartStr) as any;
-
-    if (countRow.count >= rule.threshold) {
-      const now = new Date().toISOString();
-      
-      if (rule.duration_type === 'FIXED') {
-        const existing = db.prepare('SELECT * FROM user_penalties WHERE student_id = ? AND rule_id = ? AND end_time > ? AND status = \'active\'').get(student_id, rule.id, now) as any;
-        
-        if (!existing) {
-          const penaltyEnd = new Date();
-          if (rule.duration_unit === 'days') penaltyEnd.setDate(penaltyEnd.getDate() + rule.duration_value);
-          if (rule.duration_unit === 'weeks') penaltyEnd.setDate(penaltyEnd.getDate() + rule.duration_value * 7);
-          if (rule.duration_unit === 'months') penaltyEnd.setMonth(penaltyEnd.getMonth() + rule.duration_value);
-          
-          db.prepare(`
-            INSERT INTO user_penalties (student_id, rule_id, start_time, end_time, status)
-            VALUES (?, ?, ?, ?, 'active')
-          `).run(student_id, rule.id, now, penaltyEnd.toISOString());
-          
-          if (rule.penalty_method === 'BAN') {
-            db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, now);
-          }
-        }
-      } else if (rule.duration_type === 'DYNAMIC') {
-        if (rule.penalty_method === 'BAN') {
-          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, now);
-        }
-      }
-    }
+function evaluatePenaltiesOnViolation(student_id: string) {
+  const penalty = checkUserPenalty(student_id);
+  if (penalty.isPenalized && penalty.penaltyMethod === 'BAN') {
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, now);
   }
 }
 
 function checkUserPenalty(student_id: string) {
-  const now = new Date().toISOString();
-  const activeFixed = db.prepare(`
-    SELECT up.*, pr.name as rule_name, pr.penalty_method FROM user_penalties up
-    JOIN penalty_rules pr ON up.rule_id = pr.id
-    WHERE up.student_id = ? AND up.status = 'active' AND up.end_time > ?
-  `).get(student_id, now) as any;
-
-  if (activeFixed) {
-    return { 
-      isPenalized: true, 
-      penaltyMethod: activeFixed.penalty_method || 'BAN',
-      reason: `触发惩罚规则：${activeFixed.rule_name}。${activeFixed.penalty_method === 'REQUIRE_APPROVAL' ? '您的预约需要管理员审批。' : `您当前处于封禁期，解封时间：${format(new Date(activeFixed.end_time), 'yyyy-MM-dd HH:mm')}。`}` 
-    };
-  }
-
-  const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1 AND duration_type = \'DYNAMIC\'').all() as any[];
+  const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
   
+  let isPenalized = false;
+  let penaltyMethod = 'NONE';
+  let reason = '';
+  let restrictions = {
+    reduce_days: 0,
+    min_retain_days: 999,
+    fee_multiplier: 1.0
+  };
+  
+  const triggeredRules: string[] = [];
+
   for (const rule of activeRules) {
+    const trigger = JSON.parse(rule.trigger_config);
+    const action = JSON.parse(rule.action_config);
+    
     let windowStart = new Date();
-    if (rule.window_type === 'ROLLING') {
-      if (rule.window_unit === 'days') windowStart.setDate(windowStart.getDate() - rule.window_value);
-      if (rule.window_unit === 'weeks') windowStart.setDate(windowStart.getDate() - rule.window_value * 7);
-      if (rule.window_unit === 'months') windowStart.setMonth(windowStart.getMonth() - rule.window_value);
-    } else if (rule.window_type === 'NATURAL') {
-      if (rule.window_unit === 'months') {
-        windowStart = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
-      } else if (rule.window_unit === 'weeks') {
-        const day = windowStart.getDay();
-        const diff = windowStart.getDate() - day + (day === 0 ? -6 : 1);
-        windowStart = new Date(windowStart.setDate(diff));
-        windowStart.setHours(0,0,0,0);
-      } else if (rule.window_unit === 'days') {
-        windowStart.setHours(0,0,0,0);
+    windowStart.setDate(windowStart.getDate() - trigger.period_days);
+    const windowStartStr = windowStart.toISOString();
+
+    let metricValue = 0;
+    if (trigger.metric === 'count') {
+      const countRes = db.prepare(`
+        SELECT COUNT(*) as count FROM violation_records 
+        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+      `).get(student_id, rule.violation_type, windowStartStr) as any;
+      metricValue = countRes.count;
+    } else if (trigger.metric === 'duration') {
+      const sumRes = db.prepare(`
+        SELECT SUM(duration_minutes) as sum FROM violation_records 
+        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+      `).get(student_id, rule.violation_type, windowStartStr) as any;
+      metricValue = sumRes.sum || 0;
+    }
+
+    if (metricValue >= trigger.threshold) {
+      isPenalized = true;
+      triggeredRules.push(rule.name);
+      
+      // Aggregate actions
+      if (action.type === 'ban') {
+        penaltyMethod = 'BAN';
+      } else if (action.type === 'require_approval' && penaltyMethod !== 'BAN') {
+        penaltyMethod = 'REQUIRE_APPROVAL';
+      } else if (action.type === 'reduce_advance_days') {
+        if (penaltyMethod === 'NONE') penaltyMethod = 'RESTRICTED';
+        restrictions.reduce_days = Math.max(restrictions.reduce_days, action.params.reduce_days || 0);
+        restrictions.min_retain_days = Math.min(restrictions.min_retain_days, action.params.min_retain_days ?? 999);
+      } else if (action.type === 'double_fee') {
+        if (penaltyMethod === 'NONE') penaltyMethod = 'RESTRICTED';
+        restrictions.fee_multiplier = Math.max(restrictions.fee_multiplier, action.params.multiplier || 1.0);
       }
     }
+  }
 
-    const windowStartStr = windowStart.toISOString();
-    const countRes = db.prepare(`
-      SELECT COUNT(*) as count FROM violation_records 
-      WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-    `).get(student_id, rule.trigger_type, windowStartStr) as any;
-
-    if (countRes.count >= rule.threshold) {
-      return { 
-        isPenalized: true, 
-        penaltyMethod: rule.penalty_method || 'BAN',
-        reason: `触发动态惩罚规则：${rule.name}。${rule.penalty_method === 'REQUIRE_APPROVAL' ? '您的预约需要管理员审批。' : '您在统计周期内违规次数已达标，暂时无法预约。'}` 
-      };
+  if (isPenalized) {
+    if (penaltyMethod === 'BAN') {
+      reason = `您已触发惩罚规则（${triggeredRules.join('、')}），当前处于封禁状态，无法预约。`;
+    } else if (penaltyMethod === 'REQUIRE_APPROVAL') {
+      reason = `您已触发惩罚规则（${triggeredRules.join('、')}），您的预约需要管理员审批。`;
+    } else {
+      reason = `您已触发惩罚规则（${triggeredRules.join('、')}），您的预约权限受到限制。`;
     }
   }
 
-  return { isPenalized: false, penaltyMethod: 'NONE', reason: '' };
+  return { isPenalized, penaltyMethod, reason, restrictions };
 }
 
 // API Routes
@@ -372,12 +327,12 @@ app.get('/api/admin/penalty-rules', adminAuth, (req, res) => {
 
 app.post('/api/admin/penalty-rules', adminAuth, (req, res) => {
   try {
-    const { name, description, trigger_type, threshold, window_type, window_value, window_unit, duration_type, duration_value, duration_unit, is_active } = req.body;
+    const { name, description, violation_type, trigger_config, action_config, is_active } = req.body;
     const stmt = db.prepare(`
-      INSERT INTO penalty_rules (name, description, trigger_type, threshold, window_type, window_value, window_unit, duration_type, duration_value, duration_unit, is_active, penalty_method)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    const info = stmt.run(name, description, trigger_type, threshold, window_type, window_value, window_unit, duration_type, duration_value || null, duration_unit || null, is_active ? 1 : 0, req.body.penalty_method || 'BAN');
+    const info = stmt.run(name, description, violation_type, JSON.stringify(trigger_config), JSON.stringify(action_config), is_active ? 1 : 0);
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create penalty rule' });
@@ -386,13 +341,13 @@ app.post('/api/admin/penalty-rules', adminAuth, (req, res) => {
 
 app.put('/api/admin/penalty-rules/:id', adminAuth, (req, res) => {
   try {
-    const { name, description, trigger_type, threshold, window_type, window_value, window_unit, duration_type, duration_value, duration_unit, is_active } = req.body;
+    const { name, description, violation_type, trigger_config, action_config, is_active } = req.body;
     const stmt = db.prepare(`
       UPDATE penalty_rules 
-      SET name = ?, description = ?, trigger_type = ?, threshold = ?, window_type = ?, window_value = ?, window_unit = ?, duration_type = ?, duration_value = ?, duration_unit = ?, is_active = ?, penalty_method = ?
+      SET name = ?, description = ?, violation_type = ?, trigger_config = ?, action_config = ?, is_active = ?
       WHERE id = ?
     `);
-    stmt.run(name, description, trigger_type, threshold, window_type, window_value, window_unit, duration_type, duration_value || null, duration_unit || null, is_active ? 1 : 0, req.body.penalty_method || 'BAN', req.params.id);
+    stmt.run(name, description, violation_type, JSON.stringify(trigger_config), JSON.stringify(action_config), is_active ? 1 : 0, req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update penalty rule' });
@@ -789,12 +744,22 @@ app.post('/api/reservations', (req, res) => {
   if (durationMinutes > maxDuration) return res.status(400).json({ error: `预约时长不能超过 ${maxDuration} 分钟` });
   if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
 
+  let advanceDays = availability.advanceDays || 7;
+  if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
+    if (penaltyCheck.restrictions.reduce_days > 0) {
+      advanceDays -= penaltyCheck.restrictions.reduce_days;
+    }
+    if (advanceDays < penaltyCheck.restrictions.min_retain_days) {
+      advanceDays = penaltyCheck.restrictions.min_retain_days;
+    }
+  }
+
   const maxDate = new Date(now);
-  maxDate.setDate(maxDate.getDate() + (availability.advanceDays || 7));
+  maxDate.setDate(maxDate.getDate() + advanceDays);
   maxDate.setHours(23, 59, 59, 999);
   
   if (start > maxDate) {
-    return res.status(400).json({ error: `只能提前 ${availability.advanceDays || 7} 天预约` });
+    return res.status(400).json({ error: penaltyCheck.isPenalized && penaltyCheck.restrictions?.reduce_days > 0 ? `受惩罚规则限制，您当前只能提前 ${advanceDays} 天预约` : `只能提前 ${advanceDays} 天预约` });
   }
 
   const dayOfWeek = start.getDay();
@@ -981,7 +946,7 @@ app.post('/api/reservations/cancel', (req, res) => {
     })();
     
     if (result.isLateCancel) {
-      evaluatePenaltiesOnViolation(result.student_id, 'late_cancel');
+      evaluatePenaltiesOnViolation(result.student_id);
     }
     
     res.json({ success: true });
@@ -1041,11 +1006,22 @@ app.post('/api/reservations/update', (req, res) => {
 
   const now = new Date();
   const maxDate = new Date(now);
-  maxDate.setDate(maxDate.getDate() + (availability.advanceDays || 7));
+  
+  let advanceDays = availability.advanceDays || 7;
+  if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
+    if (penaltyCheck.restrictions.reduce_days > 0) {
+      advanceDays -= penaltyCheck.restrictions.reduce_days;
+    }
+    if (advanceDays < penaltyCheck.restrictions.min_retain_days) {
+      advanceDays = penaltyCheck.restrictions.min_retain_days;
+    }
+  }
+  
+  maxDate.setDate(maxDate.getDate() + advanceDays);
   maxDate.setHours(23, 59, 59, 999);
   
   if (start > maxDate) {
-    return res.status(400).json({ error: `只能提前 ${availability.advanceDays || 7} 天预约` });
+    return res.status(400).json({ error: penaltyCheck.isPenalized && penaltyCheck.restrictions?.reduce_days > 0 ? `受惩罚规则限制，您当前只能提前 ${advanceDays} 天预约` : `只能提前 ${advanceDays} 天预约` });
   }
   if (start < now) {
     return res.status(400).json({ error: '不能预约过去的时间' });
@@ -1170,7 +1146,7 @@ app.post('/api/reservations/checkin', (req, res) => {
     })();
     
     if (result.isLate) {
-      evaluatePenaltiesOnViolation(result.student_id, 'late');
+      evaluatePenaltiesOnViolation(result.student_id);
     }
     
     res.json({ success: true, actual_start_time: result.nowStr });
@@ -1209,6 +1185,11 @@ app.post('/api/reservations/checkout', (req, res) => {
         total_cost += reservation.price;
       }
 
+      const penaltyCheck = checkUserPenalty(reservation.student_id);
+      if (penaltyCheck.isPenalized && penaltyCheck.restrictions?.fee_multiplier > 1) {
+        total_cost *= penaltyCheck.restrictions.fee_multiplier;
+      }
+
       const overtimeGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_overtime_grace_minutes'").get() as any;
       const overtimeGraceMinutes = overtimeGraceRow ? parseInt(overtimeGraceRow.value, 10) : 15;
       const overtimeThreshold = overtimeGraceMinutes * 60 * 1000;
@@ -1216,9 +1197,11 @@ app.post('/api/reservations/checkout', (req, res) => {
       const end = new Date(reservation.end_time);
       let isOvertime = false;
       if (now.getTime() > end.getTime() + overtimeThreshold) {
-        total_cost *= 2;
+        // We removed the hardcoded total_cost *= 2 here because fee multiplier is handled by penalty rules now.
+        // If they want overtime to double fee, they should create a penalty rule for it.
         isOvertime = true;
-        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time) VALUES (?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'overdue', nowStr);
+        const durationMinutes = Math.round((now.getTime() - end.getTime()) / (1000 * 60));
+        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'overdue', nowStr, durationMinutes);
       }
 
       db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ?, consumable_quantity = ? WHERE booking_code = ?").run(nowStr, total_cost, finalConsumableQty, booking_code);
@@ -1227,7 +1210,7 @@ app.post('/api/reservations/checkout', (req, res) => {
     })();
     
     if (result.isOvertime) {
-      evaluatePenaltiesOnViolation(result.student_id, 'overdue');
+      evaluatePenaltiesOnViolation(result.student_id);
     }
     
     res.json({ success: true, actual_end_time: result.nowStr, total_cost: result.total_cost, consumable_quantity: result.finalConsumableQty });
@@ -1423,22 +1406,24 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
 
   const violations = Array.from(personMap.values()).map(p => {
     const penaltyScore = p.late_count + p.overtime_count + p.noshow_count;
-    let suggestedPenalty = '无';
     
-    if (penaltyScore >= 5) {
-      suggestedPenalty = '暂停预约30天';
-    } else if (penaltyScore >= 3) {
-      suggestedPenalty = '暂停预约7天';
-    } else if (penaltyScore >= 1) {
-      suggestedPenalty = '警告';
-    } else if (p.cancelled_count >= 5) {
-      suggestedPenalty = '频繁取消警告';
+    const penaltyCheck = checkUserPenalty(p.student_id);
+    let actualPenalty = '无';
+    if (penaltyCheck.isPenalized) {
+      if (penaltyCheck.penaltyMethod === 'BAN') {
+        actualPenalty = '已封禁';
+      } else if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
+        actualPenalty = '需审批';
+      } else {
+        actualPenalty = '受限制';
+      }
     }
 
     return {
       ...p,
       total_violations: penaltyScore + p.late_cancelled_count,
-      suggested_penalty: suggestedPenalty
+      suggested_penalty: actualPenalty,
+      penalty_reason: penaltyCheck.reason
     };
   }).sort((a, b) => b.total_violations - a.total_violations || b.cancelled_count - a.cancelled_count);
 
@@ -1695,7 +1680,7 @@ function scanForNoShows() {
             db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ? WHERE id = ?").run(nowStr, res.id);
             db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time) VALUES (?, ?, ?, ?)").run(res.student_id, res.id, 'no-show', nowStr);
             
-            evaluatePenaltiesOnViolation(res.student_id, 'no-show');
+            evaluatePenaltiesOnViolation(res.student_id);
           }
         })();
       }
