@@ -292,13 +292,16 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
       </div>
 
       {/* Drawer Overlay */}
-      {isDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity" onClick={handleCloseDrawer} />
-          
-          {/* Drawer Content */}
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
+      <div 
+        className={`fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={handleCloseDrawer}
+      />
+      
+      {/* Drawer Panel */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] bg-white z-50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
               <h2 className="text-lg font-bold text-neutral-900">
                 {editingRule ? '编辑规则' : '新建规则'}
               </h2>
@@ -524,8 +527,6 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
               </button>
             </div>
           </div>
-        </div>
-      )}
     </div>
   );
 }
