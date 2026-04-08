@@ -5,11 +5,15 @@ import { Plus, Edit2, Trash2, AlertCircle, X } from 'lucide-react';
 interface TriggerConfig {
   metric: 'count' | 'duration';
   threshold: number;
-  period_days: number;
+  window_type: 'rolling_days' | 'natural_period' | 'current_month';
+  period_days?: number;
+  period_type?: 'month' | 'quarter' | 'semester' | 'academic_year' | 'year';
 }
 
 interface ActionConfig {
   type: 'ban' | 'require_approval' | 'double_fee' | 'reduce_advance_days';
+  duration_type?: 'dynamic' | 'fixed';
+  duration_days?: number;
   params?: {
     multiplier?: number;
     reduce_days?: number;
@@ -48,8 +52,8 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
     name: '',
     description: '',
     violation_type: 'late',
-    trigger: { metric: 'count', threshold: 1, period_days: 30 },
-    action: { type: 'ban' },
+    trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30 },
+    action: { type: 'ban', duration_type: 'dynamic' },
     is_active: 1
   });
 
@@ -93,8 +97,8 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
         name: '',
         description: '',
         violation_type: 'late',
-        trigger: { metric: 'count', threshold: 1, period_days: 30 },
-        action: { type: 'ban' },
+        trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30 },
+        action: { type: 'ban', duration_type: 'dynamic' },
         is_active: 1
       });
     }
@@ -177,6 +181,14 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
     reduce_advance_days: '减少提前预约天数'
   };
 
+  const periodTypeMap: Record<string, string> = {
+    month: '自然月',
+    quarter: '自然季度',
+    semester: '学期',
+    academic_year: '学年',
+    year: '自然年'
+  };
+
   if (isLoading) {
     return <div className="p-8 text-center text-neutral-500">加载中...</div>;
   }
@@ -220,7 +232,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                   </td>
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-100">
-                      过去 {trigger.period_days} 天内，
+                      {trigger.window_type === 'natural_period' || trigger.window_type === 'current_month' ? `本${periodTypeMap[trigger.period_type || 'month']}内，` : `过去 ${trigger.period_days} 天内，`}
                       {violationTypeMap[rule.violation_type]}
                       {trigger.metric === 'count' ? `达到 ${trigger.threshold} 次` : `累计 ${trigger.threshold} 分钟`}
                     </span>
@@ -228,6 +240,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-100">
                       {actionTypeMap[action.type]}
+                      {action.duration_type === 'fixed' && action.duration_days ? ` (${action.duration_days} 天)` : ' (动态计算)'}
                       {action.type === 'double_fee' && ` (${action.params?.multiplier} 倍)`}
                       {action.type === 'reduce_advance_days' && ` (减少 ${action.params?.reduce_days} 天，保底 ${action.params?.min_retain_days} 天)`}
                     </span>
@@ -362,16 +375,45 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm text-neutral-600 mb-1">统计周期 (过去 N 天内)</label>
-                    <input
-                      required
-                      type="number"
-                      min="1"
-                      value={formData.trigger.period_days}
-                      onChange={e => setFormData({...formData, trigger: {...formData.trigger, period_days: parseInt(e.target.value)}})}
-                      className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none"
-                    />
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className="block text-sm text-neutral-600 mb-1">统计周期类型</label>
+                      <select
+                        value={formData.trigger.window_type === 'current_month' ? 'natural_period' : formData.trigger.window_type}
+                        onChange={e => setFormData({...formData, trigger: {...formData.trigger, window_type: e.target.value as 'rolling_days'|'natural_period'}})}
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
+                      >
+                        <option value="rolling_days">过去 N 天</option>
+                        <option value="natural_period">自然周期</option>
+                      </select>
+                    </div>
+                    {formData.trigger.window_type === 'rolling_days' && (
+                      <div className="flex-1">
+                        <label className="block text-sm text-neutral-600 mb-1">天数 (N)</label>
+                        <input
+                          required
+                          type="number"
+                          min="1"
+                          value={formData.trigger.period_days || 30}
+                          onChange={e => setFormData({...formData, trigger: {...formData.trigger, period_days: parseInt(e.target.value)}})}
+                          className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none"
+                        />
+                      </div>
+                    )}
+                    {(formData.trigger.window_type === 'natural_period' || formData.trigger.window_type === 'current_month') && (
+                      <div className="flex-1">
+                        <label className="block text-sm text-neutral-600 mb-1">周期类型</label>
+                        <select
+                          value={formData.trigger.period_type || 'month'}
+                          onChange={e => setFormData({...formData, trigger: {...formData.trigger, period_type: e.target.value as any}})}
+                          className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
+                        >
+                          {Object.entries(periodTypeMap).map(([k, v]) => (
+                            <option key={k} value={k}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -381,17 +423,43 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                     惩罚动作 (Then)
                   </h4>
 
-                  <div>
-                    <label className="block text-sm text-neutral-600 mb-1">惩罚类型</label>
-                    <select
-                      value={formData.action.type}
-                      onChange={e => setFormData({...formData, action: { type: e.target.value as any, params: {} }})}
-                      className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-orange-500 outline-none bg-white"
-                    >
-                      {Object.entries(actionTypeMap).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className="block text-sm text-neutral-600 mb-1">惩罚类型</label>
+                      <select
+                        value={formData.action.type}
+                        onChange={e => setFormData({...formData, action: { type: e.target.value as any, params: {}, duration_type: formData.action.duration_type, duration_days: formData.action.duration_days }})}
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                      >
+                        {Object.entries(actionTypeMap).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm text-neutral-600 mb-1">惩罚时长类型</label>
+                      <select
+                        value={formData.action.duration_type || 'dynamic'}
+                        onChange={e => setFormData({...formData, action: {...formData.action, duration_type: e.target.value as 'dynamic'|'fixed'}})}
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                      >
+                        <option value="dynamic">动态计算 (持续至不满足条件)</option>
+                        <option value="fixed">固定时长</option>
+                      </select>
+                    </div>
+                    {formData.action.duration_type === 'fixed' && (
+                      <div className="flex-1">
+                        <label className="block text-sm text-neutral-600 mb-1">惩罚时长 (天)</label>
+                        <input
+                          required
+                          type="number"
+                          min="1"
+                          value={formData.action.duration_days || ''}
+                          onChange={e => setFormData({...formData, action: {...formData.action, duration_days: e.target.value ? parseInt(e.target.value) : undefined}})}
+                          className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-orange-500 outline-none"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {formData.action.type === 'double_fee' && (

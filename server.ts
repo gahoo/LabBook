@@ -214,7 +214,19 @@ try {
         status TEXT DEFAULT 'active',       
         remark TEXT,                        
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+    );
+
+    CREATE TABLE IF NOT EXISTS user_penalties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id TEXT NOT NULL,
+        rule_id INTEGER NOT NULL,
+        penalty_method TEXT NOT NULL,
+        restrictions TEXT,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME NOT NULL,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
   
   try {
@@ -235,16 +247,98 @@ const adminAuth = (req: any, res: any, next: any) => {
   }
 };
 
+function getNaturalPeriodStart(now: Date, periodType: string): Date {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  
+  switch (periodType) {
+    case 'month':
+      return new Date(year, month, 1);
+    case 'quarter':
+      const quarterStartMonth = Math.floor(month / 3) * 3;
+      return new Date(year, quarterStartMonth, 1);
+    case 'year':
+      return new Date(year, 0, 1);
+    case 'semester':
+      // Assuming Fall semester starts Sept 1 (month 8), Spring starts Feb 1 (month 1)
+      if (month >= 8) return new Date(year, 8, 1);
+      if (month >= 1) return new Date(year, 1, 1);
+      return new Date(year - 1, 8, 1); // Jan belongs to previous Fall semester
+    case 'academic_year':
+      // Assuming Academic year starts Sept 1
+      if (month >= 8) return new Date(year, 8, 1);
+      return new Date(year - 1, 8, 1);
+    default:
+      return new Date(year, month, 1);
+  }
+}
+
 function evaluatePenaltiesOnViolation(student_id: string) {
+  const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
+  const now = new Date();
+  const nowStr = now.toISOString();
+
+  for (const rule of activeRules) {
+    const trigger = JSON.parse(rule.trigger_config);
+    const action = JSON.parse(rule.action_config);
+    
+    if (action.duration_type !== 'fixed' || !action.duration_days) continue;
+
+    let windowStartStr = '';
+    if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
+      windowStartStr = getNaturalPeriodStart(now, trigger.period_type || 'month').toISOString();
+    } else {
+      let windowStart = new Date();
+      windowStart.setDate(windowStart.getDate() - (trigger.period_days || 30));
+      windowStartStr = windowStart.toISOString();
+    }
+
+    let metricValue = 0;
+    if (trigger.metric === 'count') {
+      const countRes = db.prepare(`
+        SELECT COUNT(*) as count FROM violation_records 
+        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+      `).get(student_id, rule.violation_type, windowStartStr) as any;
+      metricValue = countRes.count;
+    } else if (trigger.metric === 'duration') {
+      const sumRes = db.prepare(`
+        SELECT SUM(duration_minutes) as sum FROM violation_records 
+        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+      `).get(student_id, rule.violation_type, windowStartStr) as any;
+      metricValue = sumRes.sum || 0;
+    }
+
+    if (metricValue >= trigger.threshold) {
+      const existingPenalty = db.prepare(`
+        SELECT id FROM user_penalties 
+        WHERE student_id = ? AND rule_id = ? AND end_time > ? AND status = 'active'
+      `).get(student_id, rule.id, nowStr);
+
+      if (!existingPenalty) {
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + action.duration_days);
+        
+        let penaltyMethod = 'RESTRICTED';
+        if (action.type === 'ban') penaltyMethod = 'BAN';
+        else if (action.type === 'require_approval') penaltyMethod = 'REQUIRE_APPROVAL';
+
+        db.prepare(`
+          INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(student_id, rule.id, penaltyMethod, JSON.stringify(action.params || {}), nowStr, endDate.toISOString());
+      }
+    }
+  }
+
   const penalty = checkUserPenalty(student_id);
   if (penalty.isPenalized && penalty.penaltyMethod === 'BAN') {
-    const now = new Date().toISOString();
-    db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, now);
+    db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, nowStr);
   }
 }
 
 function checkUserPenalty(student_id: string) {
   const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
+  const nowStr = new Date().toISOString();
   
   let isPenalized = false;
   let penaltyMethod = 'NONE';
@@ -257,13 +351,47 @@ function checkUserPenalty(student_id: string) {
   
   const triggeredRules: string[] = [];
 
+  // 1. Check fixed duration penalties
+  const fixedPenalties = db.prepare(`
+    SELECT p.*, r.name as rule_name FROM user_penalties p
+    JOIN penalty_rules r ON p.rule_id = r.id
+    WHERE p.student_id = ? AND p.end_time > ? AND p.status = 'active'
+  `).all(student_id, nowStr) as any[];
+
+  for (const p of fixedPenalties) {
+    isPenalized = true;
+    triggeredRules.push(p.rule_name);
+    
+    if (p.penalty_method === 'BAN') {
+      penaltyMethod = 'BAN';
+    } else if (p.penalty_method === 'REQUIRE_APPROVAL' && penaltyMethod !== 'BAN') {
+      penaltyMethod = 'REQUIRE_APPROVAL';
+    } else if (p.penalty_method === 'RESTRICTED' && penaltyMethod === 'NONE') {
+      penaltyMethod = 'RESTRICTED';
+    }
+
+    const params = JSON.parse(p.restrictions || '{}');
+    if (params.reduce_days) restrictions.reduce_days = Math.max(restrictions.reduce_days, params.reduce_days);
+    if (params.min_retain_days !== undefined) restrictions.min_retain_days = Math.min(restrictions.min_retain_days, params.min_retain_days);
+    if (params.multiplier) restrictions.fee_multiplier = Math.max(restrictions.fee_multiplier, params.multiplier);
+  }
+
+  // 2. Check dynamic penalties
   for (const rule of activeRules) {
     const trigger = JSON.parse(rule.trigger_config);
     const action = JSON.parse(rule.action_config);
     
-    let windowStart = new Date();
-    windowStart.setDate(windowStart.getDate() - trigger.period_days);
-    const windowStartStr = windowStart.toISOString();
+    if (action.duration_type === 'fixed' && action.duration_days) continue; // Skip rules that are handled by fixed penalties
+    
+    let windowStartStr = '';
+    if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
+      const now = new Date();
+      windowStartStr = getNaturalPeriodStart(now, trigger.period_type || 'month').toISOString();
+    } else {
+      let windowStart = new Date();
+      windowStart.setDate(windowStart.getDate() - (trigger.period_days || 30));
+      windowStartStr = windowStart.toISOString();
+    }
 
     let metricValue = 0;
     if (trigger.metric === 'count') {
@@ -282,9 +410,8 @@ function checkUserPenalty(student_id: string) {
 
     if (metricValue >= trigger.threshold) {
       isPenalized = true;
-      triggeredRules.push(rule.name);
+      if (!triggeredRules.includes(rule.name)) triggeredRules.push(rule.name);
       
-      // Aggregate actions
       if (action.type === 'ban') {
         penaltyMethod = 'BAN';
       } else if (action.type === 'require_approval' && penaltyMethod !== 'BAN') {
@@ -1220,6 +1347,20 @@ app.post('/api/reservations/checkout', (req, res) => {
 });
 
 // Admin get all reservations
+app.get('/api/user/active-penalties', (req, res) => {
+  const student_id = req.query.student_id as string;
+  if (!student_id) {
+    return res.status(400).json({ error: 'Missing student_id' });
+  }
+  try {
+    const penalty = checkUserPenalty(student_id);
+    res.json(penalty);
+  } catch (error) {
+    console.error('Error fetching active penalties:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/api/admin/reservations', adminAuth, (req, res) => {
   const reservations = db.prepare(`
     SELECT r.*, e.name as equipment_name 
