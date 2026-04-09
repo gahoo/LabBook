@@ -282,8 +282,6 @@ function evaluatePenaltiesOnViolation(student_id: string) {
     const trigger = JSON.parse(rule.trigger_config);
     const action = JSON.parse(rule.action_config);
     
-    if (action.duration_type !== 'fixed' || !action.duration_days) continue;
-
     let windowStartStr = '';
     if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
       windowStartStr = getNaturalPeriodStart(now, trigger.period_type || 'month').toISOString();
@@ -293,50 +291,74 @@ function evaluatePenaltiesOnViolation(student_id: string) {
       windowStartStr = windowStart.toISOString();
     }
 
+    let scopeCondition = '';
+    let queryParams: any[] = [student_id, rule.violation_type, windowStartStr];
+
+    if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+      const placeholders = trigger.scope.map(() => '?').join(',');
+      scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
+      queryParams.push(...trigger.scope);
+    }
+
     let metricValue = 0;
     if (trigger.metric === 'count') {
       const countRes = db.prepare(`
         SELECT COUNT(*) as count FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-      `).get(student_id, rule.violation_type, windowStartStr) as any;
+        ${scopeCondition}
+      `).get(...queryParams) as any;
       metricValue = countRes.count;
     } else if (trigger.metric === 'duration') {
       const sumRes = db.prepare(`
         SELECT SUM(duration_minutes) as sum FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-      `).get(student_id, rule.violation_type, windowStartStr) as any;
+        ${scopeCondition}
+      `).get(...queryParams) as any;
       metricValue = sumRes.sum || 0;
     }
 
     if (metricValue >= trigger.threshold) {
-      const existingPenalty = db.prepare(`
-        SELECT id FROM user_penalties 
-        WHERE student_id = ? AND rule_id = ? AND end_time > ? AND status = 'active'
-      `).get(student_id, rule.id, nowStr);
+      // 1. If it's a fixed duration rule, insert into user_penalties
+      if (action.duration_type === 'fixed' && action.duration_days) {
+        const existingPenalty = db.prepare(`
+          SELECT id FROM user_penalties 
+          WHERE student_id = ? AND rule_id = ? AND end_time > ? AND status = 'active'
+        `).get(student_id, rule.id, nowStr);
 
-      if (!existingPenalty) {
-        const endDate = new Date(now);
-        endDate.setDate(endDate.getDate() + action.duration_days);
-        
-        let penaltyMethod = 'RESTRICTED';
-        if (action.type === 'ban') penaltyMethod = 'BAN';
-        else if (action.type === 'require_approval') penaltyMethod = 'REQUIRE_APPROVAL';
+        if (!existingPenalty) {
+          const endDate = new Date(now);
+          endDate.setDate(endDate.getDate() + action.duration_days);
+          
+          let penaltyMethod = 'RESTRICTED';
+          if (action.type === 'ban') penaltyMethod = 'BAN';
+          else if (action.type === 'require_approval') penaltyMethod = 'REQUIRE_APPROVAL';
 
-        db.prepare(`
-          INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(student_id, rule.id, penaltyMethod, JSON.stringify(action.params || {}), nowStr, endDate.toISOString());
+          const restrictionsData = { ...(action.params || {}) };
+          if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+            restrictionsData.restricted_equipment_ids = trigger.scope;
+          }
+
+          db.prepare(`
+            INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(student_id, rule.id, penaltyMethod, JSON.stringify(restrictionsData), nowStr, endDate.toISOString());
+        }
+      }
+
+      // 2. Cancellation logic (for both fixed and dynamic rules)
+      if (action.type === 'ban' && action.params?.cancel_future_reservations) {
+        if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+          const placeholders = trigger.scope.map(() => '?').join(',');
+          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ? AND equipment_id IN (${placeholders})`).run(student_id, nowStr, ...trigger.scope);
+        } else {
+          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, nowStr);
+        }
       }
     }
   }
-
-  const penalty = checkUserPenalty(student_id);
-  if (penalty.isPenalized && penalty.penaltyMethod === 'BAN') {
-    db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, nowStr);
-  }
 }
 
-function checkUserPenalty(student_id: string) {
+function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
   const nowStr = new Date().toISOString();
   
@@ -359,8 +381,16 @@ function checkUserPenalty(student_id: string) {
   `).all(student_id, nowStr) as any[];
 
   for (const p of fixedPenalties) {
+    const params = JSON.parse(p.restrictions || '{}');
+    
+    if (target_equipment_id && params.restricted_equipment_ids && Array.isArray(params.restricted_equipment_ids) && params.restricted_equipment_ids.length > 0) {
+      if (!params.restricted_equipment_ids.includes(target_equipment_id)) {
+        continue;
+      }
+    }
+
     isPenalized = true;
-    triggeredRules.push(p.rule_name);
+    if (!triggeredRules.includes(p.rule_name)) triggeredRules.push(p.rule_name);
     
     if (p.penalty_method === 'BAN') {
       penaltyMethod = 'BAN';
@@ -370,7 +400,6 @@ function checkUserPenalty(student_id: string) {
       penaltyMethod = 'RESTRICTED';
     }
 
-    const params = JSON.parse(p.restrictions || '{}');
     if (params.reduce_days) restrictions.reduce_days = Math.max(restrictions.reduce_days, params.reduce_days);
     if (params.min_retain_days !== undefined) restrictions.min_retain_days = Math.min(restrictions.min_retain_days, params.min_retain_days);
     if (params.multiplier) restrictions.fee_multiplier = Math.max(restrictions.fee_multiplier, params.multiplier);
@@ -383,6 +412,12 @@ function checkUserPenalty(student_id: string) {
     
     if (action.duration_type === 'fixed' && action.duration_days) continue; // Skip rules that are handled by fixed penalties
     
+    if (target_equipment_id && trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+      if (!trigger.scope.includes(target_equipment_id)) {
+        continue;
+      }
+    }
+
     let windowStartStr = '';
     if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
       const now = new Date();
@@ -393,18 +428,29 @@ function checkUserPenalty(student_id: string) {
       windowStartStr = windowStart.toISOString();
     }
 
+    let scopeCondition = '';
+    let queryParams: any[] = [student_id, rule.violation_type, windowStartStr];
+
+    if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+      const placeholders = trigger.scope.map(() => '?').join(',');
+      scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
+      queryParams.push(...trigger.scope);
+    }
+
     let metricValue = 0;
     if (trigger.metric === 'count') {
       const countRes = db.prepare(`
         SELECT COUNT(*) as count FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-      `).get(student_id, rule.violation_type, windowStartStr) as any;
+        ${scopeCondition}
+      `).get(...queryParams) as any;
       metricValue = countRes.count;
     } else if (trigger.metric === 'duration') {
       const sumRes = db.prepare(`
         SELECT SUM(duration_minutes) as sum FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-      `).get(student_id, rule.violation_type, windowStartStr) as any;
+        ${scopeCondition}
+      `).get(...queryParams) as any;
       metricValue = sumRes.sum || 0;
     }
 
@@ -825,7 +871,7 @@ app.post('/api/reservations', (req, res) => {
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
   
-  const penaltyCheck = checkUserPenalty(student_id);
+  const penaltyCheck = checkUserPenalty(student_id, equipment_id);
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
     return res.status(403).json({ error: penaltyCheck.reason });
   }
@@ -1104,7 +1150,7 @@ app.post('/api/reservations/update', (req, res) => {
     return res.status(400).json({ error: '每个预约仅允许修改一次时间，请取消后重新预约' });
   }
 
-  const penaltyCheck = checkUserPenalty(reservation.student_id);
+  const penaltyCheck = checkUserPenalty(reservation.student_id, reservation.equipment_id);
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
     return res.status(403).json({ error: penaltyCheck.reason });
   }
@@ -1312,7 +1358,7 @@ app.post('/api/reservations/checkout', (req, res) => {
         total_cost += reservation.price;
       }
 
-      const penaltyCheck = checkUserPenalty(reservation.student_id);
+      const penaltyCheck = checkUserPenalty(reservation.student_id, reservation.equipment_id);
       if (penaltyCheck.isPenalized && penaltyCheck.restrictions?.fee_multiplier > 1) {
         total_cost *= penaltyCheck.restrictions.fee_multiplier;
       }
