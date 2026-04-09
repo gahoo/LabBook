@@ -226,6 +226,9 @@ export default function Booking() {
           setNeedsWhitelist(true);
           throw new Error('您不在白名单中，请先申请使用权限');
         }
+        if (res.status === 403 && data.error && data.error.includes('因触发')) {
+          throw new Error(`${formData.student_name}（学号：${formData.student_id}）${data.error}`);
+        }
         throw new Error(data.error || '预约请求失败');
       }
 

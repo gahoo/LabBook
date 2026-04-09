@@ -372,6 +372,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   };
   
   const triggeredRules: string[] = [];
+  let maxUnbanTime: Date | null = null;
 
   // 1. Check fixed duration penalties
   const fixedPenalties = db.prepare(`
@@ -403,6 +404,11 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     if (params.reduce_days) restrictions.reduce_days = Math.max(restrictions.reduce_days, params.reduce_days);
     if (params.min_retain_days !== undefined) restrictions.min_retain_days = Math.min(restrictions.min_retain_days, params.min_retain_days);
     if (params.multiplier) restrictions.fee_multiplier = Math.max(restrictions.fee_multiplier, params.multiplier);
+
+    const endTime = new Date(p.end_time);
+    if (!maxUnbanTime || endTime > maxUnbanTime) {
+      maxUnbanTime = endTime;
+    }
   }
 
   // 2. Check dynamic penalties
@@ -458,6 +464,57 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       isPenalized = true;
       if (!triggeredRules.includes(rule.name)) triggeredRules.push(rule.name);
       
+      let ruleUnbanTime: Date | null = null;
+      if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
+        const now = new Date();
+        const periodType = trigger.period_type || 'month';
+        let nextPeriodStart = new Date(now);
+        if (periodType === 'month') {
+          nextPeriodStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        } else if (periodType === 'week') {
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1) + 7;
+          nextPeriodStart = new Date(now.setDate(diff));
+          nextPeriodStart.setHours(0, 0, 0, 0);
+        } else if (periodType === 'year') {
+          nextPeriodStart = new Date(now.getFullYear() + 1, 0, 1);
+        } else if (periodType === 'semester' || periodType === 'academic_year') {
+          nextPeriodStart = new Date(now.getFullYear(), now.getMonth() + 6, 1);
+        }
+        ruleUnbanTime = nextPeriodStart;
+      } else {
+        const violations = db.prepare(`
+          SELECT violation_time, duration_minutes FROM violation_records 
+          WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+          ${scopeCondition}
+          ORDER BY violation_time ASC
+        `).all(...queryParams) as any[];
+
+        if (trigger.metric === 'count') {
+          const dropIndex = metricValue - trigger.threshold;
+          if (dropIndex >= 0 && dropIndex < violations.length) {
+            const dropViolationTime = new Date(violations[dropIndex].violation_time);
+            dropViolationTime.setDate(dropViolationTime.getDate() + (trigger.period_days || 30));
+            ruleUnbanTime = dropViolationTime;
+          }
+        } else if (trigger.metric === 'duration') {
+          let currentSum = metricValue;
+          for (let i = 0; i < violations.length; i++) {
+            currentSum -= (violations[i].duration_minutes || 0);
+            if (currentSum < trigger.threshold) {
+              const dropViolationTime = new Date(violations[i].violation_time);
+              dropViolationTime.setDate(dropViolationTime.getDate() + (trigger.period_days || 30));
+              ruleUnbanTime = dropViolationTime;
+              break;
+            }
+          }
+        }
+      }
+
+      if (ruleUnbanTime && (!maxUnbanTime || ruleUnbanTime > maxUnbanTime)) {
+        maxUnbanTime = ruleUnbanTime;
+      }
+
       if (action.type === 'ban') {
         penaltyMethod = 'BAN';
       } else if (action.type === 'require_approval' && penaltyMethod !== 'BAN') {
@@ -474,12 +531,21 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   }
 
   if (isPenalized) {
-    if (penaltyMethod === 'BAN') {
-      reason = `您已触发惩罚规则（${triggeredRules.join('、')}），当前处于封禁状态，无法预约。`;
-    } else if (penaltyMethod === 'REQUIRE_APPROVAL') {
-      reason = `您已触发惩罚规则（${triggeredRules.join('、')}），您的预约需要管理员审批。`;
+    let unbanStr = '';
+    if (maxUnbanTime) {
+      const tzOffset = maxUnbanTime.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(maxUnbanTime.getTime() - tzOffset)).toISOString().slice(0, 19).replace('T', ' ');
+      unbanStr = `解封时间：${localISOTime}`;
     } else {
-      reason = `您已触发惩罚规则（${triggeredRules.join('、')}），您的预约权限受到限制。`;
+      unbanStr = `解封时间：未知`;
+    }
+
+    if (penaltyMethod === 'BAN') {
+      reason = `因触发【${triggeredRules.join('、')}】规则，目前已被限制使用该仪器。${unbanStr}`;
+    } else if (penaltyMethod === 'REQUIRE_APPROVAL') {
+      reason = `因触发【${triggeredRules.join('、')}】规则，您的预约需要管理员审批。${unbanStr}`;
+    } else {
+      reason = `因触发【${triggeredRules.join('、')}】规则，您的预约权限受到限制。${unbanStr}`;
     }
   }
 

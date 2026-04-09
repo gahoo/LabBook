@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Plus, Edit2, Trash2, AlertCircle, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, X, Search } from 'lucide-react';
 
 interface TriggerConfig {
   metric: 'count' | 'duration';
@@ -8,6 +8,7 @@ interface TriggerConfig {
   window_type: 'rolling_days' | 'natural_period' | 'current_month';
   period_days?: number;
   period_type?: 'month' | 'quarter' | 'semester' | 'academic_year' | 'year';
+  scope?: number[];
 }
 
 interface ActionConfig {
@@ -18,6 +19,7 @@ interface ActionConfig {
     multiplier?: number;
     reduce_days?: number;
     min_retain_days?: number;
+    cancel_future_reservations?: boolean;
   };
 }
 
@@ -31,12 +33,111 @@ interface PenaltyRule {
   is_active: number;
 }
 
+interface Equipment {
+  id: number;
+  name: string;
+}
+
 interface PenaltyRulesTabProps {
   token: string;
 }
 
+function MultiSelectCombobox({ 
+  options, 
+  selectedIds, 
+  onChange, 
+  placeholder = "搜索并选择仪器..." 
+}: { 
+  options: Equipment[], 
+  selectedIds: number[], 
+  onChange: (ids: number[]) => void,
+  placeholder?: string
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredOptions = options.filter(opt => 
+    opt.name.toLowerCase().includes(query.toLowerCase()) && !selectedIds.includes(opt.id)
+  );
+
+  const selectedOptions = options.filter(opt => selectedIds.includes(opt.id));
+
+  const handleSelect = (id: number) => {
+    onChange([...selectedIds, id]);
+    setQuery('');
+  };
+
+  const handleRemove = (id: number) => {
+    onChange(selectedIds.filter(selectedId => selectedId !== id));
+  };
+
+  return (
+    <div className="relative w-full" ref={wrapperRef}>
+      <div className="flex flex-wrap gap-2 p-2 min-h-[42px] bg-white border border-neutral-300 rounded-xl focus-within:ring-2 focus-within:ring-red-600 focus-within:border-transparent">
+        {selectedOptions.map(opt => (
+          <span key={opt.id} className="flex items-center gap-1 px-2.5 py-1 bg-neutral-100 text-neutral-800 text-sm rounded-lg border border-neutral-200">
+            {opt.name}
+            <button 
+              type="button" 
+              onClick={() => handleRemove(opt.id)}
+              className="text-neutral-400 hover:text-red-500 focus:outline-none"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </span>
+        ))}
+        <div className="flex-1 min-w-[120px] flex items-center">
+          <input
+            type="text"
+            value={query}
+            onChange={e => {
+              setQuery(e.target.value);
+              setIsOpen(true);
+            }}
+            onFocus={() => setIsOpen(true)}
+            placeholder={selectedOptions.length === 0 ? placeholder : ""}
+            className="w-full bg-transparent outline-none text-sm text-neutral-700 placeholder:text-neutral-400"
+          />
+        </div>
+      </div>
+      
+      {isOpen && filteredOptions.length > 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg max-h-60 overflow-auto py-1">
+          {filteredOptions.map(opt => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => handleSelect(opt.id)}
+              className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+            >
+              {opt.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {isOpen && query && filteredOptions.length === 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-3 px-4 text-sm text-neutral-500 text-center">
+          未找到匹配的仪器
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
   const [rules, setRules] = useState<PenaltyRule[]>([]);
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<PenaltyRule | null>(null);
@@ -52,14 +153,27 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
     name: '',
     description: '',
     violation_type: 'late',
-    trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30 },
-    action: { type: 'ban', duration_type: 'dynamic' },
+    trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30, scope: [] },
+    action: { type: 'ban', duration_type: 'dynamic', params: { cancel_future_reservations: false } },
     is_active: 1
   });
 
   useEffect(() => {
     fetchRules();
+    fetchEquipments();
   }, []);
+
+  const fetchEquipments = async () => {
+    try {
+      const res = await fetch('/api/equipment');
+      if (res.ok) {
+        const data = await res.json();
+        setEquipments(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch equipments', err);
+    }
+  };
 
   const fetchRules = async () => {
     try {
@@ -418,6 +532,16 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                       </div>
                     )}
                   </div>
+
+                  <div>
+                    <label className="block text-sm text-neutral-600 mb-1">作用范围 (不选则为全部仪器)</label>
+                    <MultiSelectCombobox
+                      options={equipments}
+                      selectedIds={formData.trigger.scope || []}
+                      onChange={(ids) => setFormData({...formData, trigger: {...formData.trigger, scope: ids}})}
+                      placeholder="搜索并选择受限仪器..."
+                    />
+                  </div>
                 </div>
 
                 <div className="p-4 bg-orange-50/50 rounded-xl space-y-4 border border-orange-100">
@@ -477,6 +601,29 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                         onChange={e => setFormData({...formData, action: { ...formData.action, params: { multiplier: parseFloat(e.target.value) } }})}
                         className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-orange-500 outline-none"
                       />
+                    </div>
+                  )}
+
+                  {formData.action.type === 'ban' && (
+                    <div>
+                      <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.action.params?.cancel_future_reservations || false}
+                          onChange={e => setFormData({
+                            ...formData,
+                            action: {
+                              ...formData.action,
+                              params: {
+                                ...formData.action.params,
+                                cancel_future_reservations: e.target.checked
+                              }
+                            }
+                          })}
+                          className="rounded text-orange-500 focus:ring-orange-500"
+                        />
+                        同时取消该用户未来所有相关的待使用预约
+                      </label>
                     </div>
                   )}
 

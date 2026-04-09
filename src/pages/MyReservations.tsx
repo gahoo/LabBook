@@ -220,7 +220,12 @@ export default function MyReservations() {
         setEditingId(null);
         fetchMyReservations();
       } else {
-        toast.error(data.error || '修改失败');
+        const r = myReservations.find(r => r.id === editingId);
+        if (res.status === 403 && data.error && data.error.includes('因触发') && r) {
+          toast.error(`${r.student_name}（学号：${r.student_id}）${data.error}`);
+        } else {
+          toast.error(data.error || '修改失败');
+        }
       }
     } catch (err: any) {
       toast.error(err.message || '修改失败');
