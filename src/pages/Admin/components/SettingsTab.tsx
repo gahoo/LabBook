@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { Save, Upload, X, Settings, ShieldAlert } from 'lucide-react';
-import PenaltyRulesTab from './PenaltyRulesTab';
 
 interface SettingsTabProps {
   token: string;
 }
 
 export default function SettingsTab({ token }: SettingsTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'system' | 'penalty'>('system');
   const [appName, setAppName] = useState('LabBook');
   const [defaultRoute, setDefaultRoute] = useState('/');
   const [appLogo, setAppLogo] = useState('');
@@ -114,37 +112,12 @@ export default function SettingsTab({ token }: SettingsTabProps) {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-      <div className="border-b border-neutral-200">
-        <div className="flex gap-6 px-6 pt-4">
-          <button
-            onClick={() => setActiveSubTab('system')}
-            className={`pb-4 text-sm font-medium transition-colors relative ${activeSubTab === 'system' ? 'text-red-600' : 'text-neutral-500 hover:text-neutral-900'}`}
-          >
-            <div className="flex items-center gap-2">
-              <Settings className="w-4 h-4" />
-              系统设置
-            </div>
-            {activeSubTab === 'system' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded-t-full" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveSubTab('penalty')}
-            className={`pb-4 text-sm font-medium transition-colors relative ${activeSubTab === 'penalty' ? 'text-red-600' : 'text-neutral-500 hover:text-neutral-900'}`}
-          >
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4" />
-              惩罚规则
-            </div>
-            {activeSubTab === 'penalty' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded-t-full" />
-            )}
-          </button>
-        </div>
-      </div>
-      
-      {activeSubTab === 'system' && (
-        <div className="p-6 space-y-6 max-w-2xl">
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-neutral-900 mb-6 flex items-center gap-2">
+          <Settings className="w-5 h-5 text-neutral-500" />
+          系统设置
+        </h2>
+        <div className="space-y-6 max-w-2xl">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
             应用名称
@@ -305,13 +278,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
             </button>
           </div>
         </div>
-      )}
-
-      {activeSubTab === 'penalty' && (
-        <div className="p-6">
-          <PenaltyRulesTab token={token} />
-        </div>
-      )}
+      </div>
     </div>
   );
 }

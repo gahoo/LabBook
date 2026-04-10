@@ -38,10 +38,8 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [revokeConfirmId, setRevokeConfirmId] = useState<number | null>(null);
-  const [restoreConfirmId, setRestoreConfirmId] = useState<number | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts' | 'violations' | 'violation_records'>('detailed');
+  const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts'>('detailed');
   const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
   const [statsType, setStatsType] = useState<'user' | 'supervisor'>('user');
   const [statsFilterUser, setStatsFilterUser] = useState('');
@@ -50,19 +48,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [statsFilterDurationMax, setStatsFilterDurationMax] = useState('');
   const [statsFilterCostMin, setStatsFilterCostMin] = useState('');
   const [statsFilterCostMax, setStatsFilterCostMax] = useState('');
-  const [violationsData, setViolationsData] = useState<any[]>([]);
-  const [violationRecordsData, setViolationRecordsData] = useState<any[]>([]);
-  const [loadingViolations, setLoadingViolations] = useState(false);
-
-  const [violationFilterUser, setViolationFilterUser] = useState('');
-  const [violationFilterLate, setViolationFilterLate] = useState<number>(0);
-  const [violationFilterOvertime, setViolationFilterOvertime] = useState<number>(0);
-  const [violationFilterNoshow, setViolationFilterNoshow] = useState<number>(0);
-  const [violationFilterCancel, setViolationFilterCancel] = useState<number>(0);
-  const [violationFilterTotal, setViolationFilterTotal] = useState<number>(0);
-  const [violationFilterPenalty, setViolationFilterPenalty] = useState<string[]>([]);
-  const [showViolationPenaltyFilterPopup, setShowViolationPenaltyFilterPopup] = useState(false);
-  const violationPenaltyFilterPopupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -71,9 +56,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       }
       if (reportStatusFilterPopupRef.current && !reportStatusFilterPopupRef.current.contains(event.target as Node)) {
         setShowReportStatusFilterPopup(false);
-      }
-      if (violationPenaltyFilterPopupRef.current && !violationPenaltyFilterPopupRef.current.contains(event.target as Node)) {
-        setShowViolationPenaltyFilterPopup(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -101,96 +83,11 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     }
   };
 
-  const fetchViolations = async () => {
-    setLoadingViolations(true);
-    try {
-      const params = new URLSearchParams();
-      if (reportStartDate) params.append('startDate', reportStartDate);
-      if (reportEndDate) params.append('endDate', reportEndDate);
-
-      const res = await fetch(`/api/admin/reports/violations?${params.toString()}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.status === 401) return onLogout();
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setViolationsData(data);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingViolations(false);
-    }
-  };
-
-  const fetchViolationRecords = async () => {
-    try {
-      const res = await fetch(`/api/admin/violation-records`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.status === 401) return onLogout();
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setViolationRecordsData(data);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleRevokeViolation = async (id: number) => {
-    try {
-      const res = await fetch(`/api/admin/violation-records/${id}/revoke`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        toast.success('撤销成功');
-        setRevokeConfirmId(null);
-        fetchViolationRecords();
-        if (activeSubTab === 'violations') fetchViolations();
-      } else {
-        toast.error('撤销失败');
-      }
-    } catch (err) {
-      toast.error('撤销失败');
-    }
-  };
-
-  const handleRestoreViolation = async (id: number) => {
-    try {
-      const res = await fetch(`/api/admin/violation-records/${id}/restore`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        toast.success('恢复成功');
-        setRestoreConfirmId(null);
-        fetchViolationRecords();
-        if (activeSubTab === 'violations') fetchViolations();
-      } else {
-        toast.error('恢复失败');
-      }
-    } catch (err) {
-      toast.error('恢复失败');
-    }
-  };
-
   useEffect(() => {
     if (token) {
       fetchReports();
     }
   }, [reportPeriod, reportStartDate, reportEndDate, token]);
-
-  useEffect(() => {
-    if (activeSubTab === 'violations' && token) {
-      fetchViolations();
-    } else if (activeSubTab === 'violation_records' && token) {
-      fetchViolationRecords();
-    }
-  }, [activeSubTab, token, reportStartDate, reportEndDate]);
 
   const filteredUsageByPerson = useMemo(() => {
     if (!reports?.usageByPerson) return [];
@@ -222,26 +119,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
       return true;
     });
   }, [reports?.usageBySupervisor, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterCostMin, statsFilterCostMax]);
-
-  const filteredViolationsData = useMemo(() => {
-    return violationsData.filter((v: any) => {
-      if (violationFilterUser) {
-        const search = violationFilterUser.toLowerCase();
-        if (!v.student_name.toLowerCase().includes(search) && 
-            !v.student_id.toLowerCase().includes(search) && 
-            !v.supervisor.toLowerCase().includes(search)) {
-          return false;
-        }
-      }
-      if (v.late_count < violationFilterLate) return false;
-      if (v.overtime_count < violationFilterOvertime) return false;
-      if (v.noshow_count < violationFilterNoshow) return false;
-      if (v.cancelled_count < violationFilterCancel) return false;
-      if (v.total_violations < violationFilterTotal) return false;
-      if (violationFilterPenalty.length > 0 && !violationFilterPenalty.includes(v.suggested_penalty)) return false;
-      return true;
-    });
-  }, [violationsData, violationFilterUser, violationFilterLate, violationFilterOvertime, violationFilterNoshow, violationFilterCancel, violationFilterTotal, violationFilterPenalty]);
 
   const filteredReportReservations = useMemo(() => {
     return (reports?.allReservations || []).filter((res: any) => {
@@ -385,17 +262,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
     }
   };
 
-  const exportViolations = () => {
-    if (!filteredViolationsData || filteredViolationsData.length === 0) return;
-    const headers = ['学号', '姓名', '导师', '迟到次数', '累计迟到时长(小时)', '超时次数', '累计超时时长(小时)', '爽约次数', '取消次数(临期)', '违规总计', '建议处罚'];
-    exportToCSV(
-      filteredViolationsData,
-      `violations_stats_${format(subDays(startOfToday(), 30), 'yyyy-MM-dd')}_${format(startOfToday(), 'yyyy-MM-dd')}`,
-      headers,
-      (v: any) => [v.student_id, v.student_name, v.supervisor, v.late_count, v.late_duration ? Number((v.late_duration / 60).toFixed(1)) : 0, v.overtime_count, v.overtime_duration ? Number((v.overtime_duration / 60).toFixed(1)) : 0, v.noshow_count, v.late_cancelled_count > 0 ? `${v.cancelled_count} (${v.late_cancelled_count})` : v.cancelled_count, v.total_violations, v.suggested_penalty]
-    );
-  };
-
   const handleUpdateReportRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingReportRecord) return;
@@ -503,28 +369,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               >
                 <BarChart2 className="w-4 h-4" />
                 <span className={activeSubTab === 'charts' ? '' : 'hidden md:inline'}>统计图表</span>
-              </button>
-              <button
-                onClick={() => setActiveSubTab('violations')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-                  activeSubTab === 'violations'
-                    ? 'border-red-600 text-red-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
-                }`}
-              >
-                <AlertTriangle className="w-4 h-4" />
-                <span className={activeSubTab === 'violations' ? '' : 'hidden md:inline'}>违规统计</span>
-              </button>
-              <button
-                onClick={() => setActiveSubTab('violation_records')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-                  activeSubTab === 'violation_records'
-                    ? 'border-red-600 text-red-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'
-                }`}
-              >
-                <AlertTriangle className="w-4 h-4" />
-                <span className={activeSubTab === 'violation_records' ? '' : 'hidden md:inline'}>违规明细</span>
               </button>
             </div>
 
@@ -1293,288 +1137,7 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
               </div>
             )}
 
-            {activeSubTab === 'violations' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
-                  <h3 className="font-bold flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-red-600" />
-                    违规统计
-                  </h3>
-                  <button 
-                    onClick={exportViolations}
-                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
-                    title="导出违规记录"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                {loadingViolations ? (
-                  <div className="text-center py-12 text-neutral-500">加载违规数据中...</div>
-                ) : violationsData.length === 0 ? (
-                  <div className="text-center py-12 text-neutral-500">统计区间内无违规记录</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
-                        <tr>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">用户/导师</div>
-                            <input 
-                              type="text" 
-                              placeholder="搜索..." 
-                              value={violationFilterUser}
-                              onChange={e => setViolationFilterUser(e.target.value)}
-                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
-                            />
-                          </th>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">迟到次数</div>
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max={Math.max(0, ...violationsData.map(v => v.late_count))} 
-                                value={violationFilterLate}
-                                onChange={e => setViolationFilterLate(Number(e.target.value))}
-                                className="w-16 accent-red-600"
-                              />
-                              <span className="text-xs font-normal">≥{violationFilterLate}</span>
-                            </div>
-                          </th>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">超时次数</div>
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max={Math.max(0, ...violationsData.map(v => v.overtime_count))} 
-                                value={violationFilterOvertime}
-                                onChange={e => setViolationFilterOvertime(Number(e.target.value))}
-                                className="w-16 accent-red-600"
-                              />
-                              <span className="text-xs font-normal">≥{violationFilterOvertime}</span>
-                            </div>
-                          </th>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">爽约次数</div>
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max={Math.max(0, ...violationsData.map(v => v.noshow_count))} 
-                                value={violationFilterNoshow}
-                                onChange={e => setViolationFilterNoshow(Number(e.target.value))}
-                                className="w-16 accent-red-600"
-                              />
-                              <span className="text-xs font-normal">≥{violationFilterNoshow}</span>
-                            </div>
-                          </th>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">取消次数(临期)</div>
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max={Math.max(0, ...violationsData.map(v => v.cancelled_count))} 
-                                value={violationFilterCancel}
-                                onChange={e => setViolationFilterCancel(Number(e.target.value))}
-                                className="w-16 accent-red-600"
-                              />
-                              <span className="text-xs font-normal">≥{violationFilterCancel}</span>
-                            </div>
-                          </th>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">违规总计</div>
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max={Math.max(0, ...violationsData.map(v => v.total_violations))} 
-                                value={violationFilterTotal}
-                                onChange={e => setViolationFilterTotal(Number(e.target.value))}
-                                className="w-16 accent-red-600"
-                              />
-                              <span className="text-xs font-normal">≥{violationFilterTotal}</span>
-                            </div>
-                          </th>
-                          <th className="px-4 py-4 font-medium align-top">
-                            <div className="mb-2">建议处罚</div>
-                            <div className="relative" ref={violationPenaltyFilterPopupRef}>
-                              <button 
-                                onClick={() => setShowViolationPenaltyFilterPopup(!showViolationPenaltyFilterPopup)}
-                                className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center font-normal"
-                              >
-                                {violationFilterPenalty.length > 0 ? (
-                                  <>
-                                    {violationFilterPenalty.map(p => (
-                                      <span key={p} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
-                                        {p}
-                                        <X 
-                                          className="w-3 h-3 cursor-pointer hover:text-red-500" 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setViolationFilterPenalty(violationFilterPenalty.filter(st => st !== p));
-                                          }}
-                                        />
-                                      </span>
-                                    ))}
-                                  </>
-                                ) : (
-                                  <span className="text-neutral-400">全部处罚</span>
-                                )}
-                              </button>
-                              {showViolationPenaltyFilterPopup && (
-                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-2 z-10 font-normal">
-                                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                                    {['无', '受限制', '需审批', '已封禁'].map(penalty => (
-                                      <label key={penalty} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
-                                        <input 
-                                          type="checkbox"
-                                          checked={violationFilterPenalty.includes(penalty)}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              setViolationFilterPenalty([...violationFilterPenalty, penalty]);
-                                            } else {
-                                              setViolationFilterPenalty(violationFilterPenalty.filter(st => st !== penalty));
-                                            }
-                                          }}
-                                          className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
-                                        />
-                                        <span className="text-sm text-neutral-700">{penalty}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                  <div className="mt-2 pt-2 border-t border-neutral-100 flex justify-end">
-                                    <button
-                                      onClick={() => setViolationFilterPenalty([])}
-                                      className="text-xs text-neutral-500 hover:text-neutral-700 px-2 py-1"
-                                    >
-                                      清空
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredViolationsData.map((v: any, idx: number) => (
-                          <tr key={idx} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
-                            <td className="px-4 py-3">
-                              <p className="font-medium text-neutral-900">{v.student_name}</p>
-                              <p className="text-xs text-neutral-500">{v.student_id} | {v.supervisor}</p>
-                            </td>
-                            <td className="px-4 py-3 text-neutral-600">
-                              {v.late_count}
-                              {v.late_duration > 0 && <span className="text-xs text-neutral-400 ml-1">({Number((v.late_duration / 60).toFixed(1))}h)</span>}
-                            </td>
-                            <td className="px-4 py-3 text-neutral-600">
-                              {v.overtime_count}
-                              {v.overtime_duration > 0 && <span className="text-xs text-neutral-400 ml-1">({Number((v.overtime_duration / 60).toFixed(1))}h)</span>}
-                            </td>
-                            <td className="px-4 py-3 text-neutral-600">{v.noshow_count}</td>
-                            <td className="px-4 py-3 text-neutral-600">
-                              {v.cancelled_count}
-                              {v.late_cancelled_count > 0 && <span className="text-xs text-neutral-400 ml-1">({v.late_cancelled_count})</span>}
-                            </td>
-                            <td className="px-4 py-3 font-bold text-red-600">{v.total_violations}</td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                v.suggested_penalty === '无' ? 'bg-neutral-100 text-neutral-600' :
-                                v.suggested_penalty === '受限制' ? 'bg-amber-100 text-amber-700' :
-                                v.suggested_penalty === '需审批' ? 'bg-orange-100 text-orange-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>
-                                {v.suggested_penalty}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-            {activeSubTab === 'violation_records' && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-neutral-900">违规明细</h3>
-                </div>
-                
-                {violationRecordsData.length === 0 ? (
-                  <div className="text-center py-12 text-neutral-500">暂无违规记录</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="text-xs text-neutral-500 bg-neutral-50 border-y border-neutral-200">
-                        <tr>
-                          <th className="px-4 py-3 font-medium">违规时间</th>
-                          <th className="px-4 py-3 font-medium">学生姓名</th>
-                          <th className="px-4 py-3 font-medium">预约码</th>
-                          <th className="px-4 py-3 font-medium">设备</th>
-                          <th className="px-4 py-3 font-medium">违规类型</th>
-                          <th className="px-4 py-3 font-medium">状态</th>
-                          <th className="px-4 py-3 font-medium">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-neutral-200">
-                        {violationRecordsData.map((v: any) => (
-                          <tr key={v.id} className="hover:bg-neutral-50 transition-colors">
-                            <td className="px-4 py-3 text-neutral-600">
-                              {format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-neutral-900">{v.student_name || v.student_id}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.booking_code || '-'}</td>
-                            <td className="px-4 py-3 text-neutral-600">{v.equipment_name || '-'}</td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                v.violation_type === 'late' ? 'bg-amber-100 text-amber-700' :
-                                v.violation_type === 'overdue' ? 'bg-orange-100 text-orange-700' :
-                                v.violation_type === 'no-show' ? 'bg-red-100 text-red-700' :
-                                'bg-neutral-100 text-neutral-700'
-                              }`}>
-                                {v.violation_type === 'late' ? '迟到' :
-                                 v.violation_type === 'overdue' ? '超时' :
-                                 v.violation_type === 'no-show' ? '爽约' :
-                                 v.violation_type === 'late_cancel' ? '临期取消' :
-                                 v.violation_type}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                v.status === 'active' ? 'bg-red-100 text-red-700' : 'bg-neutral-100 text-neutral-500'
-                              }`}>
-                                {v.status === 'active' ? '生效中' : '已撤销'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {v.status === 'active' ? (
-                                <button
-                                  onClick={() => setRevokeConfirmId(v.id)}
-                                  className="text-red-600 hover:text-red-800 font-medium text-sm transition-colors"
-                                >
-                                  撤销
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => setRestoreConfirmId(v.id)}
-                                  className="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors"
-                                >
-                                  取消撤销
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+
           </div>
         ) : null}
       </div>
@@ -1603,66 +1166,6 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
               >
                 确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {revokeConfirmId !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-orange-600" />
-              </div>
-            </div>
-            <h3 className="text-xl font-bold text-center mb-2">确认撤销</h3>
-            <p className="text-sm text-neutral-500 text-center mb-6">
-              确定要撤销这条违规记录吗？撤销后将不再计入惩罚统计。
-            </p>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setRevokeConfirmId(null)} 
-                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
-              >
-                取消
-              </button>
-              <button 
-                onClick={() => handleRevokeViolation(revokeConfirmId)} 
-                className="flex-1 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700 transition-colors"
-              >
-                确认撤销
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {restoreConfirmId !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-            <h3 className="text-xl font-bold text-center mb-2">确认取消撤销</h3>
-            <p className="text-sm text-neutral-500 text-center mb-6">
-              确定要恢复这条违规记录吗？恢复后将重新计入惩罚统计。
-            </p>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setRestoreConfirmId(null)} 
-                className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
-              >
-                取消
-              </button>
-              <button 
-                onClick={() => handleRestoreViolation(restoreConfirmId)} 
-                className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                确认恢复
               </button>
             </div>
           </div>

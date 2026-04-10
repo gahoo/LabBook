@@ -225,6 +225,7 @@ try {
         start_time DATETIME NOT NULL,
         end_time DATETIME NOT NULL,
         status TEXT DEFAULT 'active',
+        contributing_violation_ids TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -301,20 +302,23 @@ function evaluatePenaltiesOnViolation(student_id: string) {
     }
 
     let metricValue = 0;
+    let contributingIds: number[] = [];
     if (trigger.metric === 'count') {
-      const countRes = db.prepare(`
-        SELECT COUNT(*) as count FROM violation_records 
+      const violations = db.prepare(`
+        SELECT id FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
         ${scopeCondition}
-      `).get(...queryParams) as any;
-      metricValue = countRes.count;
+      `).all(...queryParams) as any[];
+      metricValue = violations.length;
+      contributingIds = violations.map(v => v.id);
     } else if (trigger.metric === 'duration') {
-      const sumRes = db.prepare(`
-        SELECT SUM(duration_minutes) as sum FROM violation_records 
+      const violations = db.prepare(`
+        SELECT id, duration_minutes FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
         ${scopeCondition}
-      `).get(...queryParams) as any;
-      metricValue = sumRes.sum || 0;
+      `).all(...queryParams) as any[];
+      metricValue = violations.reduce((sum, v) => sum + (v.duration_minutes || 0), 0);
+      contributingIds = violations.map(v => v.id);
     }
 
     if (metricValue >= trigger.threshold) {
@@ -338,10 +342,11 @@ function evaluatePenaltiesOnViolation(student_id: string) {
             restrictionsData.restricted_equipment_ids = trigger.scope;
           }
 
+          const idsStr = `,${contributingIds.join(',')},`;
           db.prepare(`
-            INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(student_id, rule.id, penaltyMethod, JSON.stringify(restrictionsData), nowStr, endDate.toISOString());
+            INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time, contributing_violation_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(student_id, rule.id, penaltyMethod, JSON.stringify(restrictionsData), nowStr, endDate.toISOString(), idsStr);
         }
       }
 
@@ -937,7 +942,14 @@ app.post('/api/reservations', (req, res) => {
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
   
-  const penaltyCheck = checkUserPenalty(student_id, equipment_id);
+  let penaltyCheck = { isPenalized: false, penaltyMethod: 'NONE', reason: '', restrictions: { reduce_days: 0, min_retain_days: 999, fee_multiplier: 1.0 } };
+  try {
+    penaltyCheck = checkUserPenalty(student_id, equipment_id);
+  } catch (e) {
+    console.error('Error in checkUserPenalty:', e);
+    return res.status(500).json({ error: '检查用户惩罚状态时发生错误' });
+  }
+
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
     return res.status(403).json({ error: penaltyCheck.reason });
   }
@@ -1002,7 +1014,7 @@ app.post('/api/reservations', (req, res) => {
   }
 
   const dayOfWeek = start.getDay();
-  const dayRules = availability.rules.filter((r: any) => r.day === dayOfWeek);
+  const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
   
   let isOutOfHours = false;
   if (dayRules.length === 0) {
@@ -1267,7 +1279,7 @@ app.post('/api/reservations/update', (req, res) => {
   }
 
   const dayOfWeek = start.getDay();
-  const dayRules = availability.rules.filter((r: any) => r.day === dayOfWeek);
+  const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
   
   let isOutOfHours = false;
   if (dayRules.length === 0) {
@@ -1581,26 +1593,68 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
-  const records = db.prepare(`
-    SELECT v.*, r.student_name, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time
+  const { startDate, endDate } = req.query;
+  let query = `
+    SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time
     FROM violation_records v
     LEFT JOIN reservations r ON v.reservation_id = r.id
     LEFT JOIN equipment e ON r.equipment_id = e.id
-    ORDER BY v.violation_time DESC
-  `).all();
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+
+  if (startDate) {
+    query += ` AND v.violation_time >= ?`;
+    params.push(`${startDate}T00:00:00.000Z`);
+  }
+  if (endDate) {
+    query += ` AND v.violation_time <= ?`;
+    params.push(`${endDate}T23:59:59.999Z`);
+  }
+
+  query += ` ORDER BY v.violation_time DESC`;
+  
+  const records = db.prepare(query).all(...params);
   res.json(records);
 });
 
 app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
-  db.prepare("UPDATE violation_records SET status = 'revoked' WHERE id = ?").run(id);
+  const { remark } = req.body;
+  
+  db.prepare("UPDATE violation_records SET status = 'revoked', remark = ? WHERE id = ?").run(remark || '', id);
+  
+  // Auto-revoke any active user_penalties that relied on this violation
+  db.prepare(`
+    UPDATE user_penalties 
+    SET status = 'revoked' 
+    WHERE status = 'active' AND contributing_violation_ids LIKE ?
+  `).run(`%,${id},%`);
+
   res.json({ success: true });
 });
 
 app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
   const { id } = req.params;
+  
   db.prepare("UPDATE violation_records SET status = 'active' WHERE id = ?").run(id);
+  
+  // Note: We don't automatically restore user_penalties because we don't know if they should still be active
+  // based on current time, or if other violations have occurred. The next violation will trigger a re-evaluation.
+  
   res.json({ success: true });
+});
+
+app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
+  const penalties = db.prepare(`
+    SELECT p.*, pr.name as rule_name, 
+      (SELECT student_name FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as student_name
+    FROM user_penalties p
+    LEFT JOIN penalty_rules pr ON p.rule_id = pr.id
+    WHERE p.status = 'active' AND p.end_time > ?
+    ORDER BY p.start_time DESC
+  `).all(new Date().toISOString());
+  res.json(penalties);
 });
 
 app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
@@ -1660,23 +1714,9 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
   const violations = Array.from(personMap.values()).map(p => {
     const penaltyScore = p.late_count + p.overtime_count + p.noshow_count;
     
-    const penaltyCheck = checkUserPenalty(p.student_id);
-    let actualPenalty = '无';
-    if (penaltyCheck.isPenalized) {
-      if (penaltyCheck.penaltyMethod === 'BAN') {
-        actualPenalty = '已封禁';
-      } else if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
-        actualPenalty = '需审批';
-      } else {
-        actualPenalty = '受限制';
-      }
-    }
-
     return {
       ...p,
-      total_violations: penaltyScore + p.late_cancelled_count,
-      suggested_penalty: actualPenalty,
-      penalty_reason: penaltyCheck.reason
+      total_violations: penaltyScore + p.late_cancelled_count
     };
   }).sort((a, b) => b.total_violations - a.total_violations || b.cancelled_count - a.cancelled_count);
 

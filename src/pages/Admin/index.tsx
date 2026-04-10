@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
-import { BarChart3, CalendarDays, List, Lock, FileText, Settings } from 'lucide-react';
+import { BarChart3, CalendarDays, List, Lock, FileText, Settings, ShieldAlert } from 'lucide-react';
 import AuditLogsTab from './components/AuditLogsTab';
 import WhitelistAppsTab from './components/WhitelistAppsTab';
 import ReservationsTab from './components/ReservationsTab';
 import ReportsTab from './components/ReportsTab';
 import EquipmentManagementTab from './components/EquipmentManagementTab';
 import SettingsTab from './components/SettingsTab';
+import ViolationsAndPenaltiesTab from './components/ViolationsAndPenaltiesTab';
 
 export default function Admin() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings' | 'violations'>('reservations');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,6 +117,13 @@ export default function Admin() {
               <span className={activeTab === 'reports' ? 'inline' : 'hidden sm:inline'}>报表</span>
             </button>
             <button
+              onClick={() => setActiveTab('violations')}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'violations' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+            >
+              <ShieldAlert className="w-4 h-4" />
+              <span className={activeTab === 'violations' ? 'inline' : 'hidden sm:inline'}>违规惩罚</span>
+            </button>
+            <button
               onClick={() => setActiveTab('audit_logs')}
               className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'audit_logs' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
@@ -150,6 +158,9 @@ export default function Admin() {
 
       {activeTab === 'reports' && (
         <ReportsTab token={token} onLogout={handleLogout} />
+      )}
+      {activeTab === 'violations' && (
+        <ViolationsAndPenaltiesTab token={token} onLogout={handleLogout} />
       )}
       {activeTab === 'audit_logs' && (
         <AuditLogsTab token={token} handleLogout={handleLogout} />
