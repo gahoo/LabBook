@@ -689,7 +689,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50">
-                  <th className="py-3 px-4 font-medium w-8"></th>
                   <th className="py-3 px-4 font-medium">学生</th>
                   <th className="py-3 px-4 font-medium">触发规则</th>
                   <th className="py-3 px-4 font-medium">惩罚方式</th>
@@ -712,9 +711,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         });
                       }}
                     >
-                      <td className="py-3 px-4 text-neutral-400">
-                        <ChevronDown className="w-4 h-4" />
-                      </td>
                       <td className="py-3 px-4">
                         <div className="font-medium text-neutral-900">{p.student_name}</div>
                         <div className="text-xs text-neutral-500">{p.student_id}</div>
