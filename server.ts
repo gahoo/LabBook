@@ -274,6 +274,32 @@ function getNaturalPeriodStart(now: Date, periodType: string): Date {
   }
 }
 
+function getNextNaturalPeriodStart(now: Date, periodType: string): Date {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  
+  switch (periodType) {
+    case 'month':
+      return new Date(year, month + 1, 1);
+    case 'quarter':
+      const quarterStartMonth = Math.floor(month / 3) * 3;
+      return new Date(year, quarterStartMonth + 3, 1);
+    case 'year':
+      return new Date(year + 1, 0, 1);
+    case 'semester':
+      if (month >= 8) return new Date(year + 1, 1, 1); // Next is Spring
+      if (month >= 1) return new Date(year, 8, 1);     // Next is Fall
+      return new Date(year, 1, 1);                     // Next is Spring
+    case 'week':
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      const startOfWeek = new Date(year, month, diff);
+      return new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
+    default:
+      return new Date(year, month + 1, 1);
+  }
+}
+
 function evaluatePenaltiesOnViolation(student_id: string) {
   const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
   const now = new Date();
@@ -1390,7 +1416,8 @@ app.post('/api/reservations/checkin', (req, res) => {
       let isLate = false;
       if (diffMinutes > lateGraceMinutes) {
         isLate = true;
-        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time) VALUES (?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'late', nowStr);
+        const durationMinutes = Math.round(diffMinutes);
+        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'late', nowStr, durationMinutes);
       }
       
       return { nowStr, isLate, student_id: reservation.student_id };
@@ -1647,15 +1674,124 @@ app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
-  const penalties = db.prepare(`
+  const now = new Date();
+  const nowStr = now.toISOString();
+
+  // 1. Get fixed penalties
+  const fixedPenalties = db.prepare(`
     SELECT p.*, pr.name as rule_name, 
       (SELECT student_name FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as student_name
     FROM user_penalties p
     LEFT JOIN penalty_rules pr ON p.rule_id = pr.id
     WHERE p.status = 'active' AND p.end_time > ?
     ORDER BY p.start_time DESC
-  `).all(new Date().toISOString());
-  res.json(penalties);
+  `).all(nowStr) as any[];
+
+  // 2. Calculate dynamic penalties
+  const dynamicPenalties: any[] = [];
+  const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
+
+  for (const rule of activeRules) {
+    const trigger = JSON.parse(rule.trigger_config);
+    const action = JSON.parse(rule.action_config);
+    
+    // Skip fixed duration rules as they are handled by user_penalties table
+    if (action.duration_type === 'fixed' && action.duration_days) continue;
+
+    let windowStartStr = '';
+    if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
+      windowStartStr = getNaturalPeriodStart(now, trigger.period_type || 'month').toISOString();
+    } else {
+      let windowStart = new Date(now);
+      windowStart.setDate(windowStart.getDate() - (trigger.period_days || 30));
+      windowStartStr = windowStart.toISOString();
+    }
+
+    let scopeCondition = '';
+    let queryParams: any[] = [rule.violation_type, windowStartStr];
+
+    if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+      const placeholders = trigger.scope.map(() => '?').join(',');
+      scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
+      queryParams.push(...trigger.scope);
+    }
+    
+    queryParams.push(trigger.threshold);
+
+    let query = '';
+    if (trigger.metric === 'count') {
+      query = `
+        SELECT student_id, COUNT(id) as metric_value, GROUP_CONCAT(id) as contributing_ids 
+        FROM violation_records 
+        WHERE status = 'active' AND violation_type = ? AND violation_time >= ? ${scopeCondition} 
+        GROUP BY student_id 
+        HAVING metric_value >= ?
+      `;
+    } else if (trigger.metric === 'duration') {
+      query = `
+        SELECT student_id, SUM(duration_minutes) as metric_value, GROUP_CONCAT(id) as contributing_ids 
+        FROM violation_records 
+        WHERE status = 'active' AND violation_type = ? AND violation_time >= ? ${scopeCondition} 
+        GROUP BY student_id 
+        HAVING metric_value >= ?
+      `;
+    }
+
+    const affectedUsers = db.prepare(query).all(...queryParams) as any[];
+
+    for (const user of affectedUsers) {
+      const ids = user.contributing_ids.split(',');
+      const records = db.prepare(`
+        SELECT violation_time, duration_minutes 
+        FROM violation_records 
+        WHERE id IN (${ids.map(()=>'?').join(',')}) 
+        ORDER BY violation_time ASC
+      `).all(...ids) as any[];
+
+      let unbanTime: Date | null = null;
+      let currentMetric = user.metric_value;
+
+      for (const rec of records) {
+        if (trigger.metric === 'count') {
+          currentMetric -= 1;
+        } else {
+          currentMetric -= (rec.duration_minutes || 0);
+        }
+
+        if (currentMetric < trigger.threshold) {
+          if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
+            unbanTime = getNextNaturalPeriodStart(now, trigger.period_type || 'month');
+          } else {
+            const vTime = new Date(rec.violation_time);
+            vTime.setDate(vTime.getDate() + (trigger.period_days || 30));
+            unbanTime = vTime;
+          }
+          break;
+        }
+      }
+
+      const studentNameRow = db.prepare('SELECT student_name FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(user.student_id) as any;
+
+      dynamicPenalties.push({
+        id: `dynamic_${rule.id}_${user.student_id}`,
+        student_id: user.student_id,
+        student_name: studentNameRow ? studentNameRow.student_name : user.student_id,
+        rule_name: rule.name,
+        penalty_method: action.type === 'ban' ? 'BAN' : (action.type === 'require_approval' ? 'REQUIRE_APPROVAL' : 'RESTRICTED'),
+        start_time: records[records.length - 1].violation_time,
+        end_time: unbanTime ? unbanTime.toISOString() : null,
+        status: 'active',
+        is_dynamic: true,
+        contributing_violation_ids: `,${user.contributing_ids},`
+      });
+    }
+  }
+
+  const allPenalties = [...fixedPenalties, ...dynamicPenalties].sort((a, b) => {
+    return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
+  });
+
+  res.json(allPenalties);
 });
 
 app.get('/api/admin/reports/violations', adminAuth, (req, res) => {

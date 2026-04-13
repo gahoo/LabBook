@@ -458,7 +458,14 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                     <label className="block text-sm text-neutral-600 mb-1">违规类型</label>
                     <select
                       value={formData.violation_type}
-                      onChange={e => setFormData({...formData, violation_type: e.target.value})}
+                      onChange={e => {
+                        const newType = e.target.value;
+                        const newFormData = {...formData, violation_type: newType};
+                        if (formData.trigger.metric === 'duration' && !['late', 'overdue'].includes(newType)) {
+                          newFormData.trigger = {...newFormData.trigger, metric: 'count'};
+                        }
+                        setFormData(newFormData);
+                      }}
                       className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
                     >
                       {Object.entries(violationTypeMap).map(([k, v]) => (
@@ -476,7 +483,9 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                         className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
                       >
                         <option value="count">次数</option>
-                        <option value="duration">累计时长(分钟)</option>
+                        {['late', 'overdue'].includes(formData.violation_type) && (
+                          <option value="duration">累计时长(分钟)</option>
+                        )}
                       </select>
                     </div>
                     <div className="flex-1">

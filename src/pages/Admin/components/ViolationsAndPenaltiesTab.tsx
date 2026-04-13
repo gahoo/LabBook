@@ -649,7 +649,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
               当前受限名单
             </h2>
             <p className="text-sm text-neutral-500 mt-1">
-              展示当前正处于固定时长封禁期的用户。点击行可展开查看导致封禁的具体违规记录，撤销记录即可自动解除封禁。
+              展示当前正处于封禁期或受限状态的用户（包含固定时长惩罚和动态计算惩罚）。点击行可展开查看导致封禁的具体违规记录，撤销记录即可自动解除封禁。
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -679,15 +679,28 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         <div className="text-xs text-neutral-500">{p.student_id}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
-                          {p.rule_name}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                            {p.rule_name}
+                          </span>
+                          {p.is_dynamic ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                              动态
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-600 border border-purple-100">
+                              固定
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         {p.penalty_method === 'BAN' ? '禁止预约' : p.penalty_method === 'REQUIRE_APPROVAL' ? '需审批' : '受限制'}
                       </td>
                       <td className="py-3 px-4">{new Date(p.start_time).toLocaleString('zh-CN')}</td>
-                      <td className="py-3 px-4 font-medium text-red-600">{new Date(p.end_time).toLocaleString('zh-CN')}</td>
+                      <td className="py-3 px-4 font-medium text-red-600">
+                        {p.end_time ? new Date(p.end_time).toLocaleString('zh-CN') : '永久'}
+                      </td>
                     </tr>
                     {expandedPenaltyRow === p.id && (
                       <tr className="bg-neutral-50/50 border-b border-neutral-200">
