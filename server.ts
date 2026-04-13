@@ -1595,7 +1595,7 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
   const { startDate, endDate } = req.query;
   let query = `
-    SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time
+    SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.notes as reservation_notes
     FROM violation_records v
     LEFT JOIN reservations r ON v.reservation_id = r.id
     LEFT JOIN equipment e ON r.equipment_id = e.id
@@ -1636,8 +1636,9 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
 
 app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
   const { id } = req.params;
+  const { remark } = req.body;
   
-  db.prepare("UPDATE violation_records SET status = 'active' WHERE id = ?").run(id);
+  db.prepare("UPDATE violation_records SET status = 'active', remark = ? WHERE id = ?").run(remark || '', id);
   
   // Note: We don't automatically restore user_penalties because we don't know if they should still be active
   // based on current time, or if other violations have occurred. The next violation will trigger a re-evaluation.

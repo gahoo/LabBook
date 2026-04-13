@@ -25,13 +25,14 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const [loading, setLoading] = useState(false);
 
   // Expanded Rows State
-  const [expandedStatRow, setExpandedStatRow] = useState<string | null>(null);
   const [expandedPenaltyRow, setExpandedPenaltyRow] = useState<number | null>(null);
 
   // Revoke Modal State
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [revokeRecordId, setRevokeRecordId] = useState<number | null>(null);
   const [revokeRemark, setRevokeRemark] = useState('');
+  const [revokeReservationNotes, setRevokeReservationNotes] = useState('');
+  const [modalMode, setModalMode] = useState<'revoke' | 'view' | 'restore'>('revoke');
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -105,10 +106,13 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
     }
   };
 
-  const handleRevoke = async () => {
+  const handleModalSubmit = async () => {
     if (!revokeRecordId) return;
+    
+    const action = modalMode === 'revoke' ? 'revoke' : 'restore';
+    
     try {
-      const res = await fetch(`/api/admin/violation-records/${revokeRecordId}/revoke`, {
+      const res = await fetch(`/api/admin/violation-records/${revokeRecordId}/${action}`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -117,29 +121,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
         body: JSON.stringify({ remark: revokeRemark })
       });
       if (res.ok) {
-        toast.success('已撤销违规记录');
+        toast.success(action === 'revoke' ? '已撤销违规记录' : '已取消撤销');
         setRevokeModalOpen(false);
         setRevokeRemark('');
         setRevokeRecordId(null);
-        fetchRecords(); // Always fetch records to update expanded rows
-        if (activeSubTab === 'stats') fetchStats();
-        if (activeSubTab === 'active_penalties') fetchActivePenalties();
-      } else {
-        toast.error('撤销失败');
-      }
-    } catch (err) {
-      toast.error('撤销失败');
-    }
-  };
-
-  const handleRestoreViolation = async (id: number) => {
-    try {
-      const res = await fetch(`/api/admin/violation-records/${id}/restore`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        toast.success('已取消撤销');
         fetchRecords();
         if (activeSubTab === 'stats') fetchStats();
         if (activeSubTab === 'active_penalties') fetchActivePenalties();
@@ -180,13 +165,14 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       case 'late': return '迟到';
       case 'overdue': return '超时';
       case 'no-show': return '爽约';
-      case 'late_cancel': return '迟到+取消';
+      case 'late_cancel': return '临期取消';
       default: return type;
     }
   };
 
   const [recordsFilterUser, setRecordsFilterUser] = useState('');
   const [recordsFilterEquipment, setRecordsFilterEquipment] = useState('');
+  const [recordsFilterCode, setRecordsFilterCode] = useState('');
   const [recordsFilterType, setRecordsFilterType] = useState<string[]>([]);
   const [recordsFilterStatus, setRecordsFilterStatus] = useState<string[]>([]);
   
@@ -218,6 +204,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       }
     }
     if (recordsFilterEquipment && !v.equipment_name?.toLowerCase().includes(recordsFilterEquipment.toLowerCase())) return false;
+    if (recordsFilterCode && !v.booking_code?.toLowerCase().includes(recordsFilterCode.toLowerCase())) return false;
     if (recordsFilterType.length > 0 && !recordsFilterType.includes(v.violation_type)) return false;
     if (recordsFilterStatus.length > 0 && !recordsFilterStatus.includes(v.status)) return false;
     return true;
@@ -230,22 +217,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
           <tr className="border-b border-neutral-200 text-sm text-neutral-500">
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">违规时间</div>
-              {showFilters && (
-                <div className="flex flex-col gap-1">
-                  <input 
-                    type="date" 
-                    value={startDate} 
-                    onChange={e => setStartDate(e.target.value)} 
-                    className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal" 
-                  />
-                  <input 
-                    type="date" 
-                    value={endDate} 
-                    onChange={e => setEndDate(e.target.value)} 
-                    className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal" 
-                  />
-                </div>
-              )}
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">学生</div>
@@ -261,6 +232,15 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">预约码</div>
+              {showFilters && (
+                <input 
+                  type="text" 
+                  placeholder="搜索预约码" 
+                  value={recordsFilterCode}
+                  onChange={e => setRecordsFilterCode(e.target.value)}
+                  className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                />
+              )}
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">仪器</div>
@@ -301,12 +281,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   </button>
                   {showTypeFilterPopup && (
                     <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                      <div className="space-y-1 max-h-48 overflow-y-auto mb-2">
                         {[
                           { value: 'late', label: '迟到' },
                           { value: 'overdue', label: '超时' },
                           { value: 'no-show', label: '爽约' },
-                          { value: 'late_cancel', label: '迟到+取消' }
+                          { value: 'late_cancel', label: '临期取消' }
                         ].map((item) => (
                           <label key={item.value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
                             <input 
@@ -321,6 +301,20 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                             <span className="text-xs text-neutral-700">{item.label}</span>
                           </label>
                         ))}
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                        <button 
+                          onClick={() => setRecordsFilterType([])}
+                          className="text-xs text-neutral-500 hover:text-neutral-700"
+                        >
+                          清空
+                        </button>
+                        <button 
+                          onClick={() => setShowTypeFilterPopup(false)}
+                          className="text-xs text-red-600 font-medium"
+                        >
+                          确定
+                        </button>
                       </div>
                     </div>
                   )}
@@ -354,7 +348,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   </button>
                   {showStatusFilterPopup && (
                     <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                      <div className="space-y-1 max-h-48 overflow-y-auto mb-2">
                         {[
                           { value: 'active', label: '生效中' },
                           { value: 'revoked', label: '已撤销' }
@@ -373,13 +367,24 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                           </label>
                         ))}
                       </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                        <button 
+                          onClick={() => setRecordsFilterStatus([])}
+                          className="text-xs text-neutral-500 hover:text-neutral-700"
+                        >
+                          清空
+                        </button>
+                        <button 
+                          onClick={() => setShowStatusFilterPopup(false)}
+                          className="text-xs text-red-600 font-medium"
+                        >
+                          确定
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-            </th>
-            <th className="py-3 px-4 font-medium align-top">
-              <div className="mb-2">备注</div>
             </th>
             <th className="py-3 px-4 font-medium text-right align-top">
               <div className="mb-2">操作</div>
@@ -405,21 +410,25 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                 </span>
               </td>
               <td className="py-3 px-4">
-                {v.status === 'active' ? (
-                  <span className="text-red-600 font-medium">生效中</span>
-                ) : (
-                  <span className="text-neutral-400">已撤销</span>
-                )}
-              </td>
-              <td className="py-3 px-4 text-neutral-500 max-w-[150px] truncate" title={v.remark || ''}>
-                {v.remark || '-'}
+                <div className="relative inline-block">
+                  {v.status === 'active' ? (
+                    <span className="text-red-600 font-medium">生效中</span>
+                  ) : (
+                    <span className="text-neutral-400">已撤销</span>
+                  )}
+                  {(v.reservation_notes || v.remark) && (
+                    <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                  )}
+                </div>
               </td>
               <td className="py-3 px-4 text-right">
                 {v.status === 'active' ? (
                   <button 
                     onClick={() => {
                       setRevokeRecordId(v.id);
-                      setRevokeRemark('');
+                      setRevokeRemark(v.remark || '');
+                      setRevokeReservationNotes(v.reservation_notes || '');
+                      setModalMode('revoke');
                       setRevokeModalOpen(true);
                     }}
                     className="text-red-600 hover:text-red-700 font-medium"
@@ -428,7 +437,13 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   </button>
                 ) : (
                   <button 
-                    onClick={() => handleRestoreViolation(v.id)}
+                    onClick={() => {
+                      setRevokeRecordId(v.id);
+                      setRevokeRemark(v.remark || '');
+                      setRevokeReservationNotes(v.reservation_notes || '');
+                      setModalMode('restore');
+                      setRevokeModalOpen(true);
+                    }}
                     className="text-neutral-500 hover:text-neutral-700 font-medium"
                   >
                     取消撤销
@@ -439,7 +454,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
           ))}
           {data.length === 0 && (
             <tr>
-              <td colSpan={8} className="py-8 text-center text-neutral-500">暂无违规记录</td>
+              <td colSpan={7} className="py-8 text-center text-neutral-500">暂无违规记录</td>
             </tr>
           )}
         </tbody>
@@ -506,6 +521,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-neutral-200 flex justify-between items-center bg-neutral-50/50">
             <h2 className="text-lg font-semibold text-neutral-900">违规记录明细</h2>
+            {renderTimeFilter()}
           </div>
           {renderRecordsTable(filteredRecords, true)}
         </div>
@@ -521,7 +537,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50">
-                  <th className="py-3 px-4 font-medium w-8 align-top"></th>
                   <th className="py-3 px-4 font-medium align-top">
                     <div className="mb-2">学生</div>
                     <input 
@@ -596,34 +611,24 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
               </thead>
               <tbody className="text-sm">
                 {filteredStats.map(s => (
-                  <React.Fragment key={s.student_id}>
-                    <tr 
-                      className="border-b border-neutral-100 hover:bg-neutral-50/50 cursor-pointer transition-colors"
-                      onClick={() => setExpandedStatRow(expandedStatRow === s.student_id ? null : s.student_id)}
-                    >
-                      <td className="py-3 px-4 text-neutral-400">
-                        {expandedStatRow === s.student_id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-neutral-900">{s.student_name}</div>
-                        <div className="text-xs text-neutral-500">{s.student_id} | {s.supervisor || '未知'}</div>
-                      </td>
-                      <td className="py-3 px-4 text-right">{s.late_count}</td>
-                      <td className="py-3 px-4 text-right">{s.overtime_count}</td>
-                      <td className="py-3 px-4 text-right">{s.noshow_count}</td>
-                      <td className="py-3 px-4 text-right">{s.late_cancelled_count}</td>
-                      <td className="py-3 px-4 text-right font-medium text-red-600">{s.total_violations}</td>
-                    </tr>
-                    {expandedStatRow === s.student_id && (
-                      <tr className="bg-neutral-50/50 border-b border-neutral-200">
-                        <td colSpan={7} className="p-4">
-                          <div className="bg-white rounded-xl border border-neutral-200 shadow-sm">
-                            {renderRecordsTable(records.filter(r => r.student_id === s.student_id))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                  <tr 
+                    key={s.student_id}
+                    className="border-b border-neutral-100 hover:bg-neutral-50/50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setActiveSubTab('records');
+                      setRecordsFilterUser(s.student_id);
+                    }}
+                  >
+                    <td className="py-3 px-4">
+                      <div className="font-medium text-neutral-900">{s.student_name}</div>
+                      <div className="text-xs text-neutral-500">{s.student_id} | {s.supervisor || '未知'}</div>
+                    </td>
+                    <td className="py-3 px-4 text-right">{s.late_count}</td>
+                    <td className="py-3 px-4 text-right">{s.overtime_count}</td>
+                    <td className="py-3 px-4 text-right">{s.noshow_count}</td>
+                    <td className="py-3 px-4 text-right">{s.late_cancelled_count}</td>
+                    <td className="py-3 px-4 text-right font-medium text-red-600">{s.total_violations}</td>
+                  </tr>
                 ))}
                 {filteredStats.length === 0 && (
                   <tr>
@@ -720,19 +725,44 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="p-6">
-              <h3 className="text-xl font-bold text-neutral-900 mb-2">确认撤销违规记录</h3>
-              <p className="text-sm text-neutral-500 mb-6">
-                撤销此记录后，该记录将不再计入违规统计。如果此记录曾触发过固定时长的封禁，该封禁也将被自动解除。
-              </p>
+              <h3 className="text-xl font-bold text-neutral-900 mb-2">
+                {modalMode === 'revoke' ? '确认撤销违规记录' : modalMode === 'restore' ? '确认取消撤销' : '违规记录备注详情'}
+              </h3>
+              {modalMode === 'revoke' && (
+                <p className="text-sm text-neutral-500 mb-6">
+                  撤销此记录后，该记录将不再计入违规统计。如果此记录曾触发过固定时长的封禁，该封禁也将被自动解除。
+                </p>
+              )}
+              {modalMode === 'restore' && (
+                <p className="text-sm text-neutral-500 mb-6">
+                  取消撤销后，该记录将重新计入违规统计，并可能触发相应的惩罚规则。
+                </p>
+              )}
               <div className="space-y-4">
+                {revokeReservationNotes && (
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">预约备注</label>
+                    <div className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-700 text-sm whitespace-pre-wrap">
+                      {revokeReservationNotes}
+                    </div>
+                  </div>
+                )}
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">撤销备注 (选填)</label>
-                  <textarea
-                    value={revokeRemark}
-                    onChange={e => setRevokeRemark(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none resize-none h-24"
-                    placeholder="请输入撤销原因，例如：导师证明、系统故障等..."
-                  />
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    备注 {(modalMode === 'revoke' || modalMode === 'restore') && '(选填)'}
+                  </label>
+                  {modalMode === 'revoke' || modalMode === 'restore' ? (
+                    <textarea
+                      value={revokeRemark}
+                      onChange={e => setRevokeRemark(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none resize-none h-24"
+                      placeholder="请输入备注信息..."
+                    />
+                  ) : (
+                    <div className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-700 text-sm min-h-[6rem] whitespace-pre-wrap">
+                      {revokeRemark || <span className="text-neutral-400">无备注</span>}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -741,14 +771,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                 onClick={() => setRevokeModalOpen(false)}
                 className="px-5 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-200 rounded-xl transition-colors"
               >
-                取消
+                {modalMode === 'view' ? '关闭' : '取消'}
               </button>
-              <button
-                onClick={handleRevoke}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors"
-              >
-                确认撤销
-              </button>
+              {modalMode !== 'view' && (
+                <button
+                  onClick={handleModalSubmit}
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors"
+                >
+                  {modalMode === 'revoke' ? '确认撤销' : '确认取消撤销'}
+                </button>
+              )}
             </div>
           </div>
         </div>
