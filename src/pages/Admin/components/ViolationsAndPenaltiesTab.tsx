@@ -210,6 +210,8 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const [showEndFilterPopup, setShowEndFilterPopup] = useState(false);
   const endFilterPopupRef = useRef<HTMLDivElement>(null);
 
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (typeFilterPopupRef.current && !typeFilterPopupRef.current.contains(event.target as Node)) {
@@ -293,7 +295,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const renderRecordsTable = (data: any[], showFilters = false) => (
     <div className="overflow-x-auto">
       {penaltyContext && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between mx-4 md:mx-0 mt-4 md:mt-0">
           <div className="flex items-center gap-2 text-blue-800 text-sm">
             <span className="text-xl">💡</span>
             <span>
@@ -305,14 +307,14 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
               setPenaltyContext(null);
               setRecordsFilterUser('');
             }}
-            className="px-3 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors"
+            className="px-3 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors whitespace-nowrap ml-2"
           >
             退出查看
           </button>
         </div>
       )}
       <table className="w-full text-left border-collapse">
-        <thead>
+        <thead className="hidden md:table-header-group">
           <tr className="border-b border-neutral-200 text-sm text-neutral-500">
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">违规时间</div>
@@ -490,70 +492,98 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
           </tr>
         </thead>
-        <tbody className="text-sm">
+        <tbody className="text-sm block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
           {data.map(v => (
-            <tr key={v.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
-              <td className="py-3 px-4">
-                <div className="text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd')}</div>
-                <div className="text-xs text-neutral-500">{format(new Date(v.violation_time), 'HH:mm:ss')}</div>
-              </td>
-              <td className="py-3 px-4">
-                <div className="font-medium text-neutral-900">{v.student_name}</div>
-                <div className="text-xs text-neutral-500">{v.student_id} | {v.supervisor || '未知'}</div>
-              </td>
-              <td className="py-3 px-4 font-mono text-xs">{v.booking_code || '-'}</td>
-              <td className="py-3 px-4">{v.equipment_name || '-'}</td>
-              <td className="py-3 px-4">
-                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700">
-                  {getViolationTypeLabel(v.violation_type)}
-                </span>
-              </td>
-              <td className="py-3 px-4">
-                <div className="relative inline-block">
-                  {v.status === 'active' ? (
-                    <span className="text-red-600 font-medium">生效中</span>
-                  ) : (
-                    <span className="text-neutral-400">已撤销</span>
-                  )}
-                  {(v.reservation_notes || v.remark) && (
-                    <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-                  )}
+            <tr key={v.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                <div className="flex justify-between items-center md:block">
+                  <span className="md:hidden font-medium text-neutral-500 text-xs">违规时间</span>
+                  <div className="text-right md:text-left">
+                    <div className="text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd')}</div>
+                    <div className="text-xs text-neutral-500">{format(new Date(v.violation_time), 'HH:mm:ss')}</div>
+                  </div>
                 </div>
               </td>
-              <td className="py-3 px-4 text-right">
-                {v.status === 'active' ? (
-                  <button 
-                    onClick={() => {
-                      setRevokeRecordId(v.id);
-                      setRevokeRemark(v.remark || '');
-                      setRevokeReservationNotes(v.reservation_notes || '');
-                      setModalMode('revoke');
-                      setRevokeModalOpen(true);
-                    }}
-                    className="text-red-600 hover:text-red-700 font-medium"
-                  >
-                    撤销
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => {
-                      setRevokeRecordId(v.id);
-                      setRevokeRemark(v.remark || '');
-                      setRevokeReservationNotes(v.reservation_notes || '');
-                      setModalMode('restore');
-                      setRevokeModalOpen(true);
-                    }}
-                    className="text-neutral-500 hover:text-neutral-700 font-medium"
-                  >
-                    取消撤销
-                  </button>
-                )}
+              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                <div className="flex justify-between items-center md:block">
+                  <span className="md:hidden font-medium text-neutral-500 text-xs">学生</span>
+                  <div className="text-right md:text-left">
+                    <div className="font-medium text-neutral-900">{v.student_name}</div>
+                    <div className="text-xs text-neutral-500">{v.student_id} | {v.supervisor || '未知'}</div>
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                <div className="flex justify-between items-center md:block">
+                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约码</span>
+                  <span className="font-mono text-xs">{v.booking_code || '-'}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                <div className="flex justify-between items-center md:block">
+                  <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
+                  <span className="text-right md:text-left">{v.equipment_name || '-'}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                <div className="flex justify-between items-center md:block">
+                  <span className="md:hidden font-medium text-neutral-500 text-xs">违规类型</span>
+                  <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700">
+                    {getViolationTypeLabel(v.violation_type)}
+                  </span>
+                </div>
+              </td>
+              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                <div className="flex justify-between items-center md:block">
+                  <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
+                  <div className="relative inline-block">
+                    {v.status === 'active' ? (
+                      <span className="text-red-600 font-medium">生效中</span>
+                    ) : (
+                      <span className="text-neutral-400">已撤销</span>
+                    )}
+                    {(v.reservation_notes || v.remark) && (
+                      <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                    )}
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                <div className="flex justify-end md:justify-end items-center space-x-1">
+                  {v.status === 'active' ? (
+                    <button 
+                      onClick={() => {
+                        setRevokeRecordId(v.id);
+                        setRevokeRemark(v.remark || '');
+                        setRevokeReservationNotes(v.reservation_notes || '');
+                        setModalMode('revoke');
+                        setRevokeModalOpen(true);
+                      }}
+                      className="text-red-600 hover:text-red-700 font-medium"
+                    >
+                      撤销
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => {
+                        setRevokeRecordId(v.id);
+                        setRevokeRemark(v.remark || '');
+                        setRevokeReservationNotes(v.reservation_notes || '');
+                        setModalMode('restore');
+                        setRevokeModalOpen(true);
+                      }}
+                      className="text-neutral-500 hover:text-neutral-700 font-medium"
+                    >
+                      取消撤销
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
           {data.length === 0 && (
-            <tr>
-              <td colSpan={7} className="py-8 text-center text-neutral-500">暂无违规记录</td>
+            <tr className="block md:table-row">
+              <td colSpan={7} className="py-8 text-center text-neutral-500 block md:table-cell">暂无违规记录</td>
             </tr>
           )}
         </tbody>
@@ -619,9 +649,101 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       {activeSubTab === 'records' && (
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-neutral-200 flex justify-between items-center bg-neutral-50/50">
-            <h2 className="text-lg font-semibold text-neutral-900">违规记录明细</h2>
-            {!penaltyContext && renderTimeFilter()}
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-semibold text-neutral-900">违规记录明细</h2>
+              {!penaltyContext && (
+                <button
+                  type="button"
+                  onClick={() => setShowMobileFilters(!showMobileFilters)}
+                  className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+                >
+                  <Filter className="w-5 h-5" />
+                  <span className="text-sm font-medium">筛选</span>
+                </button>
+              )}
+            </div>
+            <div className="hidden md:block">
+              {!penaltyContext && renderTimeFilter()}
+            </div>
           </div>
+          {showMobileFilters && !penaltyContext && (
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">时间</label>
+                {renderTimeFilter()}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">学生</label>
+                <input 
+                  type="text" 
+                  placeholder="学生姓名/学号" 
+                  value={recordsFilterUser}
+                  onChange={e => setRecordsFilterUser(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">预约码</label>
+                <input 
+                  type="text" 
+                  placeholder="搜索预约码" 
+                  value={recordsFilterCode}
+                  onChange={e => setRecordsFilterCode(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
+                <input 
+                  type="text" 
+                  placeholder="仪器名称" 
+                  value={recordsFilterEquipment}
+                  onChange={e => setRecordsFilterEquipment(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">违规类型</label>
+                <div className="flex flex-wrap gap-2">
+                  {['late', 'overdue', 'no-show', 'late_cancel'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        if (recordsFilterType.includes(type)) {
+                          setRecordsFilterType(recordsFilterType.filter(t => t !== type));
+                        } else {
+                          setRecordsFilterType([...recordsFilterType, type]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${recordsFilterType.includes(type) ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-neutral-200 text-neutral-600'}`}
+                    >
+                      {getViolationTypeLabel(type)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">状态</label>
+                <div className="flex flex-wrap gap-2">
+                  {['active', 'revoked'].map(status => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        if (recordsFilterStatus.includes(status)) {
+                          setRecordsFilterStatus(recordsFilterStatus.filter(s => s !== status));
+                        } else {
+                          setRecordsFilterStatus([...recordsFilterStatus, status]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${recordsFilterStatus.includes(status) ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-neutral-200 text-neutral-600'}`}
+                    >
+                      {status === 'active' ? '生效中' : '已撤销'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {renderRecordsTable(filteredRecords, true)}
         </div>
       )}
@@ -629,12 +751,89 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       {activeSubTab === 'stats' && (
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-neutral-200 flex justify-between items-center bg-neutral-50/50">
-            <h2 className="text-lg font-semibold text-neutral-900">违规统计</h2>
-            {renderTimeFilter()}
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-semibold text-neutral-900">违规统计</h2>
+              <button
+                type="button"
+                onClick={() => setShowMobileFilters(!showMobileFilters)}
+                className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+              >
+                <Filter className="w-5 h-5" />
+                <span className="text-sm font-medium">筛选</span>
+              </button>
+            </div>
+            <div className="hidden md:block">
+              {renderTimeFilter()}
+            </div>
           </div>
+          {showMobileFilters && (
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">时间</label>
+                {renderTimeFilter()}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">学生</label>
+                <input 
+                  type="text" 
+                  placeholder="学生姓名/学号/导师" 
+                  value={statsFilterUser}
+                  onChange={e => setStatsFilterUser(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">迟到次数 &ge; {statsFilterLate}</label>
+                  <input 
+                    type="range" min="0" max={Math.max(1, ...stats.map(s => s.late_count))} 
+                    value={statsFilterLate} 
+                    onChange={e => setStatsFilterLate(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">超时次数 &ge; {statsFilterOvertime}</label>
+                  <input 
+                    type="range" min="0" max={Math.max(1, ...stats.map(s => s.overtime_count))} 
+                    value={statsFilterOvertime} 
+                    onChange={e => setStatsFilterOvertime(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">爽约次数 &ge; {statsFilterNoshow}</label>
+                  <input 
+                    type="range" min="0" max={Math.max(1, ...stats.map(s => s.noshow_count))} 
+                    value={statsFilterNoshow} 
+                    onChange={e => setStatsFilterNoshow(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">取消(临期) &ge; {statsFilterLateCancel}</label>
+                  <input 
+                    type="range" min="0" max={Math.max(1, ...stats.map(s => s.late_cancelled_count))} 
+                    value={statsFilterLateCancel} 
+                    onChange={e => setStatsFilterLateCancel(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">违规总计 &ge; {statsFilterTotal}</label>
+                  <input 
+                    type="range" min="0" max={Math.max(1, ...stats.map(s => s.total_violations))} 
+                    value={statsFilterTotal} 
+                    onChange={e => setStatsFilterTotal(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead>
+              <thead className="hidden md:table-header-group">
                 <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50">
                   <th className="py-3 px-4 font-medium align-top">
                     <div className="mb-2">学生</div>
@@ -708,30 +907,60 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   </th>
                 </tr>
               </thead>
-              <tbody className="text-sm">
+              <tbody className="text-sm block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {filteredStats.map(s => (
                   <tr 
                     key={s.student_id}
-                    className="border-b border-neutral-100 hover:bg-neutral-50/50 cursor-pointer transition-colors"
+                    className="block md:table-row hover:bg-neutral-50/50 cursor-pointer transition-colors border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none"
                     onClick={() => {
                       setActiveSubTab('records');
                       setRecordsFilterUser(s.student_id);
                     }}
                   >
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-neutral-900">{s.student_name}</div>
-                      <div className="text-xs text-neutral-500">{s.student_id} | {s.supervisor || '未知'}</div>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">学生</span>
+                        <div className="text-right md:text-left">
+                          <div className="font-medium text-neutral-900">{s.student_name}</div>
+                          <div className="text-xs text-neutral-500">{s.student_id} | {s.supervisor || '未知'}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="py-3 px-4 text-right">{s.late_count}</td>
-                    <td className="py-3 px-4 text-right">{s.overtime_count}</td>
-                    <td className="py-3 px-4 text-right">{s.noshow_count}</td>
-                    <td className="py-3 px-4 text-right">{s.late_cancelled_count}</td>
-                    <td className="py-3 px-4 text-right font-medium text-red-600">{s.total_violations}</td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">迟到次数</span>
+                        <span className="text-right">{s.late_count}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">超时次数</span>
+                        <span className="text-right">{s.overtime_count}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">爽约次数</span>
+                        <span className="text-right">{s.noshow_count}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">取消次数(临期)</span>
+                        <span className="text-right">{s.late_cancelled_count}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">违规总计</span>
+                        <span className="text-right font-semibold text-red-600">{s.total_violations}</span>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {filteredStats.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-neutral-500">暂无违规统计数据</td>
+                  <tr className="block md:table-row">
+                    <td colSpan={6} className="py-8 text-center text-neutral-500 block md:table-cell">没有找到符合条件的统计数据</td>
                   </tr>
                 )}
               </tbody>
@@ -742,18 +971,112 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
 
       {activeSubTab === 'active_penalties' && (
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-neutral-200 bg-neutral-50/50">
-            <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-red-500" />
-              当前受限名单
-            </h2>
-            <p className="text-sm text-neutral-500 mt-1">
-              展示当前正处于封禁期或受限状态的用户（包含固定时长惩罚和动态计算惩罚）。点击行可展开查看导致封禁的具体违规记录，撤销记录即可自动解除封禁。
-            </p>
+          <div className="p-4 border-b border-neutral-200 bg-neutral-50/50 flex justify-between items-start">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-red-500" />
+                当前受限名单
+              </h2>
+              <p className="text-sm text-neutral-500 mt-1 hidden md:block">
+                展示当前正处于封禁期或受限状态的用户（包含固定时长惩罚和动态计算惩罚）。点击行可展开查看导致封禁的具体违规记录，撤销记录即可自动解除封禁。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+            >
+              <Filter className="w-5 h-5" />
+              <span className="text-sm font-medium">筛选</span>
+            </button>
           </div>
+          {showMobileFilters && (
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50 grid grid-cols-1 gap-4 md:hidden">
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">学生</label>
+                <input 
+                  type="text" 
+                  placeholder="学生姓名/学号" 
+                  value={penaltiesFilterUser}
+                  onChange={e => setPenaltiesFilterUser(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">触发规则</label>
+                <input 
+                  type="text" 
+                  placeholder="搜索规则名称" 
+                  value={penaltiesFilterRule}
+                  onChange={e => setPenaltiesFilterRule(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">惩罚方式</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'BAN', label: '禁止预约' },
+                    { value: 'REQUIRE_APPROVAL', label: '需审批' },
+                    { value: 'RESTRICTED', label: '受限制' }
+                  ].map(item => (
+                    <button
+                      key={item.value}
+                      onClick={() => {
+                        if (penaltiesFilterMethod.includes(item.value)) {
+                          setPenaltiesFilterMethod(penaltiesFilterMethod.filter(m => m !== item.value));
+                        } else {
+                          setPenaltiesFilterMethod([...penaltiesFilterMethod, item.value]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${penaltiesFilterMethod.includes(item.value) ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-neutral-200 text-neutral-600'}`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">封禁开始时间</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="date" 
+                    value={penaltiesFilterStartFrom}
+                    onChange={e => setPenaltiesFilterStartFrom(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                  />
+                  <span className="text-neutral-500 self-center">至</span>
+                  <input 
+                    type="date" 
+                    value={penaltiesFilterStartTo}
+                    onChange={e => setPenaltiesFilterStartTo(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">预计解封时间</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="date" 
+                    value={penaltiesFilterEndFrom}
+                    onChange={e => setPenaltiesFilterEndFrom(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                  />
+                  <span className="text-neutral-500 self-center">至</span>
+                  <input 
+                    type="date" 
+                    value={penaltiesFilterEndTo}
+                    onChange={e => setPenaltiesFilterEndTo(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead>
+              <thead className="hidden md:table-header-group">
                 <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50">
                   <th className="py-3 px-4 font-medium align-top">
                     <div className="mb-2">学生</div>
@@ -925,11 +1248,11 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   </th>
                 </tr>
               </thead>
-              <tbody className="text-sm">
+              <tbody className="text-sm block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {filteredActivePenalties.map(p => (
                   <React.Fragment key={p.id}>
                     <tr 
-                      className="border-b border-neutral-100 hover:bg-neutral-50/50 cursor-pointer transition-colors"
+                      className="block md:table-row hover:bg-neutral-50/50 cursor-pointer transition-colors border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none"
                       onClick={() => {
                         setActiveSubTab('records');
                         setRecordsFilterUser(p.student_name || p.student_id);
@@ -940,41 +1263,64 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         });
                       }}
                     >
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-neutral-900">{p.student_name}</div>
-                        <div className="text-xs text-neutral-500">
-                          {p.student_id} {p.supervisor ? `| ${p.supervisor}` : ''}
+                      <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <div className="flex justify-between items-center md:block">
+                          <span className="md:hidden font-medium text-neutral-500 text-xs">学生</span>
+                          <div className="text-right md:text-left">
+                            <div className="font-medium text-neutral-900">{p.student_name}</div>
+                            <div className="text-xs text-neutral-500">
+                              {p.student_id} {p.supervisor ? `| ${p.supervisor}` : ''}
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
-                            {p.rule_name}
+                      <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <div className="flex justify-between items-center md:block">
+                          <span className="md:hidden font-medium text-neutral-500 text-xs">触发规则</span>
+                          <div className="flex items-center gap-2 justify-end md:justify-start">
+                            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                              {p.rule_name}
+                            </span>
+                            {p.is_dynamic ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                                动态
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-600 border border-purple-100">
+                                固定
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <div className="flex justify-between items-center md:block">
+                          <span className="md:hidden font-medium text-neutral-500 text-xs">惩罚方式</span>
+                          <span className="text-right">
+                            {p.penalty_method === 'BAN' ? '禁止预约' : p.penalty_method === 'REQUIRE_APPROVAL' ? '需审批' : '受限制'}
                           </span>
-                          {p.is_dynamic ? (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
-                              动态
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-600 border border-purple-100">
-                              固定
-                            </span>
-                          )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        {p.penalty_method === 'BAN' ? '禁止预约' : p.penalty_method === 'REQUIRE_APPROVAL' ? '需审批' : '受限制'}
+                      <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <div className="flex justify-between items-center md:block">
+                          <span className="md:hidden font-medium text-neutral-500 text-xs">封禁开始时间</span>
+                          <span className="text-right">{new Date(p.start_time).toLocaleString('zh-CN')}</span>
+                        </div>
                       </td>
-                      <td className="py-3 px-4">{new Date(p.start_time).toLocaleString('zh-CN')}</td>
-                      <td className="py-3 px-4 font-medium text-red-600">
-                        {p.end_time ? new Date(p.end_time).toLocaleString('zh-CN') : '永久'}
+                      <td className="px-4 py-3 md:py-4 block md:table-cell">
+                        <div className="flex justify-between items-center md:block">
+                          <span className="md:hidden font-medium text-neutral-500 text-xs">预计解封时间</span>
+                          <span className="text-right font-medium text-red-600">
+                            {p.end_time ? new Date(p.end_time).toLocaleString('zh-CN') : '永久'}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   </React.Fragment>
                 ))}
                 {activePenalties.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-neutral-500">当前没有受限用户</td>
+                  <tr className="block md:table-row">
+                    <td colSpan={5} className="py-8 text-center text-neutral-500 block md:table-cell">当前没有受限用户</td>
                   </tr>
                 )}
               </tbody>

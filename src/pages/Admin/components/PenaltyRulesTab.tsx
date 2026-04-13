@@ -324,85 +324,101 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
       </div>
 
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600">
-            <tr>
-              <th className="px-6 py-4 font-medium">规则名称</th>
-              <th className="px-6 py-4 font-medium">触发条件</th>
-              <th className="px-6 py-4 font-medium">惩罚动作</th>
-              <th className="px-6 py-4 font-medium">状态</th>
-              <th className="px-6 py-4 font-medium text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100">
-            {rules.map(rule => {
-              const trigger = JSON.parse(rule.trigger_config) as TriggerConfig;
-              const action = JSON.parse(rule.action_config) as ActionConfig;
-              return (
-                <tr key={rule.id} className="hover:bg-neutral-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-neutral-900">{rule.name}</div>
-                    {rule.description && <div className="text-neutral-500 text-xs mt-1">{rule.description}</div>}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-100">
-                      {trigger.window_type === 'natural_period' || trigger.window_type === 'current_month' ? `本${periodTypeMap[trigger.period_type || 'month']}内，` : `过去 ${trigger.period_days} 天内，`}
-                      {violationTypeMap[rule.violation_type]}
-                      {trigger.metric === 'count' ? `达到 ${trigger.threshold} 次` : `累计 ${trigger.threshold} 分钟`}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-100">
-                      {actionTypeMap[action.type]}
-                      {action.duration_type === 'fixed' && action.duration_days ? ` (${action.duration_days} 天)` : ' (动态计算)'}
-                      {action.type === 'double_fee' && ` (${action.params?.multiplier} 倍)`}
-                      {action.type === 'reduce_advance_days' && ` (减少 ${action.params?.reduce_days} 天，保底 ${action.params?.min_retain_days} 天)`}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={rule.is_active === 1}
-                        onChange={async (e) => {
-                          const newStatus = e.target.checked ? 1 : 0;
-                          try {
-                            await fetch(`/api/admin/penalty-rules/${rule.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                              body: JSON.stringify({ ...rule, trigger_config: trigger, action_config: action, is_active: newStatus })
-                            });
-                            fetchRules();
-                          } catch (err) {}
-                        }}
-                      />
-                      <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
-                    </label>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => handleOpenDrawer(rule)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDelete(rule.id)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead className="hidden md:table-header-group bg-neutral-50 border-b border-neutral-200 text-neutral-600">
+              <tr>
+                <th className="px-6 py-4 font-medium">规则名称</th>
+                <th className="px-6 py-4 font-medium">触发条件</th>
+                <th className="px-6 py-4 font-medium">惩罚动作</th>
+                <th className="px-6 py-4 font-medium">状态</th>
+                <th className="px-6 py-4 font-medium text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
+              {rules.map(rule => {
+                const trigger = JSON.parse(rule.trigger_config) as TriggerConfig;
+                const action = JSON.parse(rule.action_config) as ActionConfig;
+                return (
+                  <tr key={rule.id} className="block md:table-row hover:bg-neutral-50 transition-colors border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                    <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-start md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs mt-0.5">规则名称</span>
+                        <div className="text-right md:text-left">
+                          <div className="font-medium text-neutral-900">{rule.name}</div>
+                          {rule.description && <div className="text-neutral-500 text-xs mt-1">{rule.description}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">触发条件</span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-100 text-right md:text-left">
+                          {trigger.window_type === 'natural_period' || trigger.window_type === 'current_month' ? `本${periodTypeMap[trigger.period_type || 'month']}内，` : `过去 ${trigger.period_days} 天内，`}
+                          {violationTypeMap[rule.violation_type]}
+                          {trigger.metric === 'count' ? `达到 ${trigger.threshold} 次` : `累计 ${trigger.threshold} 分钟`}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">惩罚动作</span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-100 text-right md:text-left">
+                          {actionTypeMap[action.type]}
+                          {action.duration_type === 'fixed' && action.duration_days ? ` (${action.duration_days} 天)` : ' (动态计算)'}
+                          {action.type === 'double_fee' && ` (${action.params?.multiplier} 倍)`}
+                          {action.type === 'reduce_advance_days' && ` (减少 ${action.params?.reduce_days} 天，保底 ${action.params?.min_retain_days} 天)`}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer" 
+                            checked={rule.is_active === 1}
+                            onChange={async (e) => {
+                              const newStatus = e.target.checked ? 1 : 0;
+                              try {
+                                await fetch(`/api/admin/penalty-rules/${rule.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                  body: JSON.stringify({ ...rule, trigger_config: trigger, action_config: action, is_active: newStatus })
+                                });
+                                fetchRules();
+                              } catch (err) {}
+                            }}
+                          />
+                          <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                        </label>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell text-right">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => handleOpenDrawer(rule)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDelete(rule.id)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rules.length === 0 && (
+                <tr className="block md:table-row">
+                  <td colSpan={5} className="px-6 py-12 text-center text-neutral-500 block md:table-cell">
+                    <AlertCircle className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
+                    暂无惩罚规则
                   </td>
                 </tr>
-              );
-            })}
-            {rules.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-neutral-500">
-                  <AlertCircle className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
-                  暂无惩罚规则
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Drawer Overlay */}
