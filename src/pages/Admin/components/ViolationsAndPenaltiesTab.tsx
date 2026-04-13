@@ -193,6 +193,13 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const [showStatusFilterPopup, setShowStatusFilterPopup] = useState(false);
   const statusFilterPopupRef = useRef<HTMLDivElement>(null);
 
+  // Active Penalties Filters State
+  const [penaltiesFilterUser, setPenaltiesFilterUser] = useState('');
+  const [penaltiesFilterRule, setPenaltiesFilterRule] = useState('');
+  const [penaltiesFilterMethod, setPenaltiesFilterMethod] = useState<string[]>([]);
+  const [showMethodFilterPopup, setShowMethodFilterPopup] = useState(false);
+  const methodFilterPopupRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (typeFilterPopupRef.current && !typeFilterPopupRef.current.contains(event.target as Node)) {
@@ -201,10 +208,30 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       if (statusFilterPopupRef.current && !statusFilterPopupRef.current.contains(event.target as Node)) {
         setShowStatusFilterPopup(false);
       }
+      if (methodFilterPopupRef.current && !methodFilterPopupRef.current.contains(event.target as Node)) {
+        setShowMethodFilterPopup(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const filteredActivePenalties = activePenalties.filter(p => {
+    if (penaltiesFilterUser) {
+      const search = penaltiesFilterUser.toLowerCase();
+      if (!p.student_name?.toLowerCase().includes(search) && 
+          !p.student_id?.toLowerCase().includes(search)) {
+        return false;
+      }
+    }
+    if (penaltiesFilterRule && !p.rule_name?.toLowerCase().includes(penaltiesFilterRule.toLowerCase())) {
+      return false;
+    }
+    if (penaltiesFilterMethod.length > 0 && !penaltiesFilterMethod.includes(p.penalty_method)) {
+      return false;
+    }
+    return true;
+  });
 
   const filteredRecords = records.filter(v => {
     if (penaltyContext) {
@@ -689,15 +716,86 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50">
-                  <th className="py-3 px-4 font-medium">学生</th>
-                  <th className="py-3 px-4 font-medium">触发规则</th>
-                  <th className="py-3 px-4 font-medium">惩罚方式</th>
-                  <th className="py-3 px-4 font-medium">封禁开始时间</th>
-                  <th className="py-3 px-4 font-medium">预计解封时间</th>
+                  <th className="py-3 px-4 font-medium align-top">
+                    <div className="mb-2">学生</div>
+                    <input 
+                      type="text" 
+                      placeholder="学生姓名/学号" 
+                      value={penaltiesFilterUser}
+                      onChange={e => setPenaltiesFilterUser(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal bg-white"
+                    />
+                  </th>
+                  <th className="py-3 px-4 font-medium align-top">
+                    <div className="mb-2">触发规则</div>
+                    <input 
+                      type="text" 
+                      placeholder="搜索规则名称" 
+                      value={penaltiesFilterRule}
+                      onChange={e => setPenaltiesFilterRule(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal bg-white"
+                    />
+                  </th>
+                  <th className="py-3 px-4 font-medium align-top">
+                    <div className="mb-2">惩罚方式</div>
+                    <div className="relative" ref={methodFilterPopupRef}>
+                      <button 
+                        onClick={() => setShowMethodFilterPopup(!showMethodFilterPopup)}
+                        className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center"
+                      >
+                        {penaltiesFilterMethod.length > 0 ? (
+                          penaltiesFilterMethod.map(m => (
+                            <span key={m} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                              {m === 'BAN' ? '禁止预约' : m === 'REQUIRE_APPROVAL' ? '需审批' : '受限制'}
+                              <X 
+                                className="w-3 h-3 cursor-pointer hover:text-red-500" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPenaltiesFilterMethod(penaltiesFilterMethod.filter(sm => sm !== m));
+                                }}
+                              />
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-neutral-400 font-normal">全部方式</span>
+                        )}
+                      </button>
+                      {showMethodFilterPopup && (
+                        <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                          <div className="space-y-1 max-h-48 overflow-y-auto mb-2">
+                            {[
+                              { value: 'BAN', label: '禁止预约' },
+                              { value: 'REQUIRE_APPROVAL', label: '需审批' },
+                              { value: 'RESTRICTED', label: '受限制' }
+                            ].map((item) => (
+                              <label key={item.value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={penaltiesFilterMethod.includes(item.value)}
+                                  onChange={e => {
+                                    if (e.target.checked) setPenaltiesFilterMethod([...penaltiesFilterMethod, item.value]);
+                                    else setPenaltiesFilterMethod(penaltiesFilterMethod.filter(s => s !== item.value));
+                                  }}
+                                  className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                />
+                                <span className="text-sm text-neutral-700">{item.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  <th className="py-3 px-4 font-medium align-top">
+                    <div className="mb-2">封禁开始时间</div>
+                  </th>
+                  <th className="py-3 px-4 font-medium align-top">
+                    <div className="mb-2">预计解封时间</div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="text-sm">
-                {activePenalties.map(p => (
+                {filteredActivePenalties.map(p => (
                   <React.Fragment key={p.id}>
                     <tr 
                       className="border-b border-neutral-100 hover:bg-neutral-50/50 cursor-pointer transition-colors"
