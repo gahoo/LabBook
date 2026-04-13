@@ -937,31 +937,31 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
                         <span className="md:hidden font-medium text-neutral-500 text-xs">迟到次数</span>
                         <span className="text-right">{s.late_count}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
                         <span className="md:hidden font-medium text-neutral-500 text-xs">超时次数</span>
                         <span className="text-right">{s.overtime_count}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
                         <span className="md:hidden font-medium text-neutral-500 text-xs">爽约次数</span>
                         <span className="text-right">{s.noshow_count}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
                         <span className="md:hidden font-medium text-neutral-500 text-xs">取消次数(临期)</span>
                         <span className="text-right">{s.late_cancelled_count}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell">
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right">
                       <div className="flex justify-between items-center md:block">
                         <span className="md:hidden font-medium text-neutral-500 text-xs">违规总计</span>
                         <span className="text-right font-semibold text-red-600">{s.total_violations}</span>
