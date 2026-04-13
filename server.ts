@@ -1690,7 +1690,8 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
   // 1. Get fixed penalties
   const fixedPenalties = db.prepare(`
     SELECT p.*, pr.name as rule_name, 
-      (SELECT student_name FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as student_name
+      (SELECT student_name FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as student_name,
+      (SELECT supervisor FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as supervisor
     FROM user_penalties p
     LEFT JOIN penalty_rules pr ON p.rule_id = pr.id
     WHERE p.status = 'active' AND p.end_time > ?
@@ -1780,12 +1781,13 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
         }
       }
 
-      const studentNameRow = db.prepare('SELECT student_name FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(user.student_id) as any;
+      const studentInfoRow = db.prepare('SELECT student_name, supervisor FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(user.student_id) as any;
 
       dynamicPenalties.push({
         id: `dynamic_${rule.id}_${user.student_id}`,
         student_id: user.student_id,
-        student_name: studentNameRow ? studentNameRow.student_name : user.student_id,
+        student_name: studentInfoRow ? studentInfoRow.student_name : user.student_id,
+        supervisor: studentInfoRow ? studentInfoRow.supervisor : null,
         rule_name: rule.name,
         penalty_method: action.type === 'ban' ? 'BAN' : (action.type === 'require_approval' ? 'REQUIRE_APPROVAL' : 'RESTRICTED'),
         start_time: records[records.length - 1].violation_time,

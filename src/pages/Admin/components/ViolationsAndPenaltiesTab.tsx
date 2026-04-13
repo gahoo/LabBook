@@ -199,6 +199,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const [penaltiesFilterMethod, setPenaltiesFilterMethod] = useState<string[]>([]);
   const [showMethodFilterPopup, setShowMethodFilterPopup] = useState(false);
   const methodFilterPopupRef = useRef<HTMLDivElement>(null);
+  
+  const [penaltiesFilterStartFrom, setPenaltiesFilterStartFrom] = useState('');
+  const [penaltiesFilterStartTo, setPenaltiesFilterStartTo] = useState('');
+  const [showStartFilterPopup, setShowStartFilterPopup] = useState(false);
+  const startFilterPopupRef = useRef<HTMLDivElement>(null);
+
+  const [penaltiesFilterEndFrom, setPenaltiesFilterEndFrom] = useState('');
+  const [penaltiesFilterEndTo, setPenaltiesFilterEndTo] = useState('');
+  const [showEndFilterPopup, setShowEndFilterPopup] = useState(false);
+  const endFilterPopupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -211,6 +221,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       if (methodFilterPopupRef.current && !methodFilterPopupRef.current.contains(event.target as Node)) {
         setShowMethodFilterPopup(false);
       }
+      if (startFilterPopupRef.current && !startFilterPopupRef.current.contains(event.target as Node)) {
+        setShowStartFilterPopup(false);
+      }
+      if (endFilterPopupRef.current && !endFilterPopupRef.current.contains(event.target as Node)) {
+        setShowEndFilterPopup(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -220,15 +236,38 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
     if (penaltiesFilterUser) {
       const search = penaltiesFilterUser.toLowerCase();
       if (!p.student_name?.toLowerCase().includes(search) && 
-          !p.student_id?.toLowerCase().includes(search)) {
+          !p.student_id?.toLowerCase().includes(search) &&
+          !p.supervisor?.toLowerCase().includes(search)) {
         return false;
       }
     }
-    if (penaltiesFilterRule && !p.rule_name?.toLowerCase().includes(penaltiesFilterRule.toLowerCase())) {
-      return false;
+    if (penaltiesFilterRule) {
+      const search = penaltiesFilterRule.toLowerCase();
+      const isDynamic = p.is_dynamic;
+      const ruleNameMatch = p.rule_name?.toLowerCase().includes(search);
+      const dynamicMatch = search.includes('动态') && isDynamic;
+      const fixedMatch = search.includes('固定') && !isDynamic;
+      
+      if (!ruleNameMatch && !dynamicMatch && !fixedMatch) {
+        return false;
+      }
     }
     if (penaltiesFilterMethod.length > 0 && !penaltiesFilterMethod.includes(p.penalty_method)) {
       return false;
+    }
+    if (penaltiesFilterStartFrom && new Date(p.start_time) < new Date(`${penaltiesFilterStartFrom}T00:00:00`)) {
+      return false;
+    }
+    if (penaltiesFilterStartTo && new Date(p.start_time) > new Date(`${penaltiesFilterStartTo}T23:59:59`)) {
+      return false;
+    }
+    if (penaltiesFilterEndFrom) {
+      if (!p.end_time) return false; // Permanent penalties don't match a specific end date range
+      if (new Date(p.end_time) < new Date(`${penaltiesFilterEndFrom}T00:00:00`)) return false;
+    }
+    if (penaltiesFilterEndTo) {
+      if (!p.end_time) return false;
+      if (new Date(p.end_time) > new Date(`${penaltiesFilterEndTo}T23:59:59`)) return false;
     }
     return true;
   });
@@ -788,9 +827,101 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   </th>
                   <th className="py-3 px-4 font-medium align-top">
                     <div className="mb-2">封禁开始时间</div>
+                    <div className="relative" ref={startFilterPopupRef}>
+                      <button 
+                        onClick={() => setShowStartFilterPopup(!showStartFilterPopup)}
+                        className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex items-center justify-between"
+                      >
+                        <span className={penaltiesFilterStartFrom || penaltiesFilterStartTo ? 'text-neutral-700' : 'text-neutral-400 font-normal'}>
+                          {penaltiesFilterStartFrom || penaltiesFilterStartTo 
+                            ? `${penaltiesFilterStartFrom || '不限'} 至 ${penaltiesFilterStartTo || '不限'}` 
+                            : '全部时间'}
+                        </span>
+                        {(penaltiesFilterStartFrom || penaltiesFilterStartTo) && (
+                          <X 
+                            className="w-3 h-3 text-neutral-400 hover:text-red-500" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPenaltiesFilterStartFrom('');
+                              setPenaltiesFilterStartTo('');
+                            }}
+                          />
+                        )}
+                      </button>
+                      {showStartFilterPopup && (
+                        <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs text-neutral-500 mb-1">起始日期</label>
+                              <input 
+                                type="date" 
+                                value={penaltiesFilterStartFrom}
+                                onChange={e => setPenaltiesFilterStartFrom(e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-neutral-500 mb-1">结束日期</label>
+                              <input 
+                                type="date" 
+                                value={penaltiesFilterStartTo}
+                                onChange={e => setPenaltiesFilterStartTo(e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </th>
                   <th className="py-3 px-4 font-medium align-top">
                     <div className="mb-2">预计解封时间</div>
+                    <div className="relative" ref={endFilterPopupRef}>
+                      <button 
+                        onClick={() => setShowEndFilterPopup(!showEndFilterPopup)}
+                        className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex items-center justify-between"
+                      >
+                        <span className={penaltiesFilterEndFrom || penaltiesFilterEndTo ? 'text-neutral-700' : 'text-neutral-400 font-normal'}>
+                          {penaltiesFilterEndFrom || penaltiesFilterEndTo 
+                            ? `${penaltiesFilterEndFrom || '不限'} 至 ${penaltiesFilterEndTo || '不限'}` 
+                            : '全部时间'}
+                        </span>
+                        {(penaltiesFilterEndFrom || penaltiesFilterEndTo) && (
+                          <X 
+                            className="w-3 h-3 text-neutral-400 hover:text-red-500" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPenaltiesFilterEndFrom('');
+                              setPenaltiesFilterEndTo('');
+                            }}
+                          />
+                        )}
+                      </button>
+                      {showEndFilterPopup && (
+                        <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs text-neutral-500 mb-1">起始日期</label>
+                              <input 
+                                type="date" 
+                                value={penaltiesFilterEndFrom}
+                                onChange={e => setPenaltiesFilterEndFrom(e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-neutral-500 mb-1">结束日期</label>
+                              <input 
+                                type="date" 
+                                value={penaltiesFilterEndTo}
+                                onChange={e => setPenaltiesFilterEndTo(e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -811,7 +942,9 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                     >
                       <td className="py-3 px-4">
                         <div className="font-medium text-neutral-900">{p.student_name}</div>
-                        <div className="text-xs text-neutral-500">{p.student_id}</div>
+                        <div className="text-xs text-neutral-500">
+                          {p.student_id} {p.supervisor ? `| ${p.supervisor}` : ''}
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
