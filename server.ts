@@ -1620,7 +1620,7 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, ids } = req.query;
   let query = `
     SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.notes as reservation_notes
     FROM violation_records v
@@ -1630,13 +1630,23 @@ app.get('/api/admin/violation-records', adminAuth, (req, res) => {
   `;
   const params: any[] = [];
 
-  if (startDate) {
-    query += ` AND v.violation_time >= ?`;
-    params.push(`${startDate}T00:00:00.000Z`);
-  }
-  if (endDate) {
-    query += ` AND v.violation_time <= ?`;
-    params.push(`${endDate}T23:59:59.999Z`);
+  if (ids && typeof ids === 'string') {
+    const idArray = ids.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    if (idArray.length > 0) {
+      query += ` AND v.id IN (${idArray.map(() => '?').join(',')})`;
+      params.push(...idArray);
+    } else {
+      query += ` AND 1=0`; // Return empty if invalid ids
+    }
+  } else {
+    if (startDate) {
+      query += ` AND v.violation_time >= ?`;
+      params.push(`${startDate}T00:00:00.000Z`);
+    }
+    if (endDate) {
+      query += ` AND v.violation_time <= ?`;
+      params.push(`${endDate}T23:59:59.999Z`);
+    }
   }
 
   query += ` ORDER BY v.violation_time DESC`;

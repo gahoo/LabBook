@@ -12,6 +12,13 @@ interface ViolationsAndPenaltiesTabProps {
 export default function ViolationsAndPenaltiesTab({ token, onLogout }: ViolationsAndPenaltiesTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<'records' | 'stats' | 'active_penalties' | 'rules'>('records');
   
+  // Drill-down Context State
+  const [penaltyContext, setPenaltyContext] = useState<{
+    studentName: string;
+    ruleName: string;
+    violationIds: number[];
+  } | null>(null);
+
   // Date Range State
   const [startDate, setStartDate] = useState(format(subDays(startOfToday(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
@@ -25,8 +32,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const [loading, setLoading] = useState(false);
 
   // Expanded Rows State
-  const [expandedPenaltyRow, setExpandedPenaltyRow] = useState<number | null>(null);
-
   // Revoke Modal State
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [revokeRecordId, setRevokeRecordId] = useState<number | null>(null);
@@ -54,12 +59,18 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       fetchActivePenalties();
       fetchRecords();
     }
-  }, [activeSubTab, startDate, endDate]);
+  }, [activeSubTab, startDate, endDate, penaltyContext]);
 
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const query = new URLSearchParams({ startDate, endDate });
+      const query = new URLSearchParams();
+      if (penaltyContext) {
+        query.append('ids', penaltyContext.violationIds.join(','));
+      } else {
+        query.append('startDate', startDate);
+        query.append('endDate', endDate);
+      }
       const res = await fetch(`/api/admin/violation-records?${query.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -196,6 +207,9 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   }, []);
 
   const filteredRecords = records.filter(v => {
+    if (penaltyContext) {
+      return penaltyContext.violationIds.includes(v.id);
+    }
     if (recordsFilterUser) {
       const search = recordsFilterUser.toLowerCase();
       if (!v.student_name?.toLowerCase().includes(search) && 
@@ -212,6 +226,25 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
 
   const renderRecordsTable = (data: any[], showFilters = false) => (
     <div className="overflow-x-auto">
+      {penaltyContext && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-2 text-blue-800 text-sm">
+            <span className="text-xl">💡</span>
+            <span>
+              正在查看 <strong>{penaltyContext.studentName}</strong> 触发 <strong>{penaltyContext.ruleName}</strong> 规则的关联违规记录。
+            </span>
+          </div>
+          <button 
+            onClick={() => {
+              setPenaltyContext(null);
+              setRecordsFilterUser('');
+            }}
+            className="px-3 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors"
+          >
+            退出查看
+          </button>
+        </div>
+      )}
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="border-b border-neutral-200 text-sm text-neutral-500">
@@ -220,7 +253,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">学生</div>
-              {showFilters && (
+              {showFilters && !penaltyContext && (
                 <input 
                   type="text" 
                   placeholder="学生姓名/学号" 
@@ -232,7 +265,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">预约码</div>
-              {showFilters && (
+              {showFilters && !penaltyContext && (
                 <input 
                   type="text" 
                   placeholder="搜索预约码" 
@@ -244,7 +277,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">仪器</div>
-              {showFilters && (
+              {showFilters && !penaltyContext && (
                 <input 
                   type="text" 
                   placeholder="仪器名称" 
@@ -256,7 +289,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">违规类型</div>
-              {showFilters && (
+              {showFilters && !penaltyContext && (
                 <div className="relative" ref={typeFilterPopupRef}>
                   <button 
                     onClick={() => setShowTypeFilterPopup(!showTypeFilterPopup)}
@@ -323,7 +356,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
             </th>
             <th className="py-3 px-4 font-medium align-top">
               <div className="mb-2">状态</div>
-              {showFilters && (
+              {showFilters && !penaltyContext && (
                 <div className="relative" ref={statusFilterPopupRef}>
                   <button 
                     onClick={() => setShowStatusFilterPopup(!showStatusFilterPopup)}
@@ -521,7 +554,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-neutral-200 flex justify-between items-center bg-neutral-50/50">
             <h2 className="text-lg font-semibold text-neutral-900">违规记录明细</h2>
-            {renderTimeFilter()}
+            {!penaltyContext && renderTimeFilter()}
           </div>
           {renderRecordsTable(filteredRecords, true)}
         </div>
@@ -669,10 +702,18 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   <React.Fragment key={p.id}>
                     <tr 
                       className="border-b border-neutral-100 hover:bg-neutral-50/50 cursor-pointer transition-colors"
-                      onClick={() => setExpandedPenaltyRow(expandedPenaltyRow === p.id ? null : p.id)}
+                      onClick={() => {
+                        setActiveSubTab('records');
+                        setRecordsFilterUser(p.student_name || p.student_id);
+                        setPenaltyContext({
+                          studentName: p.student_name || p.student_id,
+                          ruleName: p.rule_name,
+                          violationIds: p.contributing_violation_ids.split(',').filter(Boolean).map(Number)
+                        });
+                      }}
                     >
                       <td className="py-3 px-4 text-neutral-400">
-                        {expandedPenaltyRow === p.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        <ChevronDown className="w-4 h-4" />
                       </td>
                       <td className="py-3 px-4">
                         <div className="font-medium text-neutral-900">{p.student_name}</div>
@@ -702,20 +743,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         {p.end_time ? new Date(p.end_time).toLocaleString('zh-CN') : '永久'}
                       </td>
                     </tr>
-                    {expandedPenaltyRow === p.id && (
-                      <tr className="bg-neutral-50/50 border-b border-neutral-200">
-                        <td colSpan={6} className="p-4">
-                          <div className="bg-white rounded-xl border border-neutral-200 shadow-sm">
-                            <div className="p-3 border-b border-neutral-100 bg-neutral-50 text-sm font-medium text-neutral-700">
-                              触发此惩罚的违规记录 (撤销任意一条即可解除该惩罚)
-                            </div>
-                            {renderRecordsTable(
-                              records.filter(r => p.contributing_violation_ids?.includes(`,${r.id},`))
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>
                 ))}
                 {activePenalties.length === 0 && (
