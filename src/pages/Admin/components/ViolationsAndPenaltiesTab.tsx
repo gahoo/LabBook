@@ -147,6 +147,17 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
     }
   };
 
+  const getPenaltyMethodLabel = (method: string) => {
+    const lowerMethod = method?.toLowerCase();
+    switch (lowerMethod) {
+      case 'ban': return '完全封禁';
+      case 'require_approval': return '需管理员审批';
+      case 'double_fee': return '费用加倍';
+      case 'reduce_advance_days': return '减少提前预约天数';
+      default: return method || '未知';
+    }
+  };
+
   const setPresetDateRange = (days: number) => {
     setEndDate(format(startOfToday(), 'yyyy-MM-dd'));
     setStartDate(format(subDays(startOfToday(), days), 'yyyy-MM-dd'));
@@ -1016,9 +1027,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                 <label className="block text-xs font-medium text-neutral-500 mb-1">惩罚方式</label>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { value: 'BAN', label: '禁止预约' },
-                    { value: 'REQUIRE_APPROVAL', label: '需审批' },
-                    { value: 'RESTRICTED', label: '受限制' }
+                    { value: 'ban', label: '完全封禁' },
+                    { value: 'require_approval', label: '需管理员审批' },
+                    { value: 'double_fee', label: '费用加倍' },
+                    { value: 'reduce_advance_days', label: '减少提前预约天数' }
                   ].map(item => (
                     <button
                       key={item.value}
@@ -1108,7 +1120,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         {penaltiesFilterMethod.length > 0 ? (
                           penaltiesFilterMethod.map(m => (
                             <span key={m} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
-                              {m === 'BAN' ? '禁止预约' : m === 'REQUIRE_APPROVAL' ? '需审批' : '受限制'}
+                              {getPenaltyMethodLabel(m)}
                               <X 
                                 className="w-3 h-3 cursor-pointer hover:text-red-500" 
                                 onClick={(e) => {
@@ -1126,9 +1138,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
                           <div className="space-y-1 max-h-48 overflow-y-auto mb-2">
                             {[
-                              { value: 'BAN', label: '禁止预约' },
-                              { value: 'REQUIRE_APPROVAL', label: '需审批' },
-                              { value: 'RESTRICTED', label: '受限制' }
+                              { value: 'ban', label: '完全封禁' },
+                              { value: 'require_approval', label: '需管理员审批' },
+                              { value: 'double_fee', label: '费用加倍' },
+                              { value: 'reduce_advance_days', label: '减少提前预约天数' }
                             ].map((item) => (
                               <label key={item.value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
                                 <input 
@@ -1281,6 +1294,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                             <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
                               {p.rule_name}
                             </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <div className="flex justify-between items-center md:block">
+                          <span className="md:hidden font-medium text-neutral-500 text-xs">惩罚方式</span>
+                          <div className="flex items-center gap-2 justify-end md:justify-start">
+                            <span className="text-neutral-900">
+                              {getPenaltyMethodLabel(p.penalty_method)}
+                            </span>
                             {p.is_dynamic ? (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
                                 动态
@@ -1291,14 +1314,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                               </span>
                             )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                        <div className="flex justify-between items-center md:block">
-                          <span className="md:hidden font-medium text-neutral-500 text-xs">惩罚方式</span>
-                          <span className="text-right">
-                            {p.penalty_method === 'BAN' ? '禁止预约' : p.penalty_method === 'REQUIRE_APPROVAL' ? '需审批' : '受限制'}
-                          </span>
                         </div>
                       </td>
                       <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
