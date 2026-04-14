@@ -36,9 +36,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   // Revoke Modal State
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [revokeRecordId, setRevokeRecordId] = useState<number | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [revokeRemark, setRevokeRemark] = useState('');
   const [revokeReservationNotes, setRevokeReservationNotes] = useState('');
-  const [modalMode, setModalMode] = useState<'revoke' | 'view' | 'restore' | 'reject-appeal'>('revoke');
+  const [modalMode, setModalMode] = useState<'revoke' | 'view' | 'restore' | 'reject-appeal' | 'manage'>('manage');
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -121,10 +122,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
     }
   };
 
-  const handleModalSubmit = async () => {
+  const handleModalSubmit = async (actionOverride?: string) => {
     if (!revokeRecordId) return;
     
-    const action = modalMode === 'revoke' ? 'revoke' : modalMode === 'restore' ? 'restore' : 'reject-appeal';
+    const action = actionOverride || (modalMode === 'revoke' ? 'revoke' : modalMode === 'restore' ? 'restore' : 'reject-appeal');
     
     try {
       const res = await fetch(`/api/admin/violation-records/${revokeRecordId}/${action}`, {
@@ -401,7 +402,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         </span>
                       ))
                     ) : (
-                      <span className="text-neutral-400 font-normal">全部类型</span>
+                      <span className="text-neutral-400 font-normal">全部</span>
                     )}
                   </button>
                   {showTypeFilterPopup && (
@@ -479,7 +480,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                         </span>
                       ))
                     ) : (
-                      <span className="text-neutral-400 font-normal">全部状态</span>
+                      <span className="text-neutral-400 font-normal">全部</span>
                     )}
                   </button>
                   {showStatusFilterPopup && (
@@ -636,71 +637,27 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                     const hasNotes = v.reservation_notes || v.remark;
 
                     return (
-                      <>
-                        {v.status === 'active' ? (
-                          <>
-                            {isAppealing && (
-                              <button 
-                                onClick={() => {
-                                  setRevokeRecordId(v.id);
-                                  setRevokeRemark('');
-                                  setRevokeReservationNotes(v.reservation_notes || '');
-                                  setModalMode('reject-appeal' as any);
-                                  setRevokeModalOpen(true);
-                                }}
-                                title="驳回申诉"
-                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button 
-                              onClick={() => {
-                                setRevokeRecordId(v.id);
-                                setRevokeRemark('');
-                                setRevokeReservationNotes(v.reservation_notes || '');
-                                setModalMode('revoke');
-                                setRevokeModalOpen(true);
-                              }}
-                              title={isAppealing ? "通过申诉(撤销)" : "撤销违规"}
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </button>
-                          </>
-                        ) : (
-                          <button 
-                            onClick={() => {
-                              setRevokeRecordId(v.id);
-                              setRevokeRemark('');
-                              setRevokeReservationNotes(v.reservation_notes || '');
-                              setModalMode('restore');
-                              setRevokeModalOpen(true);
-                            }}
-                            title="取消撤销"
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <RefreshCw className="w-4 h-4" />
-                          </button>
+                      <button 
+                        onClick={() => {
+                          setSelectedRecord(v);
+                          setRevokeRecordId(v.id);
+                          setRevokeRemark(v.remark || '');
+                          setRevokeReservationNotes(v.reservation_notes || '');
+                          setModalMode('manage');
+                          setRevokeModalOpen(true);
+                        }}
+                        title={isAppealing ? "处理申诉" : "查看/处理"}
+                        className={`p-1.5 rounded-lg transition-colors relative ${
+                          isAppealing 
+                            ? 'text-amber-600 hover:bg-amber-50' 
+                            : 'text-blue-600 hover:bg-blue-50'
+                        }`}
+                      >
+                        {isAppealing ? <AlertTriangle className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                        {hasNotes && !isAppealing && (
+                          <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
                         )}
-                        
-                        <button 
-                          onClick={() => {
-                            setRevokeRecordId(v.id);
-                            setRevokeRemark(v.remark || '');
-                            setRevokeReservationNotes(v.reservation_notes || '');
-                            setModalMode('view');
-                            setRevokeModalOpen(true);
-                          }}
-                          title="查看详情"
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors relative"
-                        >
-                          <Info className="w-4 h-4" />
-                          {hasNotes && (
-                            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-                          )}
-                        </button>
-                      </>
+                      </button>
                     );
                   })()}
                 </div>
@@ -1464,28 +1421,14 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       )}
 
       {/* Revoke Modal */}
-      {revokeModalOpen && (
+      {revokeModalOpen && selectedRecord && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="p-6">
-              <h3 className="text-xl font-bold text-neutral-900 mb-2">
-                {modalMode === 'revoke' ? '确认撤销违规记录' : modalMode === 'restore' ? '确认取消撤销' : modalMode === 'reject-appeal' ? '驳回申诉' : '违规记录详情'}
+              <h3 className="text-xl font-bold text-neutral-900 mb-6">
+                违规记录详情
               </h3>
-              {modalMode === 'revoke' && (
-                <p className="text-sm text-neutral-500 mb-6">
-                  撤销此记录后，该记录将不再计入违规统计。如果此记录曾触发过固定时长的封禁，该封禁也将被自动解除。
-                </p>
-              )}
-              {modalMode === 'restore' && (
-                <p className="text-sm text-neutral-500 mb-6">
-                  取消撤销后，该记录将重新计入违规统计，并可能触发相应的惩罚规则。
-                </p>
-              )}
-              {modalMode === 'reject-appeal' && (
-                <p className="text-sm text-neutral-500 mb-6">
-                  驳回申诉后，该违规记录将继续生效，且用户无法再次对此记录发起申诉。
-                </p>
-              )}
+              
               <div className="space-y-4">
                 {revokeReservationNotes && (
                   <div>
@@ -1498,6 +1441,8 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                 
                 {(() => {
                   const remarkObj = parseRemark(revokeRemark);
+                  const isAppealing = selectedRecord.status === 'active' && remarkObj.appeal_reason && !remarkObj.appeal_reply;
+                  
                   return (
                     <>
                       {remarkObj.appeal_reason && (
@@ -1508,7 +1453,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                           </div>
                         </div>
                       )}
-                      {remarkObj.appeal_reply && modalMode === 'view' && (
+                      {remarkObj.appeal_reply && (
                         <div>
                           <label className="block text-sm font-medium text-neutral-700 mb-1">处理回复</label>
                           <div className="w-full px-4 py-3 rounded-xl border border-purple-200 bg-purple-50 text-purple-800 text-sm whitespace-pre-wrap">
@@ -1518,48 +1463,79 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                       )}
                       <div>
                         <label className="block text-sm font-medium text-neutral-700 mb-1">
-                          {modalMode === 'reject-appeal' ? '驳回理由' : modalMode === 'revoke' && remarkObj.appeal_reason ? '通过理由' : '管理员备注'} {(modalMode === 'revoke' || modalMode === 'restore' || modalMode === 'reject-appeal') && '(选填)'}
+                          管理员备注
                         </label>
-                        {modalMode === 'revoke' || modalMode === 'restore' || modalMode === 'reject-appeal' ? (
-                          <textarea
-                            value={remarkObj.admin_note || ''}
-                            onChange={e => {
-                              const newObj = { ...remarkObj, admin_note: e.target.value };
-                              setRevokeRemark(JSON.stringify(newObj));
-                            }}
-                            className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none resize-none h-24"
-                            placeholder={modalMode === 'reject-appeal' ? "请输入驳回理由..." : "请输入备注信息..."}
-                          />
-                        ) : (
-                          <div className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-700 text-sm min-h-[6rem] whitespace-pre-wrap">
-                            {remarkObj.admin_note || <span className="text-neutral-400">无备注</span>}
-                          </div>
-                        )}
+                        <textarea
+                          value={remarkObj.admin_note || ''}
+                          onChange={e => {
+                            const newObj = { ...remarkObj, admin_note: e.target.value };
+                            setRevokeRemark(JSON.stringify(newObj));
+                          }}
+                          className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none resize-none h-24"
+                          placeholder="请输入备注信息（选填）..."
+                        />
                       </div>
                     </>
                   );
                 })()}
               </div>
             </div>
-            <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-end gap-3">
+            <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-between items-center">
               <button
-                onClick={() => setRevokeModalOpen(false)}
+                onClick={() => {
+                  setRevokeModalOpen(false);
+                  setSelectedRecord(null);
+                }}
                 className="px-5 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-200 rounded-xl transition-colors"
               >
-                {modalMode === 'view' ? '关闭' : '取消'}
+                关闭
               </button>
-              {modalMode !== 'view' && (
-                <button
-                  onClick={handleModalSubmit}
-                  className={`px-5 py-2.5 text-sm font-medium text-white rounded-xl transition-colors ${
-                    modalMode === 'revoke' ? 'bg-emerald-600 hover:bg-emerald-700' : 
-                    modalMode === 'restore' ? 'bg-red-600 hover:bg-red-700' : 
-                    'bg-amber-600 hover:bg-amber-700'
-                  }`}
-                >
-                  {modalMode === 'revoke' ? '确认撤销' : modalMode === 'restore' ? '确认取消撤销' : '确认驳回'}
-                </button>
-              )}
+              
+              <div className="flex gap-2">
+                {(() => {
+                  const remarkObj = parseRemark(revokeRemark);
+                  const isAppealing = selectedRecord.status === 'active' && remarkObj.appeal_reason && !remarkObj.appeal_reply;
+                  
+                  if (selectedRecord.status === 'active') {
+                    if (isAppealing) {
+                      return (
+                        <>
+                          <button
+                            onClick={() => handleModalSubmit('reject-appeal')}
+                            className="px-5 py-2.5 text-sm font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-xl transition-colors"
+                          >
+                            驳回申诉
+                          </button>
+                          <button
+                            onClick={() => handleModalSubmit('revoke')}
+                            className="px-5 py-2.5 text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-xl transition-colors"
+                          >
+                            通过申诉(撤销)
+                          </button>
+                        </>
+                      );
+                    } else {
+                      return (
+                        <button
+                          onClick={() => handleModalSubmit('revoke')}
+                          className="px-5 py-2.5 text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-xl transition-colors"
+                        >
+                          撤销记录
+                        </button>
+                      );
+                    }
+                  } else {
+                    return (
+                      <button
+                        onClick={() => handleModalSubmit('restore')}
+                        className="px-5 py-2.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-xl transition-colors"
+                      >
+                        恢复记录
+                      </button>
+                    );
+                  }
+                })()}
+              </div>
             </div>
           </div>
         </div>
