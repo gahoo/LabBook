@@ -5,12 +5,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
-import { Beaker, Calendar, Settings, User } from 'lucide-react';
+import { Beaker, Calendar, Settings, User, AlertTriangle } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import Home from './pages/Home';
 import Booking from './pages/Booking';
 import MyReservations from './pages/MyReservations';
 import Admin from './pages/Admin';
+import ViolationQuery from './pages/ViolationQuery';
 
 export default function App() {
   const [appName, setAppName] = useState('LabBook');
@@ -80,6 +81,10 @@ export default function App() {
                 <User className="w-4 h-4" />
                 <span className="hidden sm:inline">我的预约</span>
               </Link>
+              <Link to="/violations" className="hover:text-red-600 transition-colors flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="hidden sm:inline">违规查询</span>
+              </Link>
               <Link to="/admin" className="hover:text-red-600 transition-colors flex items-center gap-1.5">
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">管理后台</span>
@@ -93,6 +98,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/book/:id" element={<Booking />} />
             <Route path="/my-reservations" element={<MyReservations />} />
+            <Route path="/violations" element={<ViolationQuery />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>

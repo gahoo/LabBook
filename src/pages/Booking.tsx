@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter, startOfDay, endOfDay } from 'date-fns';
-import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock, DollarSign } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock, DollarSign, AlertCircle, X, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -61,6 +61,11 @@ export default function Booking() {
   const [needsWhitelist, setNeedsWhitelist] = useState(false);
   const [applyingWhitelist, setApplyingWhitelist] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [showBannedModal, setShowBannedModal] = useState(false);
+  const [bannedViolations, setBannedViolations] = useState<any[]>([]);
+  const [bannedErrorMsg, setBannedErrorMsg] = useState('');
+  const [appealingId, setAppealingId] = useState<number | null>(null);
+  const [appealReason, setAppealReason] = useState('');
 
   useEffect(() => {
     fetch('/api/equipment')
@@ -227,7 +232,22 @@ export default function Booking() {
           throw new Error('您不在白名单中，请先申请使用权限');
         }
         if (res.status === 403 && data.error && data.error.includes('因触发')) {
-          throw new Error(`${formData.student_name}（学号：${formData.student_id}）${data.error}`);
+          setBannedErrorMsg(`${formData.student_name}（学号：${formData.student_id}）${data.error}`);
+          const vRes = await fetch('/api/violations/my', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              student_id: formData.student_id, 
+              student_name: formData.student_name,
+              violation_ids: data.violation_ids || []
+            })
+          });
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            setBannedViolations(vData);
+          }
+          setShowBannedModal(true);
+          return;
         }
         throw new Error(data.error || '预约请求失败');
       }
@@ -349,6 +369,18 @@ export default function Booking() {
           <p className="text-xs text-neutral-400 mt-4">请妥善保存此预约码！您需要使用它进行上机、下机或取消预约。</p>
         </div>
 
+        <div className="bg-amber-50 rounded-xl p-4 mb-8 border border-amber-200 text-left">
+          <h3 className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            履约提醒
+          </h3>
+          <ul className="text-xs text-amber-700 space-y-1.5 list-disc list-inside">
+            <li>请务必于预约时间前到达。迟到或超时使用将产生违规记录。</li>
+            <li>如需取消，请提前操作。临期取消或爽约将导致账号受限。</li>
+            <li>累计多次违规，系统将自动封禁账号或限制预约权限。</li>
+          </ul>
+        </div>
+
         <button 
           onClick={() => navigate('/my-reservations')}
           className="w-full py-3 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 transition-colors"
@@ -359,8 +391,170 @@ export default function Booking() {
     );
   }
 
+  const submitAppeal = async (violationId: number) => {
+    if (!appealReason.trim()) return toast.error('请输入申诉理由');
+    try {
+      const res = await fetch(`/api/violations/${violationId}/appeal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: formData.student_id,
+          student_name: formData.student_name,
+          appeal_reason: appealReason
+        })
+      });
+      if (res.ok) {
+        toast.success('申诉已提交');
+        setAppealingId(null);
+        setAppealReason('');
+        const vRes = await fetch('/api/violations/my', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            student_id: formData.student_id, 
+            student_name: formData.student_name,
+            violation_ids: bannedViolations.map(v => v.id)
+          })
+        });
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          setBannedViolations(vData);
+        }
+      } else {
+        const err = await res.json();
+        toast.error(err.error || '提交失败');
+      }
+    } catch (err) {
+      toast.error('提交失败');
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto">
+      {showBannedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-red-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-red-900">账号受限，预约失败</h3>
+                  <p className="text-sm text-red-700 mt-0.5">{bannedErrorMsg}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowBannedModal(false)} className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 bg-neutral-50/50">
+              <h4 className="text-sm font-bold text-neutral-900 mb-4">您的违规记录</h4>
+              <div className="space-y-4">
+                {bannedViolations.length === 0 ? (
+                  <p className="text-sm text-neutral-500 text-center py-8">暂无违规记录</p>
+                ) : (
+                  bannedViolations.map(v => {
+                    let remarkObj: any = {};
+                    try {
+                      remarkObj = v.remark ? JSON.parse(v.remark) : {};
+                    } catch (e) {
+                      remarkObj = { admin_note: v.remark };
+                    }
+                    
+                    const isAppealing = v.status === 'active' && remarkObj.appeal_reason && !remarkObj.appeal_reply;
+                    const isRejected = v.status === 'active' && remarkObj.appeal_reason && remarkObj.appeal_reply;
+                    const isApproved = v.status === 'revoked';
+
+                    return (
+                      <div key={v.id} className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-100 mb-2">
+                              {v.violation_type === 'LATE' ? '迟到' : v.violation_type === 'OVERTIME' ? '超时' : v.violation_type === 'NOSHOW' ? '爽约' : '临期取消'}
+                            </span>
+                            <div className="text-sm font-medium text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}</div>
+                            <div className="text-xs text-neutral-500 mt-1">关联仪器：{v.equipment_name}</div>
+                          </div>
+                          
+                          <div className="flex flex-col items-end gap-2">
+                            <div className="flex flex-col items-end gap-1.5">
+                              {isApproved ? (
+                                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded">已撤销</span>
+                              ) : (
+                                <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded">生效中</span>
+                              )}
+                              {isRejected && (
+                                <span className="text-[10px] font-medium text-red-700 bg-red-50 px-1.5 py-0.5 rounded-md border border-red-100">申诉已驳回</span>
+                              )}
+                              {isAppealing && (
+                                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">申诉处理中</span>
+                              )}
+                            </div>
+                            {!isApproved && !isRejected && !isAppealing && (
+                              <button
+                                onClick={() => setAppealingId(appealingId === v.id ? null : v.id)}
+                                className="text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                                我要申诉
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {remarkObj.admin_note && (
+                          <div className="text-xs text-neutral-600 bg-neutral-50 p-2 rounded mt-2">
+                            <span className="font-medium">管理员备注：</span>{remarkObj.admin_note}
+                          </div>
+                        )}
+
+                        {remarkObj.appeal_reason && (
+                          <div className="text-xs text-blue-700 bg-blue-50/50 p-2 rounded mt-2">
+                            <span className="font-medium">您的申诉：</span>{remarkObj.appeal_reason}
+                          </div>
+                        )}
+
+                        {remarkObj.appeal_reply && (
+                          <div className="text-xs text-purple-700 bg-purple-50/50 p-2 rounded mt-2">
+                            <span className="font-medium">处理回复：</span>{remarkObj.appeal_reply}
+                          </div>
+                        )}
+
+                        {appealingId === v.id && !isAppealing && !isRejected && !isApproved && (
+                          <div className="mt-4 pt-4 border-t border-neutral-100">
+                            <textarea
+                              value={appealReason}
+                              onChange={(e) => setAppealReason(e.target.value)}
+                              placeholder="请详细说明您的申诉理由（如：仪器故障、特殊情况等）..."
+                              className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none h-20 mb-2"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => setAppealingId(null)}
+                                className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => submitAppeal(v.id)}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                              >
+                                提交申诉
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-8 flex flex-col md:flex-row gap-6 items-start">
         {equipment?.image_url && (
           <img 

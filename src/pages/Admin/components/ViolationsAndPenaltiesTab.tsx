@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, ShieldAlert } from 'lucide-react';
+import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, ShieldAlert, CheckCircle, RefreshCw, Info } from 'lucide-react';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import PenaltyRulesTab from './PenaltyRulesTab';
@@ -22,6 +22,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   // Date Range State
   const [startDate, setStartDate] = useState(format(subDays(startOfToday(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
+  const [appealStatusFilter, setAppealStatusFilter] = useState<'all' | 'appealing' | 'rejected'>('all');
   const [showTimeFilterPopup, setShowTimeFilterPopup] = useState(false);
   const timeFilterPopupRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +38,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const [revokeRecordId, setRevokeRecordId] = useState<number | null>(null);
   const [revokeRemark, setRevokeRemark] = useState('');
   const [revokeReservationNotes, setRevokeReservationNotes] = useState('');
-  const [modalMode, setModalMode] = useState<'revoke' | 'view' | 'restore'>('revoke');
+  const [modalMode, setModalMode] = useState<'revoke' | 'view' | 'restore' | 'reject-appeal'>('revoke');
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -59,7 +60,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       fetchActivePenalties();
       fetchRecords();
     }
-  }, [activeSubTab, startDate, endDate, penaltyContext]);
+  }, [activeSubTab, startDate, endDate, penaltyContext, appealStatusFilter]);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -70,6 +71,9 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       } else {
         query.append('startDate', startDate);
         query.append('endDate', endDate);
+        if (appealStatusFilter !== 'all') {
+          query.append('appealStatus', appealStatusFilter);
+        }
       }
       const res = await fetch(`/api/admin/violation-records?${query.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -120,7 +124,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
   const handleModalSubmit = async () => {
     if (!revokeRecordId) return;
     
-    const action = modalMode === 'revoke' ? 'revoke' : 'restore';
+    const action = modalMode === 'revoke' ? 'revoke' : modalMode === 'restore' ? 'restore' : 'reject-appeal';
     
     try {
       const res = await fetch(`/api/admin/violation-records/${revokeRecordId}/${action}`, {
@@ -132,7 +136,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
         body: JSON.stringify({ remark: revokeRemark })
       });
       if (res.ok) {
-        toast.success(action === 'revoke' ? '已撤销违规记录' : '已取消撤销');
+        toast.success(action === 'revoke' ? '已撤销违规记录' : action === 'restore' ? '已取消撤销' : '已驳回申诉');
         setRevokeModalOpen(false);
         setRevokeRemark('');
         setRevokeRecordId(null);
@@ -155,6 +159,15 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
       case 'double_fee': return '费用加倍';
       case 'reduce_advance_days': return '减少提前预约天数';
       default: return method || '未知';
+    }
+  };
+
+  const parseRemark = (remarkStr: string) => {
+    if (!remarkStr) return { admin_note: '', appeal_reason: '', appeal_reply: '' };
+    try {
+      return JSON.parse(remarkStr);
+    } catch (e) {
+      return { admin_note: remarkStr, appeal_reason: '', appeal_reply: '' };
     }
   };
 
@@ -441,7 +454,18 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                     onClick={() => setShowStatusFilterPopup(!showStatusFilterPopup)}
                     className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex flex-wrap gap-1 items-center"
                   >
-                    {recordsFilterStatus.length > 0 ? (
+                    {appealStatusFilter !== 'all' ? (
+                      <span className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
+                        {appealStatusFilter === 'appealing' ? '申诉中' : '已驳回'}
+                        <X 
+                          className="w-3 h-3 cursor-pointer hover:text-red-500" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAppealStatusFilter('all');
+                          }}
+                        />
+                      </span>
+                    ) : recordsFilterStatus.length > 0 ? (
                       recordsFilterStatus.map(s => (
                         <span key={s} className="bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
                           {s === 'active' ? '生效中' : '已撤销'}
@@ -478,10 +502,39 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                             <span className="text-xs text-neutral-700">{item.label}</span>
                           </label>
                         ))}
+                        <div className="border-t border-neutral-100 my-1 pt-1"></div>
+                        {[
+                          { value: 'appealing', label: '申诉中' },
+                          { value: 'rejected', label: '申诉已驳回' }
+                        ].map((item) => (
+                          <label key={item.value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                            <input 
+                              type="radio" 
+                              name="appealStatus"
+                              checked={appealStatusFilter === item.value}
+                              onChange={() => setAppealStatusFilter(item.value as any)}
+                              className="text-red-600 border-neutral-300 focus:ring-red-600"
+                            />
+                            <span className="text-xs text-neutral-700">{item.label}</span>
+                          </label>
+                        ))}
+                        <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="appealStatus"
+                            checked={appealStatusFilter === 'all'}
+                            onChange={() => setAppealStatusFilter('all')}
+                            className="text-red-600 border-neutral-300 focus:ring-red-600"
+                          />
+                          <span className="text-xs text-neutral-700">不限申诉状态</span>
+                        </label>
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
                         <button 
-                          onClick={() => setRecordsFilterStatus([])}
+                          onClick={() => {
+                            setRecordsFilterStatus([]);
+                            setAppealStatusFilter('all');
+                          }}
                           className="text-xs text-neutral-500 hover:text-neutral-700"
                         >
                           清空
@@ -547,47 +600,109 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
               <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                 <div className="flex justify-between items-center md:block">
                   <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
-                  <div className="relative inline-block">
-                    {v.status === 'active' ? (
-                      <span className="text-red-600 font-medium">生效中</span>
-                    ) : (
-                      <span className="text-neutral-400">已撤销</span>
-                    )}
-                    {(v.reservation_notes || v.remark) && (
-                      <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-                    )}
-                  </div>
+                  {(() => {
+                    const remarkObj = parseRemark(v.remark);
+                    const isAppealing = v.status === 'active' && remarkObj.appeal_reason && !remarkObj.appeal_reply;
+                    const isRejected = v.status === 'active' && remarkObj.appeal_reason && remarkObj.appeal_reply;
+
+                    return (
+                      <div className="relative inline-block">
+                        {v.status === 'active' ? (
+                          <div className="flex flex-col items-end md:items-start gap-1.5">
+                            <span className="text-red-600 font-medium">生效中</span>
+                            {isAppealing && (
+                              <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100 w-fit">申诉中</span>
+                            )}
+                            {isRejected && (
+                              <span className="text-[10px] font-medium text-red-700 bg-red-50 px-1.5 py-0.5 rounded-md border border-red-100 w-fit">已驳回</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-neutral-400">已撤销</span>
+                        )}
+                        {(v.reservation_notes || v.remark) && (
+                          <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </td>
               <td className="px-4 py-3 md:py-4 block md:table-cell">
-                <div className="flex justify-end md:justify-end items-center space-x-1">
-                  {v.status === 'active' ? (
-                    <button 
-                      onClick={() => {
-                        setRevokeRecordId(v.id);
-                        setRevokeRemark(v.remark || '');
-                        setRevokeReservationNotes(v.reservation_notes || '');
-                        setModalMode('revoke');
-                        setRevokeModalOpen(true);
-                      }}
-                      className="text-red-600 hover:text-red-700 font-medium"
-                    >
-                      撤销
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => {
-                        setRevokeRecordId(v.id);
-                        setRevokeRemark(v.remark || '');
-                        setRevokeReservationNotes(v.reservation_notes || '');
-                        setModalMode('restore');
-                        setRevokeModalOpen(true);
-                      }}
-                      className="text-neutral-500 hover:text-neutral-700 font-medium"
-                    >
-                      取消撤销
-                    </button>
-                  )}
+                <div className="flex justify-end md:justify-end items-center space-x-2">
+                  {(() => {
+                    const remarkObj = parseRemark(v.remark);
+                    const isAppealing = v.status === 'active' && remarkObj.appeal_reason && !remarkObj.appeal_reply;
+                    const hasNotes = v.reservation_notes || v.remark;
+
+                    return (
+                      <>
+                        {v.status === 'active' ? (
+                          <>
+                            {isAppealing && (
+                              <button 
+                                onClick={() => {
+                                  setRevokeRecordId(v.id);
+                                  setRevokeRemark('');
+                                  setRevokeReservationNotes(v.reservation_notes || '');
+                                  setModalMode('reject-appeal' as any);
+                                  setRevokeModalOpen(true);
+                                }}
+                                title="驳回申诉"
+                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => {
+                                setRevokeRecordId(v.id);
+                                setRevokeRemark('');
+                                setRevokeReservationNotes(v.reservation_notes || '');
+                                setModalMode('revoke');
+                                setRevokeModalOpen(true);
+                              }}
+                              title={isAppealing ? "通过申诉(撤销)" : "撤销违规"}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <button 
+                            onClick={() => {
+                              setRevokeRecordId(v.id);
+                              setRevokeRemark('');
+                              setRevokeReservationNotes(v.reservation_notes || '');
+                              setModalMode('restore');
+                              setRevokeModalOpen(true);
+                            }}
+                            title="取消撤销"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                        )}
+                        
+                        <button 
+                          onClick={() => {
+                            setRevokeRecordId(v.id);
+                            setRevokeRemark(v.remark || '');
+                            setRevokeReservationNotes(v.reservation_notes || '');
+                            setModalMode('view');
+                            setRevokeModalOpen(true);
+                          }}
+                          title="查看详情"
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors relative"
+                        >
+                          <Info className="w-4 h-4" />
+                          {hasNotes && (
+                            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                          )}
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </td>
             </tr>
@@ -1354,7 +1469,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="p-6">
               <h3 className="text-xl font-bold text-neutral-900 mb-2">
-                {modalMode === 'revoke' ? '确认撤销违规记录' : modalMode === 'restore' ? '确认取消撤销' : '违规记录备注详情'}
+                {modalMode === 'revoke' ? '确认撤销违规记录' : modalMode === 'restore' ? '确认取消撤销' : modalMode === 'reject-appeal' ? '驳回申诉' : '违规记录详情'}
               </h3>
               {modalMode === 'revoke' && (
                 <p className="text-sm text-neutral-500 mb-6">
@@ -1366,6 +1481,11 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   取消撤销后，该记录将重新计入违规统计，并可能触发相应的惩罚规则。
                 </p>
               )}
+              {modalMode === 'reject-appeal' && (
+                <p className="text-sm text-neutral-500 mb-6">
+                  驳回申诉后，该违规记录将继续生效，且用户无法再次对此记录发起申诉。
+                </p>
+              )}
               <div className="space-y-4">
                 {revokeReservationNotes && (
                   <div>
@@ -1375,23 +1495,50 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                     </div>
                   </div>
                 )}
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">
-                    备注 {(modalMode === 'revoke' || modalMode === 'restore') && '(选填)'}
-                  </label>
-                  {modalMode === 'revoke' || modalMode === 'restore' ? (
-                    <textarea
-                      value={revokeRemark}
-                      onChange={e => setRevokeRemark(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none resize-none h-24"
-                      placeholder="请输入备注信息..."
-                    />
-                  ) : (
-                    <div className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-700 text-sm min-h-[6rem] whitespace-pre-wrap">
-                      {revokeRemark || <span className="text-neutral-400">无备注</span>}
-                    </div>
-                  )}
-                </div>
+                
+                {(() => {
+                  const remarkObj = parseRemark(revokeRemark);
+                  return (
+                    <>
+                      {remarkObj.appeal_reason && (
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-1">申诉理由</label>
+                          <div className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 text-sm whitespace-pre-wrap">
+                            {remarkObj.appeal_reason}
+                          </div>
+                        </div>
+                      )}
+                      {remarkObj.appeal_reply && modalMode === 'view' && (
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-1">处理回复</label>
+                          <div className="w-full px-4 py-3 rounded-xl border border-purple-200 bg-purple-50 text-purple-800 text-sm whitespace-pre-wrap">
+                            {remarkObj.appeal_reply}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-1">
+                          {modalMode === 'reject-appeal' ? '驳回理由' : modalMode === 'revoke' && remarkObj.appeal_reason ? '通过理由' : '管理员备注'} {(modalMode === 'revoke' || modalMode === 'restore' || modalMode === 'reject-appeal') && '(选填)'}
+                        </label>
+                        {modalMode === 'revoke' || modalMode === 'restore' || modalMode === 'reject-appeal' ? (
+                          <textarea
+                            value={remarkObj.admin_note || ''}
+                            onChange={e => {
+                              const newObj = { ...remarkObj, admin_note: e.target.value };
+                              setRevokeRemark(JSON.stringify(newObj));
+                            }}
+                            className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none resize-none h-24"
+                            placeholder={modalMode === 'reject-appeal' ? "请输入驳回理由..." : "请输入备注信息..."}
+                          />
+                        ) : (
+                          <div className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-700 text-sm min-h-[6rem] whitespace-pre-wrap">
+                            {remarkObj.admin_note || <span className="text-neutral-400">无备注</span>}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
             <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-end gap-3">
@@ -1404,9 +1551,13 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
               {modalMode !== 'view' && (
                 <button
                   onClick={handleModalSubmit}
-                  className="px-5 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors"
+                  className={`px-5 py-2.5 text-sm font-medium text-white rounded-xl transition-colors ${
+                    modalMode === 'revoke' ? 'bg-emerald-600 hover:bg-emerald-700' : 
+                    modalMode === 'restore' ? 'bg-red-600 hover:bg-red-700' : 
+                    'bg-amber-600 hover:bg-amber-700'
+                  }`}
                 >
-                  {modalMode === 'revoke' ? '确认撤销' : '确认取消撤销'}
+                  {modalMode === 'revoke' ? '确认撤销' : modalMode === 'restore' ? '确认取消撤销' : '确认驳回'}
                 </button>
               )}
             </div>

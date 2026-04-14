@@ -403,6 +403,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   };
   
   const triggeredRules: string[] = [];
+  const triggeredViolationIds: number[] = [];
   let maxUnbanTime: Date | null = null;
 
   // 1. Check fixed duration penalties
@@ -423,6 +424,13 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
 
     isPenalized = true;
     if (!triggeredRules.includes(p.rule_name)) triggeredRules.push(p.rule_name);
+    
+    if (p.contributing_violation_ids) {
+      const ids = p.contributing_violation_ids.split(',').filter(Boolean).map(Number);
+      ids.forEach((id: number) => {
+        if (!triggeredViolationIds.includes(id)) triggeredViolationIds.push(id);
+      });
+    }
     
     if (p.penalty_method === 'BAN') {
       penaltyMethod = 'BAN';
@@ -475,25 +483,32 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     }
 
     let metricValue = 0;
+    let currentViolationIds: number[] = [];
+    
     if (trigger.metric === 'count') {
-      const countRes = db.prepare(`
-        SELECT COUNT(*) as count FROM violation_records 
+      const records = db.prepare(`
+        SELECT id FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
         ${scopeCondition}
-      `).get(...queryParams) as any;
-      metricValue = countRes.count;
+      `).all(...queryParams) as any[];
+      metricValue = records.length;
+      currentViolationIds = records.map(r => r.id);
     } else if (trigger.metric === 'duration') {
-      const sumRes = db.prepare(`
-        SELECT SUM(duration_minutes) as sum FROM violation_records 
+      const records = db.prepare(`
+        SELECT id, duration_minutes FROM violation_records 
         WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
         ${scopeCondition}
-      `).get(...queryParams) as any;
-      metricValue = sumRes.sum || 0;
+      `).all(...queryParams) as any[];
+      metricValue = records.reduce((sum, r) => sum + (r.duration_minutes || 0), 0);
+      currentViolationIds = records.map(r => r.id);
     }
 
     if (metricValue >= trigger.threshold) {
       isPenalized = true;
       if (!triggeredRules.includes(rule.name)) triggeredRules.push(rule.name);
+      currentViolationIds.forEach(id => {
+        if (!triggeredViolationIds.includes(id)) triggeredViolationIds.push(id);
+      });
       
       let ruleUnbanTime: Date | null = null;
       if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
@@ -580,12 +595,21 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     }
   }
 
-  return { isPenalized, penaltyMethod, reason, restrictions };
+  return { isPenalized, penaltyMethod, reason, restrictions, violation_ids: triggeredViolationIds };
 }
 
 // API Routes
 
 // --- Penalty Rules API ---
+app.get('/api/public/penalty-rules', (req, res) => {
+  try {
+    const rules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1 ORDER BY id DESC').all();
+    res.json(rules);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch penalty rules' });
+  }
+});
+
 app.get('/api/admin/penalty-rules', adminAuth, (req, res) => {
   try {
     const rules = db.prepare('SELECT * FROM penalty_rules ORDER BY id DESC').all();
@@ -968,16 +992,16 @@ app.post('/api/reservations', (req, res) => {
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
   
-  let penaltyCheck = { isPenalized: false, penaltyMethod: 'NONE', reason: '', restrictions: { reduce_days: 0, min_retain_days: 999, fee_multiplier: 1.0 } };
+  let penaltyCheck = { isPenalized: false, penaltyMethod: 'NONE', reason: '', restrictions: { reduce_days: 0, min_retain_days: 999, fee_multiplier: 1.0 }, violation_ids: [] as number[] };
   try {
-    penaltyCheck = checkUserPenalty(student_id, equipment_id);
+    penaltyCheck = checkUserPenalty(student_id, equipment_id) as any;
   } catch (e) {
     console.error('Error in checkUserPenalty:', e);
     return res.status(500).json({ error: '检查用户惩罚状态时发生错误' });
   }
 
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
-    return res.status(403).json({ error: penaltyCheck.reason });
+    return res.status(403).json({ error: penaltyCheck.reason, violation_ids: penaltyCheck.violation_ids });
   }
   
   if (equipment.is_hidden) {
@@ -1619,8 +1643,75 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/violations/my', (req, res) => {
+  const { student_id, student_name, violation_ids } = req.body;
+  if (!student_id || !student_name) return res.status(400).json({ error: 'Missing credentials' });
+  
+  let query = `
+    SELECT v.*, r.student_id, r.student_name, e.name as equipment_name 
+    FROM violation_records v
+    JOIN reservations r ON v.reservation_id = r.id
+    JOIN equipment e ON r.equipment_id = e.id
+    WHERE r.student_id = ? AND r.student_name = ?
+  `;
+  const params: any[] = [student_id, student_name];
+
+  if (violation_ids && Array.isArray(violation_ids) && violation_ids.length > 0) {
+    const placeholders = violation_ids.map(() => '?').join(',');
+    query += ` AND v.id IN (${placeholders})`;
+    params.push(...violation_ids);
+  }
+
+  query += ` ORDER BY v.violation_time DESC`;
+  
+  const violations = db.prepare(query).all(...params);
+  
+  res.json(violations);
+});
+
+app.post('/api/violations/:id/appeal', (req, res) => {
+  const { id } = req.params;
+  const { student_id, student_name, appeal_reason } = req.body;
+  
+  if (!student_id || !student_name || !appeal_reason) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const violation = db.prepare(`
+    SELECT v.*, r.student_id, r.student_name 
+    FROM violation_records v
+    JOIN reservations r ON v.reservation_id = r.id
+    WHERE v.id = ?
+  `).get(id) as any;
+  
+  if (!violation) return res.status(404).json({ error: 'Record not found' });
+  if (violation.student_id !== student_id || violation.student_name !== student_name) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  let remarkObj: any = {};
+  if (violation.remark) {
+    try {
+      remarkObj = JSON.parse(violation.remark);
+    } catch (e) {
+      remarkObj = { admin_note: violation.remark };
+    }
+  }
+  
+  if (remarkObj.appeal_reason) {
+    return res.status(400).json({ error: 'Already appealed' });
+  }
+  
+  remarkObj.appeal_reason = appeal_reason;
+  remarkObj.appeal_time = new Date().toISOString();
+  
+  db.prepare('UPDATE violation_records SET remark = ? WHERE id = ?').run(JSON.stringify(remarkObj), id);
+  
+  res.json({ success: true });
+});
+
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
-  const { startDate, endDate, ids } = req.query;
+  const { startDate, endDate, ids, appealStatus } = req.query;
   let query = `
     SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.notes as reservation_notes
     FROM violation_records v
@@ -1649,6 +1740,12 @@ app.get('/api/admin/violation-records', adminAuth, (req, res) => {
     }
   }
 
+  if (appealStatus === 'appealing') {
+    query += ` AND v.status = 'active' AND json_valid(v.remark) = 1 AND json_extract(v.remark, '$.appeal_reason') IS NOT NULL AND json_extract(v.remark, '$.appeal_reply') IS NULL`;
+  } else if (appealStatus === 'rejected') {
+    query += ` AND v.status = 'active' AND json_valid(v.remark) = 1 AND json_extract(v.remark, '$.appeal_reply') IS NOT NULL`;
+  }
+
   query += ` ORDER BY v.violation_time DESC`;
   
   const records = db.prepare(query).all(...params);
@@ -1659,14 +1756,41 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   
-  db.prepare("UPDATE violation_records SET status = 'revoked', remark = ? WHERE id = ?").run(remark || '', id);
+  const violation = db.prepare('SELECT remark FROM violation_records WHERE id = ?').get(id) as any;
+  let remarkObj: any = {};
+  if (violation && violation.remark) {
+    try {
+      remarkObj = JSON.parse(violation.remark);
+    } catch (e) {
+      remarkObj = { admin_note: violation.remark };
+    }
+  }
+  
+  let newRemarkObj: any = {};
+  try {
+    newRemarkObj = JSON.parse(remark);
+  } catch (e) {
+    newRemarkObj = { admin_note: remark };
+  }
+
+  remarkObj.admin_note = newRemarkObj.admin_note;
+  if (remarkObj.appeal_reason) {
+    remarkObj.appeal_reply = newRemarkObj.admin_note || '申诉已通过，违规记录已撤销';
+  }
+  
+  db.prepare("UPDATE violation_records SET status = 'revoked', remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), id);
   
   // Auto-revoke any active user_penalties that relied on this violation
   db.prepare(`
     UPDATE user_penalties 
     SET status = 'revoked' 
-    WHERE status = 'active' AND contributing_violation_ids LIKE ?
-  `).run(`%,${id},%`);
+    WHERE status = 'active' AND (
+      contributing_violation_ids = ? OR 
+      contributing_violation_ids LIKE ? OR 
+      contributing_violation_ids LIKE ? OR 
+      contributing_violation_ids LIKE ?
+    )
+  `).run(`${id}`, `%,${id},%`, `${id},%`, `%,${id}`);
 
   res.json({ success: true });
 });
@@ -1675,11 +1799,61 @@ app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   
-  db.prepare("UPDATE violation_records SET status = 'active', remark = ? WHERE id = ?").run(remark || '', id);
+  const violation = db.prepare('SELECT remark FROM violation_records WHERE id = ?').get(id) as any;
+  let remarkObj: any = {};
+  if (violation && violation.remark) {
+    try {
+      remarkObj = JSON.parse(violation.remark);
+    } catch (e) {
+      remarkObj = { admin_note: violation.remark };
+    }
+  }
+  
+  let newRemarkObj: any = {};
+  try {
+    newRemarkObj = JSON.parse(remark);
+  } catch (e) {
+    newRemarkObj = { admin_note: remark };
+  }
+
+  remarkObj.admin_note = newRemarkObj.admin_note;
+  if (remarkObj.appeal_reason) {
+    remarkObj.appeal_reply = newRemarkObj.admin_note || '申诉已驳回，违规记录恢复生效';
+  }
+
+  db.prepare("UPDATE violation_records SET status = 'active', remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), id);
   
   // Note: We don't automatically restore user_penalties because we don't know if they should still be active
   // based on current time, or if other violations have occurred. The next violation will trigger a re-evaluation.
   
+  res.json({ success: true });
+});
+
+app.post('/api/admin/violation-records/:id/reject-appeal', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const { remark } = req.body;
+  
+  const violation = db.prepare('SELECT remark FROM violation_records WHERE id = ?').get(id) as any;
+  let remarkObj: any = {};
+  if (violation && violation.remark) {
+    try {
+      remarkObj = JSON.parse(violation.remark);
+    } catch (e) {
+      remarkObj = { admin_note: violation.remark };
+    }
+  }
+  
+  let newRemarkObj: any = {};
+  try {
+    newRemarkObj = JSON.parse(remark);
+  } catch (e) {
+    newRemarkObj = { admin_note: remark };
+  }
+
+  remarkObj.admin_note = newRemarkObj.admin_note;
+  remarkObj.appeal_reply = newRemarkObj.admin_note || '申诉已驳回';
+  
+  db.prepare("UPDATE violation_records SET remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), id);
   res.json({ success: true });
 });
 
