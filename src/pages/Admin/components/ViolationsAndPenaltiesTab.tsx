@@ -335,9 +335,21 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   const handleBookingCodeClick = (e: React.MouseEvent, record: any) => {
     e.stopPropagation();
     const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const popoverWidth = 288; // 72 * 4px = 288px
+    let left = rect.left + window.scrollX;
+    
+    // Prevent overflow on right edge
+    if (rect.left + popoverWidth > window.innerWidth) {
+      left = window.innerWidth - popoverWidth - 16;
+    }
+    // Prevent overflow on left edge
+    if (left < 16) {
+      left = 16;
+    }
+
     setPopoverPosition({
       top: rect.bottom + window.scrollY + 8,
-      left: rect.left + window.scrollX
+      left: left
     });
     setPopoverRecord(record);
   };
@@ -718,32 +730,15 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
           </div>
           <div className="space-y-2 text-neutral-600">
             <div className="flex justify-between">
-              <span className="text-neutral-500">预约码:</span>
-              <span className="font-mono font-medium text-neutral-900">{popoverRecord.booking_code}</span>
-            </div>
-            <div className="border-t border-neutral-100 my-2 pt-2"></div>
-            <div className="flex justify-between">
               <span className="text-neutral-500">预约时间:</span>
               <span className="font-medium text-neutral-900">
-                {popoverRecord.start_time ? format(new Date(popoverRecord.start_time), 'MM-dd HH:mm') : '-'}
+                {popoverRecord.start_time ? `${format(new Date(popoverRecord.start_time), 'MM-dd HH:mm')} - ${popoverRecord.end_time ? format(new Date(popoverRecord.end_time), format(new Date(popoverRecord.start_time), 'yyyy-MM-dd') === format(new Date(popoverRecord.end_time), 'yyyy-MM-dd') ? 'HH:mm' : 'MM-dd HH:mm') : '?'}` : '-'}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-neutral-500">结束时间:</span>
+              <span className="text-neutral-500">实际时间:</span>
               <span className="font-medium text-neutral-900">
-                {popoverRecord.end_time ? format(new Date(popoverRecord.end_time), 'MM-dd HH:mm') : '-'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-500">实际上机:</span>
-              <span className="font-medium text-neutral-900">
-                {popoverRecord.actual_start_time ? format(new Date(popoverRecord.actual_start_time), 'MM-dd HH:mm') : '-'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-500">实际下机:</span>
-              <span className="font-medium text-neutral-900">
-                {popoverRecord.actual_end_time ? format(new Date(popoverRecord.actual_end_time), 'MM-dd HH:mm') : '-'}
+                {popoverRecord.actual_start_time ? `${format(new Date(popoverRecord.actual_start_time), 'MM-dd HH:mm')} - ${popoverRecord.actual_end_time ? format(new Date(popoverRecord.actual_end_time), format(new Date(popoverRecord.actual_start_time), 'yyyy-MM-dd') === format(new Date(popoverRecord.actual_end_time), 'yyyy-MM-dd') ? 'HH:mm' : 'MM-dd HH:mm') : '未结束'}` : '-'}
               </span>
             </div>
             <div className="border-t border-neutral-100 my-2 pt-2"></div>
