@@ -15,9 +15,13 @@ export default function Admin() {
 
   const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings' | 'violations'>('reservations');
   const [targetBookingCode, setTargetBookingCode] = useState<string | null>(null);
+  const [targetReservationDate, setTargetReservationDate] = useState<string | null>(null);
 
-  const handleNavigateToReservation = (bookingCode: string) => {
+  const handleNavigateToReservation = (bookingCode: string, date?: string) => {
     setTargetBookingCode(bookingCode);
+    if (date) {
+      setTargetReservationDate(date);
+    }
     setActiveTab('reports');
   };
 
@@ -171,7 +175,11 @@ export default function Admin() {
           token={token} 
           onLogout={handleLogout} 
           initialBookingCode={targetBookingCode}
-          onClearInitialBookingCode={() => setTargetBookingCode(null)}
+          initialDate={targetReservationDate}
+          onClearInitialBookingCode={() => {
+            setTargetBookingCode(null);
+            setTargetReservationDate(null);
+          }}
         />
       )}
       {activeTab === 'violations' && (

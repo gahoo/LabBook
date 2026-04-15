@@ -8,17 +8,18 @@ interface ReportsTabProps {
   token: string | null;
   onLogout: () => void;
   initialBookingCode?: string | null;
+  initialDate?: string | null;
   onClearInitialBookingCode?: () => void;
 }
 
-export default function ReportsTab({ token, onLogout, initialBookingCode, onClearInitialBookingCode }: ReportsTabProps) {
+export default function ReportsTab({ token, onLogout, initialBookingCode, initialDate, onClearInitialBookingCode }: ReportsTabProps) {
   const [reports, setReports] = useState<any>(null);
   const [loadingReports, setLoadingReports] = useState(false);
-  const [reportPeriod, setReportPeriod] = useState('day');
+  const [reportPeriod, setReportPeriod] = useState(initialDate ? 'day' : 'day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
   const [syncWithFilters, setSyncWithFilters] = useState(false);
-  const [reportStartDate, setReportStartDate] = useState(format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
-  const [reportEndDate, setReportEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
+  const [reportStartDate, setReportStartDate] = useState(initialDate || format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
+  const [reportEndDate, setReportEndDate] = useState(initialDate || format(startOfToday(), 'yyyy-MM-dd'));
   const [reportFilterUser, setReportFilterUser] = useState('');
   const [reportFilterEquipment, setReportFilterEquipment] = useState('');
   const [reportFilterDurationMin, setReportFilterDurationMin] = useState('');
@@ -27,7 +28,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, onClea
   const [reportFilterCostMax, setReportFilterCostMax] = useState('');
   const [reportFilterStatus, setReportFilterStatus] = useState<string[]>([]);
   const [reportFilterNotes, setReportFilterNotes] = useState('');
-  const [reportFilterCode, setReportFilterCode] = useState('');
+  const [reportFilterCode, setReportFilterCode] = useState(initialBookingCode || '');
   const [reportCurrentPage, setReportCurrentPage] = useState(1);
   const reportPageSize = 20;
   
@@ -53,9 +54,6 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, onClea
 
   useEffect(() => {
     if (initialBookingCode) {
-      setActiveSubTab('detailed');
-      setReportFilterCode(initialBookingCode);
-      setReportFilterStatus([]); // Clear status filter
       if (onClearInitialBookingCode) {
         onClearInitialBookingCode();
       }

@@ -7,7 +7,7 @@ import PenaltyRulesTab from './PenaltyRulesTab';
 interface ViolationsAndPenaltiesTabProps {
   token: string | null;
   onLogout: () => void;
-  onNavigateToReservation?: (bookingCode: string) => void;
+  onNavigateToReservation?: (bookingCode: string, date?: string) => void;
 }
 
 export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateToReservation }: ViolationsAndPenaltiesTabProps) {
@@ -763,7 +763,8 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
             <button
               onClick={() => {
                 if (onNavigateToReservation) {
-                  onNavigateToReservation(popoverRecord.booking_code);
+                  const targetDate = popoverRecord.start_time ? format(new Date(popoverRecord.start_time), 'yyyy-MM-dd') : undefined;
+                  onNavigateToReservation(popoverRecord.booking_code, targetDate);
                 }
                 setPopoverRecord(null);
               }}
