@@ -364,7 +364,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                   placeholder="搜索预约码" 
                   value={recordsFilterCode}
                   onChange={e => setRecordsFilterCode(e.target.value)}
-                  className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                  className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
                 />
               )}
             </th>
@@ -620,9 +620,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
                           </div>
                         ) : (
                           <span className="text-neutral-400">已撤销</span>
-                        )}
-                        {(v.reservation_notes || v.remark) && (
-                          <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                         )}
                       </div>
                     );
