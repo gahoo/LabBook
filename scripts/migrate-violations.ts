@@ -20,11 +20,16 @@ db.exec(`
     reservation_id INTEGER,             
     violation_type TEXT NOT NULL,       
     violation_time DATETIME NOT NULL,   
+    duration_minutes INTEGER,
     status TEXT DEFAULT 'active',       
     remark TEXT,                        
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+try {
+  db.prepare('ALTER TABLE violation_records ADD COLUMN duration_minutes INTEGER').run();
+} catch (e) {}
 
 // 1. 获取动态配置的宽限期
 const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_hours', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
