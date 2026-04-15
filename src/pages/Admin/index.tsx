@@ -14,6 +14,12 @@ export default function Admin() {
   const [loginError, setLoginError] = useState('');
 
   const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings' | 'violations'>('reservations');
+  const [targetBookingCode, setTargetBookingCode] = useState<string | null>(null);
+
+  const handleNavigateToReservation = (bookingCode: string) => {
+    setTargetBookingCode(bookingCode);
+    setActiveTab('reports');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,7 +155,11 @@ export default function Admin() {
       )}
 
       {activeTab === 'reservations' && (
-        <ReservationsTab token={token} onLogout={handleLogout} statusMap={statusMap} />
+        <ReservationsTab 
+          token={token} 
+          onLogout={handleLogout} 
+          statusMap={statusMap} 
+        />
       )}
 
       {activeTab === 'whitelist_apps' && (
@@ -157,10 +167,19 @@ export default function Admin() {
       )}
 
       {activeTab === 'reports' && (
-        <ReportsTab token={token} onLogout={handleLogout} />
+        <ReportsTab 
+          token={token} 
+          onLogout={handleLogout} 
+          initialBookingCode={targetBookingCode}
+          onClearInitialBookingCode={() => setTargetBookingCode(null)}
+        />
       )}
       {activeTab === 'violations' && (
-        <ViolationsAndPenaltiesTab token={token} onLogout={handleLogout} />
+        <ViolationsAndPenaltiesTab 
+          token={token} 
+          onLogout={handleLogout} 
+          onNavigateToReservation={handleNavigateToReservation}
+        />
       )}
       {activeTab === 'audit_logs' && (
         <AuditLogsTab token={token} handleLogout={handleLogout} />

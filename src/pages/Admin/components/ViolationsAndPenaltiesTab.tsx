@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, ShieldAlert, CheckCircle, RefreshCw, Info } from 'lucide-react';
+import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, ShieldAlert, CheckCircle, RefreshCw, Info, ArrowRight } from 'lucide-react';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import PenaltyRulesTab from './PenaltyRulesTab';
@@ -7,9 +7,10 @@ import PenaltyRulesTab from './PenaltyRulesTab';
 interface ViolationsAndPenaltiesTabProps {
   token: string | null;
   onLogout: () => void;
+  onNavigateToReservation?: (bookingCode: string) => void;
 }
 
-export default function ViolationsAndPenaltiesTab({ token, onLogout }: ViolationsAndPenaltiesTabProps) {
+export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateToReservation }: ViolationsAndPenaltiesTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<'records' | 'stats' | 'active_penalties' | 'rules'>('records');
   
   // Drill-down Context State
@@ -317,6 +318,30 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
     return true;
   });
 
+  const [popoverRecord, setPopoverRecord] = useState<any>(null);
+  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        setPopoverRecord(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleBookingCodeClick = (e: React.MouseEvent, record: any) => {
+    e.stopPropagation();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setPopoverPosition({
+      top: rect.bottom + window.scrollY + 8,
+      left: rect.left + window.scrollX
+    });
+    setPopoverRecord(record);
+  };
+
   const renderRecordsTable = (data: any[], showFilters = false) => (
     <div className="overflow-x-auto">
       {penaltyContext && (
@@ -581,7 +606,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
               <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                 <div className="flex justify-between items-center md:block">
                   <span className="md:hidden font-medium text-neutral-500 text-xs">预约码</span>
-                  <span className="font-mono text-xs">{v.booking_code || '-'}</span>
+                  {v.booking_code ? (
+                    <button 
+                      onClick={(e) => handleBookingCodeClick(e, v)}
+                      className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                    >
+                      {v.booking_code}
+                    </button>
+                  ) : (
+                    <span className="font-mono text-xs text-neutral-400">-</span>
+                  )}
                 </div>
               </td>
               <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
@@ -668,6 +702,83 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout }: Violation
           )}
         </tbody>
       </table>
+      
+      {/* Booking Code Popover */}
+      {popoverRecord && (
+        <div 
+          ref={popoverRef}
+          className="absolute z-50 bg-white rounded-xl shadow-xl border border-neutral-200 p-4 w-72 text-sm"
+          style={{ top: popoverPosition.top, left: popoverPosition.left }}
+        >
+          <div className="flex justify-between items-start mb-3">
+            <h4 className="font-bold text-neutral-900">预约详情</h4>
+            <button onClick={() => setPopoverRecord(null)} className="text-neutral-400 hover:text-neutral-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="space-y-2 text-neutral-600">
+            <div className="flex justify-between">
+              <span className="text-neutral-500">预约码:</span>
+              <span className="font-mono font-medium text-neutral-900">{popoverRecord.booking_code}</span>
+            </div>
+            <div className="border-t border-neutral-100 my-2 pt-2"></div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">预约时间:</span>
+              <span className="font-medium text-neutral-900">
+                {popoverRecord.start_time ? format(new Date(popoverRecord.start_time), 'MM-dd HH:mm') : '-'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">结束时间:</span>
+              <span className="font-medium text-neutral-900">
+                {popoverRecord.end_time ? format(new Date(popoverRecord.end_time), 'MM-dd HH:mm') : '-'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">实际上机:</span>
+              <span className="font-medium text-neutral-900">
+                {popoverRecord.actual_start_time ? format(new Date(popoverRecord.actual_start_time), 'MM-dd HH:mm') : '-'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">实际下机:</span>
+              <span className="font-medium text-neutral-900">
+                {popoverRecord.actual_end_time ? format(new Date(popoverRecord.actual_end_time), 'MM-dd HH:mm') : '-'}
+              </span>
+            </div>
+            <div className="border-t border-neutral-100 my-2 pt-2"></div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">联系电话:</span>
+              <span className="font-medium text-neutral-900">{popoverRecord.phone || '-'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">联系邮箱:</span>
+              <span className="font-medium text-neutral-900 truncate max-w-[140px]" title={popoverRecord.email}>{popoverRecord.email || '-'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">耗材数量:</span>
+              <span className="font-medium text-neutral-900">{popoverRecord.consumable_quantity || 0}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500">产生费用:</span>
+              <span className="font-medium text-neutral-900">¥{popoverRecord.total_cost || 0}</span>
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-neutral-100">
+            <button
+              onClick={() => {
+                if (onNavigateToReservation) {
+                  onNavigateToReservation(popoverRecord.booking_code);
+                }
+                setPopoverRecord(null);
+              }}
+              className="w-full py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5"
+            >
+              前往详细预约记录查看 ↗
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 

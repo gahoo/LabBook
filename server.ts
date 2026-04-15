@@ -1713,7 +1713,7 @@ app.post('/api/violations/:id/appeal', (req, res) => {
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
   const { startDate, endDate, ids, appealStatus } = req.query;
   let query = `
-    SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.notes as reservation_notes
+    SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.actual_start_time, r.actual_end_time, r.phone, r.email, r.total_cost, r.consumable_quantity, r.notes as reservation_notes
     FROM violation_records v
     LEFT JOIN reservations r ON v.reservation_id = r.id
     LEFT JOIN equipment e ON r.equipment_id = e.id

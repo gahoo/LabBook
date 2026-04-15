@@ -7,9 +7,11 @@ import toast from 'react-hot-toast';
 interface ReportsTabProps {
   token: string | null;
   onLogout: () => void;
+  initialBookingCode?: string | null;
+  onClearInitialBookingCode?: () => void;
 }
 
-export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
+export default function ReportsTab({ token, onLogout, initialBookingCode, onClearInitialBookingCode }: ReportsTabProps) {
   const [reports, setReports] = useState<any>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [reportPeriod, setReportPeriod] = useState('day');
@@ -48,6 +50,17 @@ export default function ReportsTab({ token, onLogout }: ReportsTabProps) {
   const [statsFilterDurationMax, setStatsFilterDurationMax] = useState('');
   const [statsFilterCostMin, setStatsFilterCostMin] = useState('');
   const [statsFilterCostMax, setStatsFilterCostMax] = useState('');
+
+  useEffect(() => {
+    if (initialBookingCode) {
+      setActiveSubTab('detailed');
+      setReportFilterCode(initialBookingCode);
+      setReportFilterStatus([]); // Clear status filter
+      if (onClearInitialBookingCode) {
+        onClearInitialBookingCode();
+      }
+    }
+  }, [initialBookingCode, onClearInitialBookingCode]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
