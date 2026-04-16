@@ -6,3 +6,4 @@
 - [x] 4. 前端 `ViolationsAndPenaltiesTab.tsx`：将违规类型选择器改为多选（Checkbox 组）。
 - [x] 5. 前端 `ViolationsAndPenaltiesTab.tsx`：当勾选多个违规类型时，显示统计策略选择器（合并计算或分别计算）。
 - [x] 6. 前端 `ViolationsAndPenaltiesTab.tsx`：动态更新阈值设定的文案提示。
+- [x] 7. 前端 `PenaltyRulesTab.tsx`：将违规类型选择器 UI 改造为 `MultiSelectCombobox` 样式。

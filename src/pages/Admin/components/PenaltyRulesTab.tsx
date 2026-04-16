@@ -48,11 +48,11 @@ function MultiSelectCombobox({
   options, 
   selectedIds, 
   onChange, 
-  placeholder = "搜索并选择仪器..." 
+  placeholder = "搜索并选择..." 
 }: { 
-  options: Equipment[], 
-  selectedIds: number[], 
-  onChange: (ids: number[]) => void,
+  options: { id: string | number, name: string }[], 
+  selectedIds: (string | number)[], 
+  onChange: (ids: any[]) => void,
   placeholder?: string
 }) {
   const [query, setQuery] = useState('');
@@ -75,12 +75,12 @@ function MultiSelectCombobox({
 
   const selectedOptions = options.filter(opt => selectedIds.includes(opt.id));
 
-  const handleSelect = (id: number) => {
+  const handleSelect = (id: string | number) => {
     onChange([...selectedIds, id]);
     setQuery('');
   };
 
-  const handleRemove = (id: number) => {
+  const handleRemove = (id: string | number) => {
     onChange(selectedIds.filter(selectedId => selectedId !== id));
   };
 
@@ -481,37 +481,24 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                   
                   <div>
                     <label className="block text-sm text-neutral-600 mb-2">违规类型组合 (可多选)</label>
-                    <div className="flex flex-wrap gap-3">
-                      {Object.entries(violationTypeMap).map(([k, v]) => (
-                        <label key={k} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.trigger.violation_types?.includes(k) || false}
-                            onChange={e => {
-                              const current = formData.trigger.violation_types || [];
-                              let newTypes = current;
-                              if (e.target.checked) {
-                                newTypes = [...current, k];
-                              } else {
-                                newTypes = current.filter(t => t !== k);
-                              }
-                              if (newTypes.length === 0) newTypes = [k]; // Prevent empty
-                              
-                              const newFormData = {...formData};
-                              newFormData.trigger = {...newFormData.trigger, violation_types: newTypes};
-                              newFormData.violation_type = newTypes.length > 1 ? 'combo' : newTypes[0];
-                              
-                              if (newFormData.trigger.metric === 'duration' && newTypes.some(t => !['late', 'overdue'].includes(t))) {
-                                newFormData.trigger.metric = 'count';
-                              }
-                              setFormData(newFormData);
-                            }}
-                            className="rounded text-red-600 focus:ring-red-600"
-                          />
-                          <span className="text-sm text-neutral-700">{v}</span>
-                        </label>
-                      ))}
-                    </div>
+                    <MultiSelectCombobox
+                      options={Object.entries(violationTypeMap).map(([k, v]) => ({ id: k, name: v }))}
+                      selectedIds={formData.trigger.violation_types || []}
+                      onChange={(ids) => {
+                        let newTypes = ids as string[];
+                        if (newTypes.length === 0) newTypes = ['late']; // Prevent empty
+                        
+                        const newFormData = {...formData};
+                        newFormData.trigger = {...newFormData.trigger, violation_types: newTypes};
+                        newFormData.violation_type = newTypes.length > 1 ? 'combo' : newTypes[0];
+                        
+                        if (newFormData.trigger.metric === 'duration' && newTypes.some(t => !['late', 'overdue'].includes(t))) {
+                          newFormData.trigger.metric = 'count';
+                        }
+                        setFormData(newFormData);
+                      }}
+                      placeholder="搜索并选择违规类型..."
+                    />
                   </div>
 
                   {(formData.trigger.violation_types?.length || 0) > 1 && formData.trigger.metric === 'count' && (
