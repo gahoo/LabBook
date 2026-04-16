@@ -39,6 +39,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
   const reportStatusFilterPopupRef = useRef<HTMLDivElement>(null);
   
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
+  const [manualViolations, setManualViolations] = useState<{id: number | null, type: string, remark: string}[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
@@ -91,6 +92,33 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       console.error(err);
     } finally {
       setLoadingReports(false);
+    }
+  };
+
+  const fetchManualViolations = async (reservationId: number) => {
+    try {
+      const res = await fetch(`/api/admin/violation-records?reservation_id=${reservationId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const manuals = data.filter((v: any) => 
+          ['hygiene_issue', 'improper_operation', 'proxy_booking', 'other_manual'].includes(v.violation_type) && 
+          v.status === 'active'
+        ).map((v: any) => {
+          let remark = '';
+          try {
+            const parsed = JSON.parse(v.remark);
+            remark = parsed.admin_note || '';
+          } catch (e) {
+            remark = v.remark || '';
+          }
+          return { id: v.id, type: v.violation_type, remark };
+        });
+        setManualViolations(manuals);
+      }
+    } catch (error) {
+      console.error('Failed to fetch manual violations:', error);
     }
   };
 
@@ -296,7 +324,8 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
           actual_start_time: toUTC(editingReportRecord.actual_start_time),
           actual_end_time: toUTC(editingReportRecord.actual_end_time),
           consumable_quantity: editingReportRecord.consumable_quantity,
-          notes: editingReportRecord.notes
+          notes: editingReportRecord.notes,
+          manual_violations: manualViolations
         })
       });
       if (res.ok) {
@@ -744,6 +773,8 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                                   actual_start_time: toLocal(res.actual_start_time),
                                   actual_end_time: toLocal(res.actual_end_time)
                                 });
+                                setManualViolations([]);
+                                fetchManualViolations(res.id);
                                 setIsDrawerOpen(true);
                               }}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -873,6 +904,80 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                         placeholder="添加备注信息..."
                       />
                     </div>
+
+                    <div className="mt-8 pt-6 border-t border-neutral-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                          <span className="text-red-500">⚠️</span> 异常与违规标记
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setManualViolations([...manualViolations, { id: null, type: 'hygiene_issue', remark: '' }])}
+                          className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                        >
+                          + 新增违规记录
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {manualViolations.map((mv, index) => (
+                          <div key={index} className="p-4 bg-red-50/50 border border-red-100 rounded-xl relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newMvs = [...manualViolations];
+                                newMvs.splice(index, 1);
+                                setManualViolations(newMvs);
+                              }}
+                              className="absolute top-4 right-4 text-neutral-400 hover:text-red-600 transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                            
+                            <div className="space-y-3 pr-8">
+                              <div>
+                                <label className="block text-xs font-medium text-neutral-600 mb-1">违规类型</label>
+                                <select
+                                  value={mv.type}
+                                  onChange={e => {
+                                    const newMvs = [...manualViolations];
+                                    newMvs[index].type = e.target.value;
+                                    setManualViolations(newMvs);
+                                  }}
+                                  className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm"
+                                >
+                                  <option value="hygiene_issue">卫生不达标</option>
+                                  <option value="improper_operation">违规操作</option>
+                                  <option value="proxy_booking">代预约</option>
+                                  <option value="other_manual">其他违规</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-neutral-600 mb-1">违规说明 <span className="text-red-500">*</span></label>
+                                <textarea
+                                  required
+                                  rows={2}
+                                  value={mv.remark}
+                                  onChange={e => {
+                                    const newMvs = [...manualViolations];
+                                    newMvs[index].remark = e.target.value;
+                                    setManualViolations(newMvs);
+                                  }}
+                                  placeholder="请详细描述违规情况..."
+                                  className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm resize-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {manualViolations.length === 0 && (
+                          <div className="text-center py-6 bg-neutral-50 rounded-xl border border-neutral-200 border-dashed">
+                            <p className="text-sm text-neutral-500">暂无手动标记的违规记录</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="flex gap-4 mt-8">
                       <button type="button" onClick={() => setIsDrawerOpen(false)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
                       <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700">保存修改</button>

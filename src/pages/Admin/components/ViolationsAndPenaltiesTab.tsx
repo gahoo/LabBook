@@ -203,6 +203,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
       case 'overdue': return '超时';
       case 'no-show': return '爽约';
       case 'late_cancel': return '临期取消';
+      case 'hygiene_issue': return '卫生不达标';
+      case 'improper_operation': return '违规操作';
+      case 'proxy_booking': return '代预约';
+      case 'other_manual': return '其他违规';
       default: return type;
     }
   };
@@ -892,7 +896,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
               <div>
                 <label className="block text-xs font-medium text-neutral-500 mb-1">违规类型</label>
                 <div className="flex flex-wrap gap-2">
-                  {['late', 'overdue', 'no-show', 'late_cancel'].map(type => (
+                  {['late', 'overdue', 'no-show', 'late_cancel', 'hygiene_issue', 'improper_operation', 'proxy_booking', 'other_manual'].map(type => (
                     <button
                       key={type}
                       onClick={() => {
