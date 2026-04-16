@@ -2080,7 +2080,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   // Fetch settings for grace periods
   const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_hours', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
   const settingsMap = settingsRows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
-  const lateCancelHours = settingsMap['violation_late_cancel_hours'] ? parseInt(settingsMap['violation_late_cancel_hours'], 10) : 24;
+  const lateCancelHours = settingsMap['violation_late_cancel_hours'] ? parseInt(settingsMap['violation_late_cancel_hours'], 10) : 2;
   const noShowGraceMinutes = settingsMap['violation_no_show_grace_minutes'] ? parseInt(settingsMap['violation_no_show_grace_minutes'], 10) : 30;
   const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
   const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
