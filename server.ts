@@ -318,8 +318,11 @@ function evaluatePenaltiesOnViolation(student_id: string) {
       windowStartStr = windowStart.toISOString();
     }
 
+    const violationTypes = trigger.violation_types || [trigger.violation_type || rule.violation_type];
+    const typePlaceholders = violationTypes.map(() => '?').join(',');
+
     let scopeCondition = '';
-    let queryParams: any[] = [student_id, rule.violation_type, windowStartStr];
+    let queryParams: any[] = [student_id, ...violationTypes, windowStartStr];
 
     if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
       const placeholders = trigger.scope.map(() => '?').join(',');
@@ -330,17 +333,28 @@ function evaluatePenaltiesOnViolation(student_id: string) {
     let metricValue = 0;
     let contributingIds: number[] = [];
     if (trigger.metric === 'count') {
-      const violations = db.prepare(`
-        SELECT id FROM violation_records 
-        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-        ${scopeCondition}
-      `).all(...queryParams) as any[];
-      metricValue = violations.length;
-      contributingIds = violations.map(v => v.id);
+      if (trigger.count_strategy === 'by_reservation') {
+        const violations = db.prepare(`
+          SELECT reservation_id, MIN(id) as id FROM violation_records 
+          WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
+          ${scopeCondition}
+          GROUP BY reservation_id
+        `).all(...queryParams) as any[];
+        metricValue = violations.length;
+        contributingIds = violations.map(v => v.id);
+      } else {
+        const violations = db.prepare(`
+          SELECT id FROM violation_records 
+          WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
+          ${scopeCondition}
+        `).all(...queryParams) as any[];
+        metricValue = violations.length;
+        contributingIds = violations.map(v => v.id);
+      }
     } else if (trigger.metric === 'duration') {
       const violations = db.prepare(`
         SELECT id, duration_minutes FROM violation_records 
-        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+        WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
         ${scopeCondition}
       `).all(...queryParams) as any[];
       metricValue = violations.reduce((sum, v) => sum + (v.duration_minutes || 0), 0);

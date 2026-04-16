@@ -9,6 +9,8 @@ interface TriggerConfig {
   period_days?: number;
   period_type?: 'month' | 'quarter' | 'semester' | 'academic_year' | 'year';
   scope?: number[];
+  violation_types?: string[];
+  count_strategy?: 'by_record' | 'by_reservation';
 }
 
 interface ActionConfig {
@@ -153,7 +155,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
     name: '',
     description: '',
     violation_type: 'late',
-    trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30, scope: [] },
+    trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30, scope: [], violation_types: ['late'], count_strategy: 'by_record' },
     action: { type: 'ban', duration_type: 'dynamic', params: { cancel_future_reservations: false } },
     is_active: 1
   });
@@ -196,12 +198,19 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
 
   const handleOpenDrawer = (rule?: PenaltyRule) => {
     if (rule) {
+      const parsedTrigger = JSON.parse(rule.trigger_config);
+      if (!parsedTrigger.violation_types) {
+        parsedTrigger.violation_types = [rule.violation_type];
+      }
+      if (!parsedTrigger.count_strategy) {
+        parsedTrigger.count_strategy = 'by_record';
+      }
       setEditingRule(rule);
       setFormData({
         name: rule.name,
         description: rule.description,
         violation_type: rule.violation_type,
-        trigger: JSON.parse(rule.trigger_config),
+        trigger: parsedTrigger,
         action: JSON.parse(rule.action_config),
         is_active: rule.is_active
       });
@@ -211,7 +220,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
         name: '',
         description: '',
         violation_type: 'late',
-        trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30 },
+        trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30, violation_types: ['late'], count_strategy: 'by_record' },
         action: { type: 'ban', duration_type: 'dynamic' },
         is_active: 1
       });
@@ -355,7 +364,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                         <span className="md:hidden font-medium text-neutral-500 text-xs">触发条件</span>
                         <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-100 text-right md:text-left">
                           {trigger.window_type === 'natural_period' || trigger.window_type === 'current_month' ? `本${periodTypeMap[trigger.period_type || 'month']}内，` : `过去 ${trigger.period_days} 天内，`}
-                          {violationTypeMap[rule.violation_type]}
+                          {(trigger.violation_types || [rule.violation_type]).map(t => violationTypeMap[t]).join(' 或 ')}
                           {trigger.metric === 'count' ? `达到 ${trigger.threshold} 次` : `累计 ${trigger.threshold} 分钟`}
                         </span>
                       </div>
@@ -471,24 +480,53 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                   </h4>
                   
                   <div>
-                    <label className="block text-sm text-neutral-600 mb-1">违规类型</label>
-                    <select
-                      value={formData.violation_type}
-                      onChange={e => {
-                        const newType = e.target.value;
-                        const newFormData = {...formData, violation_type: newType};
-                        if (formData.trigger.metric === 'duration' && !['late', 'overdue'].includes(newType)) {
-                          newFormData.trigger = {...newFormData.trigger, metric: 'count'};
-                        }
-                        setFormData(newFormData);
-                      }}
-                      className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
-                    >
+                    <label className="block text-sm text-neutral-600 mb-2">违规类型组合 (可多选)</label>
+                    <div className="flex flex-wrap gap-3">
                       {Object.entries(violationTypeMap).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
+                        <label key={k} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formData.trigger.violation_types?.includes(k) || false}
+                            onChange={e => {
+                              const current = formData.trigger.violation_types || [];
+                              let newTypes = current;
+                              if (e.target.checked) {
+                                newTypes = [...current, k];
+                              } else {
+                                newTypes = current.filter(t => t !== k);
+                              }
+                              if (newTypes.length === 0) newTypes = [k]; // Prevent empty
+                              
+                              const newFormData = {...formData};
+                              newFormData.trigger = {...newFormData.trigger, violation_types: newTypes};
+                              newFormData.violation_type = newTypes.length > 1 ? 'combo' : newTypes[0];
+                              
+                              if (newFormData.trigger.metric === 'duration' && newTypes.some(t => !['late', 'overdue'].includes(t))) {
+                                newFormData.trigger.metric = 'count';
+                              }
+                              setFormData(newFormData);
+                            }}
+                            className="rounded text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm text-neutral-700">{v}</span>
+                        </label>
                       ))}
-                    </select>
+                    </div>
                   </div>
+
+                  {(formData.trigger.violation_types?.length || 0) > 1 && formData.trigger.metric === 'count' && (
+                    <div>
+                      <label className="block text-sm text-neutral-600 mb-1">同一次预约触发多种违规时如何计算？</label>
+                      <select
+                        value={formData.trigger.count_strategy || 'by_record'}
+                        onChange={e => setFormData({...formData, trigger: {...formData.trigger, count_strategy: e.target.value as any}})}
+                        className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
+                      >
+                        <option value="by_record">分别计算（例如：迟到且超时算2次违规）</option>
+                        <option value="by_reservation">合并计算（同一次预约最多算1次违规）</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div className="flex gap-3">
                     <div className="flex-1">
@@ -499,7 +537,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                         className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
                       >
                         <option value="count">次数</option>
-                        {['late', 'overdue'].includes(formData.violation_type) && (
+                        {(formData.trigger.violation_types || []).every(t => ['late', 'overdue'].includes(t)) && (
                           <option value="duration">累计时长(分钟)</option>
                         )}
                       </select>
