@@ -1598,17 +1598,65 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     if (eq.consumable_fee > 0 && consumable_quantity > 0) {
       total_cost += eq.consumable_fee * consumable_quantity;
     }
-
-    const overtimeThreshold = 30 * 60 * 1000;
-    const scheduledEnd = new Date(oldRes.end_time);
-    if (end.getTime() > scheduledEnd.getTime() + overtimeThreshold) {
-      total_cost *= 2;
-    }
   }
 
   let newStatus = oldRes.status;
-  if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
+  let violationChanged = false;
+
+  if (actual_start_time && oldRes.status === 'cancelled') {
+    newStatus = actual_end_time ? 'completed' : 'active';
+    const noShowViolation = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'no-show' AND status = 'active'").get(id) as any;
+    if (noShowViolation) {
+      db.prepare("UPDATE violation_records SET status = 'invalid', remark = 'Administratively revoked' WHERE id = ?").run(noShowViolation.id);
+      violationChanged = true;
+    }
+  } else if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
     newStatus = 'completed';
+  }
+
+  const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
+  const settingsMap = settingsRows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
+  const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
+  const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
+
+  if (actual_start_time) {
+    const scheduledStart = new Date(oldRes.start_time);
+    const actualStart = new Date(actual_start_time);
+    const diffMinutes = (actualStart.getTime() - scheduledStart.getTime()) / (1000 * 60);
+
+    const existingLate = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'late' AND status = 'active'").get(id) as any;
+    
+    if (diffMinutes > lateGraceMinutes) {
+      if (!existingLate) {
+        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(oldRes.student_id, id, 'late', actual_start_time, Math.round(diffMinutes));
+        violationChanged = true;
+      } else {
+        db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_start_time, existingLate.id);
+      }
+    } else if (existingLate) {
+      db.prepare("UPDATE violation_records SET status = 'invalid', remark = 'Administratively revoked' WHERE id = ?").run(existingLate.id);
+      violationChanged = true;
+    }
+  }
+
+  if (actual_end_time) {
+    const scheduledEnd = new Date(oldRes.end_time);
+    const actualEnd = new Date(actual_end_time);
+    const diffMinutes = (actualEnd.getTime() - scheduledEnd.getTime()) / (1000 * 60);
+
+    const existingOverdue = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'overdue' AND status = 'active'").get(id) as any;
+
+    if (diffMinutes > overtimeGraceMinutes) {
+      if (!existingOverdue) {
+        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(oldRes.student_id, id, 'overdue', actual_end_time, Math.round(diffMinutes));
+        violationChanged = true;
+      } else {
+        db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_end_time, existingOverdue.id);
+      }
+    } else if (existingOverdue) {
+      db.prepare("UPDATE violation_records SET status = 'invalid', remark = 'Administratively revoked' WHERE id = ?").run(existingOverdue.id);
+      violationChanged = true;
+    }
   }
 
   const stmt = db.prepare(`
@@ -1618,6 +1666,10 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
   `);
   stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, newStatus, id);
   
+  if (violationChanged) {
+    evaluatePenaltiesOnViolation(oldRes.student_id);
+  }
+
   const newRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
   
   db.prepare(`
