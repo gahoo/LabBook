@@ -5,6 +5,9 @@ dotenv.config();
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
 import cronParser from 'cron-parser';
+import cron from 'node-cron';
+import fs from 'fs';
+import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
 
@@ -203,6 +206,9 @@ try {
   insertSetting.run('violation_late_cancel_hours', '2');
   insertSetting.run('violation_no_show_grace_minutes', '30');
   insertSetting.run('cron_no_show_scan_interval_minutes', '15');
+  insertSetting.run('auto_backup_enabled', 'false');
+  insertSetting.run('auto_backup_cron', '0 3 * * *');
+  insertSetting.run('auto_backup_retention', '7');
 } catch (e) {}
 
 try {
@@ -241,6 +247,66 @@ try {
     CREATE INDEX IF NOT EXISTS idx_violation_stats ON violation_records(student_id, violation_type, status, violation_time)
   `);
 } catch (e) {}
+
+// Auto Backup Logic
+const backupDir = path.join(process.cwd(), 'backups');
+if (!fs.existsSync(backupDir)) {
+  fs.mkdirSync(backupDir, { recursive: true });
+}
+
+let backupTask: cron.ScheduledTask | null = null;
+
+async function executeBackup() {
+  const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
+  const backupPath = path.join(backupDir, `lab_equipment_backup_${timestamp}.db`);
+  try {
+    await db.backup(backupPath);
+    console.log(`Database backup successful: ${backupPath}`);
+    
+    // Clean up old backups
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'))
+      .sort()
+      .reverse();
+      
+    const retentionRow = db.prepare("SELECT value FROM settings WHERE key = 'auto_backup_retention'").get() as any;
+    const keepCount = retentionRow && !isNaN(parseInt(retentionRow.value, 10)) ? parseInt(retentionRow.value, 10) : 7;
+      
+    if (files.length > keepCount) {
+      const filesToDelete = files.slice(keepCount);
+      for (const file of filesToDelete) {
+        fs.unlinkSync(path.join(backupDir, file));
+        console.log(`Deleted old backup: ${file}`);
+      }
+    }
+  } catch (err) {
+    console.error('Database backup failed:', err);
+  }
+}
+
+export function reloadBackupCron() {
+  if (backupTask) {
+    backupTask.stop();
+    backupTask = null;
+  }
+  
+  const enabledRow = db.prepare("SELECT value FROM settings WHERE key = 'auto_backup_enabled'").get() as any;
+  const cronRow = db.prepare("SELECT value FROM settings WHERE key = 'auto_backup_cron'").get() as any;
+  
+  const isEnabled = enabledRow ? enabledRow.value === 'true' : false;
+  const cronExpression = cronRow ? cronRow.value : '0 3 * * *';
+  
+  if (isEnabled && cron.validate(cronExpression)) {
+    backupTask = cron.schedule(cronExpression, executeBackup);
+    console.log(`Backup cron scheduled with expression: ${cronExpression}`);
+  } else if (isEnabled) {
+    console.warn(`Invalid backup cron expression: ${cronExpression}, auto backup disabled.`);
+  } else {
+    console.log('Auto backup is disabled.');
+  }
+}
+
+reloadBackupCron();
 
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
@@ -693,7 +759,10 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
     violation_overtime_grace_minutes,
     violation_late_cancel_hours,
     violation_no_show_grace_minutes,
-    cron_no_show_scan_interval_minutes
+    cron_no_show_scan_interval_minutes,
+    auto_backup_enabled,
+    auto_backup_cron,
+    auto_backup_retention
   } = req.body;
   
   const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
@@ -717,6 +786,24 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   if (cron_no_show_scan_interval_minutes !== undefined) {
     updateSetting('cron_no_show_scan_interval_minutes', cron_no_show_scan_interval_minutes);
     startNoShowScanner(); // Restart the scanner with new interval
+  }
+
+  let backupSettingsChanged = false;
+  if (auto_backup_enabled !== undefined) {
+    updateSetting('auto_backup_enabled', auto_backup_enabled);
+    backupSettingsChanged = true;
+  }
+  if (auto_backup_cron !== undefined) {
+    updateSetting('auto_backup_cron', auto_backup_cron);
+    backupSettingsChanged = true;
+  }
+  if (auto_backup_retention !== undefined) {
+    updateSetting('auto_backup_retention', auto_backup_retention);
+    backupSettingsChanged = true;
+  }
+  
+  if (backupSettingsChanged) {
+    reloadBackupCron();
   }
   
   res.json({ success: true });
