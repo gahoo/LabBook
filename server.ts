@@ -1,4 +1,7 @@
 import express from 'express';
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
 import cronParser from 'cron-parser';
