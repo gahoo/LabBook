@@ -10,11 +10,6 @@ export default function SettingsTab({ token }: SettingsTabProps) {
   const [appName, setAppName] = useState('LabBook');
   const [defaultRoute, setDefaultRoute] = useState('/');
   const [appLogo, setAppLogo] = useState('');
-  const [lateGraceMinutes, setLateGraceMinutes] = useState(15);
-  const [overtimeGraceMinutes, setOvertimeGraceMinutes] = useState(15);
-  const [lateCancelHours, setLateCancelHours] = useState(2);
-  const [noShowGraceMinutes, setNoShowGraceMinutes] = useState(30);
-  const [cronIntervalMinutes, setCronIntervalMinutes] = useState(15);
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,11 +24,6 @@ export default function SettingsTab({ token }: SettingsTabProps) {
       if (data.app_name) setAppName(data.app_name);
       if (data.default_route) setDefaultRoute(data.default_route);
       if (data.app_logo) setAppLogo(data.app_logo);
-      if (data.violation_late_grace_minutes) setLateGraceMinutes(Number(data.violation_late_grace_minutes));
-      if (data.violation_overtime_grace_minutes) setOvertimeGraceMinutes(Number(data.violation_overtime_grace_minutes));
-      if (data.violation_late_cancel_hours) setLateCancelHours(Number(data.violation_late_cancel_hours));
-      if (data.violation_no_show_grace_minutes) setNoShowGraceMinutes(Number(data.violation_no_show_grace_minutes));
-      if (data.cron_no_show_scan_interval_minutes) setCronIntervalMinutes(Number(data.cron_no_show_scan_interval_minutes));
     } catch (err) {
       console.error('Failed to fetch settings', err);
     } finally {
@@ -57,14 +47,6 @@ export default function SettingsTab({ token }: SettingsTabProps) {
   };
 
   const handleSave = async () => {
-    if (noShowGraceMinutes < lateGraceMinutes) {
-      toast.error('爽约宽限期不能小于迟到宽限期');
-      return;
-    }
-    if (noShowGraceMinutes < overtimeGraceMinutes) {
-      toast.error('爽约宽限期不能小于超时宽限期');
-      return;
-    }
     try {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
@@ -75,12 +57,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
         body: JSON.stringify({
           app_name: appName,
           default_route: defaultRoute,
-          app_logo: appLogo,
-          violation_late_grace_minutes: lateGraceMinutes,
-          violation_overtime_grace_minutes: overtimeGraceMinutes,
-          violation_late_cancel_hours: lateCancelHours,
-          violation_no_show_grace_minutes: noShowGraceMinutes,
-          cron_no_show_scan_interval_minutes: cronIntervalMinutes
+          app_logo: appLogo
         })
       });
 
@@ -190,82 +167,6 @@ export default function SettingsTab({ token }: SettingsTabProps) {
           <p className="text-xs text-neutral-500 mt-2">
             应用的根路径（如：/ 或 /labbook）。修改后所有页面路径都会加上此作为前缀。
           </p>
-        </div>
-
-        <div className="pt-6 border-t border-neutral-200">
-          <h3 className="text-lg font-bold text-neutral-900 mb-4">违规判定与宽限期设置</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                迟到宽限期 (分钟)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={lateGraceMinutes}
-                onChange={(e) => setLateGraceMinutes(Number(e.target.value))}
-                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
-              />
-              <p className="text-xs text-neutral-500 mt-1">超过预约开始时间多少分钟后上机记为迟到。</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                超时宽限期 (分钟)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={overtimeGraceMinutes}
-                onChange={(e) => setOvertimeGraceMinutes(Number(e.target.value))}
-                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
-              />
-              <p className="text-xs text-neutral-500 mt-1">超过预约结束时间多少分钟后下机记为超时。</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                临期取消阈值 (小时)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={lateCancelHours}
-                onChange={(e) => setLateCancelHours(Number(e.target.value))}
-                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
-              />
-              <p className="text-xs text-neutral-500 mt-1">距离预约开始时间不足多少小时取消记为临期取消。</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                爽约宽限期 (分钟)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={noShowGraceMinutes}
-                onChange={(e) => setNoShowGraceMinutes(Number(e.target.value))}
-                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
-              />
-              <p className="text-xs text-neutral-500 mt-1">超过预约开始时间多少分钟未上机记为爽约（建议大于迟到宽限期）。</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                爽约扫描频率 (分钟)
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={cronIntervalMinutes}
-                onChange={(e) => setCronIntervalMinutes(Number(e.target.value))}
-                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
-              />
-              <p className="text-xs text-neutral-500 mt-1">系统后台每隔多少分钟扫描一次爽约记录。</p>
-            </div>
-          </div>
         </div>
 
           <div className="pt-4">

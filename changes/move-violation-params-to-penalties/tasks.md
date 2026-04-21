@@ -1,0 +1,4 @@
+- [x] 1. 创建 `src/pages/Admin/components/ViolationParamsTab.tsx` 组件，迁移相关的 React State，获取与保存逻辑（`GET /api/settings`, `POST /api/admin/settings`），以及 UI 布局和参数验证。
+- [x] 2. 修改 `src/pages/Admin/components/SettingsTab.tsx`，移除与违规判定（宽限期）相关的 State 代码、UI 代码和 `handleSave` 中 payload 包含这些字段的代码。
+- [x] 3. 修改 `src/pages/Admin/components/ViolationsAndPenaltiesTab.tsx`，在子页面导航 (Sub Tabs) 中增加“违规判定规则”选项卡，当选中时渲染 `<ViolationParamsTab />`。
+- [x] 4. 整体联调与测试：验证全局设置里的基础信息修改是否正常；验证违规判定参数页面里修改参数并保存是否正常；确保两边的数据解耦生效、能正常持久化。

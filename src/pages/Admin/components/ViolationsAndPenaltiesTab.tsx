@@ -3,6 +3,7 @@ import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, 
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import PenaltyRulesTab from './PenaltyRulesTab';
+import ViolationParamsTab from './ViolationParamsTab';
 
 interface ViolationsAndPenaltiesTabProps {
   token: string | null;
@@ -11,7 +12,7 @@ interface ViolationsAndPenaltiesTabProps {
 }
 
 export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateToReservation }: ViolationsAndPenaltiesTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'records' | 'stats' | 'active_penalties' | 'rules'>('records');
+  const [activeSubTab, setActiveSubTab] = useState<'records' | 'stats' | 'active_penalties' | 'violation_params' | 'rules'>('records');
   
   // Drill-down Context State
   const [penaltyContext, setPenaltyContext] = useState<{
@@ -809,7 +810,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   return (
     <div className="space-y-6">
       {/* Sub Tabs */}
-      <div className="flex gap-2 border-b border-neutral-200">
+      <div className="flex gap-2 border-b border-neutral-200 overflow-x-auto whitespace-nowrap">
         <button
           onClick={() => setActiveSubTab('records')}
           className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'records' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
@@ -827,6 +828,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
           className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'active_penalties' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
         >
           当前受限名单
+        </button>
+        <button
+          onClick={() => setActiveSubTab('violation_params')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'violation_params' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
+        >
+          违规判定参数
         </button>
         <button
           onClick={() => setActiveSubTab('rules')}
@@ -1522,6 +1529,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
             </table>
           </div>
         </div>
+      )}
+
+      {activeSubTab === 'violation_params' && (
+        <ViolationParamsTab token={token || ''} />
       )}
 
       {activeSubTab === 'rules' && (
