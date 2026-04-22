@@ -143,6 +143,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<PenaltyRule | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -272,8 +273,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('确定要删除此规则吗？')) return;
+  const performDelete = async (id: number) => {
     try {
       const res = await fetch(`/api/admin/penalty-rules/${id}`, {
         method: 'DELETE',
@@ -287,7 +287,13 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
       }
     } catch (err) {
       toast.error('删除失败');
+    } finally {
+      setDeleteConfirmId(null);
     }
+  };
+
+  const handleDelete = (id: number) => {
+    setDeleteConfirmId(id);
   };
 
   const violationTypeMap: Record<string, string> = {
@@ -728,6 +734,37 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
               </button>
             </div>
           </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-neutral-900 mb-2">确定删除此规则？</h3>
+              <p className="text-sm text-neutral-500">
+                一旦删除，该规则下暂未结束（处于生效中）的活跃限制会自动失效，且不可恢复。<br/><br/>您确定要继续吗？
+              </p>
+            </div>
+            <div className="grid grid-cols-2 bg-neutral-50 border-t border-neutral-100 divide-x divide-neutral-100">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="py-3 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => performDelete(deleteConfirmId)}
+                className="py-3 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors"
+              >
+                深思熟虑后删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

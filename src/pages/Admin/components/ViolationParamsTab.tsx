@@ -87,7 +87,7 @@ export default function ViolationParamsTab({ token }: ViolationParamsTabProps) {
         </div>
         <button
           onClick={handleSave}
-          className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
         >
           <Save className="w-4 h-4" />
           保存参数
