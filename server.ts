@@ -463,9 +463,9 @@ function evaluatePenaltiesOnViolation(student_id: string) {
       if (action.type === 'ban' && action.params?.cancel_future_reservations) {
         if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
           const placeholders = trigger.scope.map(() => '?').join(',');
-          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ? AND equipment_id IN (${placeholders})`).run(student_id, nowStr, ...trigger.scope);
+          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status IN ('pending', 'approved') AND start_time > ? AND equipment_id IN (${placeholders})`).run(student_id, nowStr, ...trigger.scope);
         } else {
-          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status = 'pending' AND start_time > ?`).run(student_id, nowStr);
+          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status IN ('pending', 'approved') AND start_time > ?`).run(student_id, nowStr);
         }
       }
     }
@@ -556,8 +556,11 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       windowStartStr = windowStart.toISOString();
     }
 
+    const violationTypes = trigger.violation_types || [trigger.violation_type || rule.violation_type];
+    const typePlaceholders = violationTypes.map(() => '?').join(',');
+
     let scopeCondition = '';
-    let queryParams: any[] = [student_id, rule.violation_type, windowStartStr];
+    let queryParams: any[] = [student_id, ...violationTypes, windowStartStr];
 
     if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
       const placeholders = trigger.scope.map(() => '?').join(',');
@@ -569,17 +572,28 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     let currentViolationIds: number[] = [];
     
     if (trigger.metric === 'count') {
-      const records = db.prepare(`
-        SELECT id FROM violation_records 
-        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-        ${scopeCondition}
-      `).all(...queryParams) as any[];
-      metricValue = records.length;
-      currentViolationIds = records.map(r => r.id);
+      if (trigger.count_strategy === 'by_reservation') {
+        const records = db.prepare(`
+          SELECT reservation_id, MIN(id) as id FROM violation_records 
+          WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
+          ${scopeCondition}
+          GROUP BY reservation_id
+        `).all(...queryParams) as any[];
+        metricValue = records.length;
+        currentViolationIds = records.map(r => r.id);
+      } else {
+        const records = db.prepare(`
+          SELECT id FROM violation_records 
+          WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
+          ${scopeCondition}
+        `).all(...queryParams) as any[];
+        metricValue = records.length;
+        currentViolationIds = records.map(r => r.id);
+      }
     } else if (trigger.metric === 'duration') {
       const records = db.prepare(`
         SELECT id, duration_minutes FROM violation_records 
-        WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
+        WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
         ${scopeCondition}
       `).all(...queryParams) as any[];
       metricValue = records.reduce((sum, r) => sum + (r.duration_minutes || 0), 0);
@@ -612,12 +626,23 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
         }
         ruleUnbanTime = nextPeriodStart;
       } else {
-        const violations = db.prepare(`
-          SELECT violation_time, duration_minutes FROM violation_records 
-          WHERE student_id = ? AND status = 'active' AND violation_type = ? AND violation_time >= ?
-          ${scopeCondition}
-          ORDER BY violation_time ASC
-        `).all(...queryParams) as any[];
+        let violations = [];
+        if (trigger.count_strategy === 'by_reservation') {
+          violations = db.prepare(`
+            SELECT MIN(violation_time) as violation_time, SUM(duration_minutes) as duration_minutes FROM violation_records 
+            WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
+            ${scopeCondition}
+            GROUP BY reservation_id
+            ORDER BY violation_time ASC
+          `).all(...queryParams) as any[];
+        } else {
+          violations = db.prepare(`
+            SELECT violation_time, duration_minutes FROM violation_records 
+            WHERE student_id = ? AND status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ?
+            ${scopeCondition}
+            ORDER BY violation_time ASC
+          `).all(...queryParams) as any[];
+        }
 
         if (trigger.metric === 'count') {
           const dropIndex = metricValue - trigger.threshold;
@@ -2105,8 +2130,11 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
       windowStartStr = windowStart.toISOString();
     }
 
+    const violationTypes = trigger.violation_types || [trigger.violation_type || rule.violation_type];
+    const typePlaceholders = violationTypes.map(() => '?').join(',');
+
     let scopeCondition = '';
-    let queryParams: any[] = [rule.violation_type, windowStartStr];
+    let queryParams: any[] = [...violationTypes, windowStartStr];
 
     if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
       const placeholders = trigger.scope.map(() => '?').join(',');
@@ -2118,18 +2146,28 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
 
     let query = '';
     if (trigger.metric === 'count') {
-      query = `
-        SELECT student_id, COUNT(id) as metric_value, GROUP_CONCAT(id) as contributing_ids 
-        FROM violation_records 
-        WHERE status = 'active' AND violation_type = ? AND violation_time >= ? ${scopeCondition} 
-        GROUP BY student_id 
-        HAVING metric_value >= ?
-      `;
+      if (trigger.count_strategy === 'by_reservation') {
+        query = `
+          SELECT student_id, COUNT(DISTINCT reservation_id) as metric_value, GROUP_CONCAT(id) as contributing_ids 
+          FROM violation_records 
+          WHERE status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ? ${scopeCondition} 
+          GROUP BY student_id 
+          HAVING metric_value >= ?
+        `;
+      } else {
+        query = `
+          SELECT student_id, COUNT(id) as metric_value, GROUP_CONCAT(id) as contributing_ids 
+          FROM violation_records 
+          WHERE status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ? ${scopeCondition} 
+          GROUP BY student_id 
+          HAVING metric_value >= ?
+        `;
+      }
     } else if (trigger.metric === 'duration') {
       query = `
         SELECT student_id, SUM(duration_minutes) as metric_value, GROUP_CONCAT(id) as contributing_ids 
         FROM violation_records 
-        WHERE status = 'active' AND violation_type = ? AND violation_time >= ? ${scopeCondition} 
+        WHERE status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ? ${scopeCondition} 
         GROUP BY student_id 
         HAVING metric_value >= ?
       `;
