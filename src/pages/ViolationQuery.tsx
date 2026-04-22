@@ -7,6 +7,10 @@ export default function ViolationQuery() {
   const [studentId, setStudentId] = useState('');
   const [studentName, setStudentName] = useState('');
   const [violations, setViolations] = useState<any[]>([]);
+  const [penaltyDetails, setPenaltyDetails] = useState<any>(null);
+  const [highlightRuleId, setHighlightRuleId] = useState<number | null>(null);
+  const [highlightRecordIds, setHighlightRecordIds] = useState<number[]>([]);
+
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [appealingId, setAppealingId] = useState<number | null>(null);
@@ -52,7 +56,8 @@ export default function ViolationQuery() {
       });
       if (res.ok) {
         const data = await res.json();
-        setViolations(data);
+        setViolations(data.violations || data);
+        setPenaltyDetails(data.userPenaltyDetails || null);
         setHasSearched(true);
       } else {
         toast.error('查询失败');
@@ -163,7 +168,7 @@ export default function ViolationQuery() {
               const isApproved = v.status === 'revoked';
 
               return (
-                <div key={v.id} className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+                <div key={v.id} className={`bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm transition-all duration-300 ${highlightRuleId !== null ? (highlightRecordIds.includes(v.id) ? 'ring-2 ring-red-500/50 bg-red-50/10 scale-[1.01]' : 'opacity-40 grayscale-[20%]') : 'opacity-100'}`}>
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-100 mb-2">
@@ -174,6 +179,9 @@ export default function ViolationQuery() {
                       </span>
                       <div className="text-base font-medium text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}</div>
                       <div className="text-sm text-neutral-500 mt-1">关联仪器：{v.equipment_name}</div>
+                      {v.booking_code && (
+                        <div className="text-xs font-mono text-neutral-400 mt-0.5">预约码: {v.booking_code}</div>
+                      )}
                     </div>
                     
                     <div className="flex flex-col items-end gap-2">
@@ -313,10 +321,32 @@ export default function ViolationQuery() {
                 return `${baseAction}${durationDesc}`;
               };
 
+              const triggeredDetail = penaltyDetails?.triggered_rules_details?.find((r: any) => r.rule_id === rule.id);
+              const isTriggered = !!triggeredDetail;
+              const isActiveHighlight = highlightRuleId === rule.id;
+
               return (
-                <div key={rule.id} className="text-sm text-neutral-700 bg-white p-3 rounded-xl border border-neutral-100 shadow-sm">
-                  <span className="font-medium text-neutral-900 mr-2">【{rule.name}】</span>
-                  {getTriggerDesc()}，将触发 <span className="font-medium text-red-600">{getActionDesc()}</span>。
+                <div 
+                  key={rule.id} 
+                  onClick={() => {
+                    if (isActiveHighlight) {
+                      setHighlightRuleId(null);
+                      setHighlightRecordIds([]);
+                    } else if (isTriggered) {
+                      setHighlightRuleId(rule.id);
+                      setHighlightRecordIds(triggeredDetail.contributing_ids || []);
+                    }
+                  }}
+                  className={`text-sm p-3 rounded-xl border shadow-sm transition-all duration-300 ${isTriggered ? 'cursor-pointer hover:shadow-md' : ''} ${isActiveHighlight ? 'bg-red-50 border-red-200 ring-1 ring-red-500' : (isTriggered ? 'bg-orange-50/50 border-orange-200' : 'bg-white border-neutral-100')}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className={`font-medium mr-2 ${isTriggered ? 'text-red-700' : 'text-neutral-900'}`}>【{rule.name}】</span>
+                      <span className={isTriggered ? 'text-orange-900' : 'text-neutral-700'}>
+                        {getTriggerDesc()}，将触发 <span className={`font-medium ${isTriggered ? 'text-red-700' : 'text-red-600'}`}>{getActionDesc()}</span>。
+                      </span>
+                    </div>
+                  </div>
                 </div>
               );
             })}

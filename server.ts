@@ -487,6 +487,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   
   const triggeredRules: string[] = [];
   const triggeredViolationIds: number[] = [];
+  const triggeredRulesDetails: { rule_id: number, rule_name: string, contributing_ids: number[] }[] = [];
   let maxUnbanTime: Date | null = null;
 
   // 1. Check fixed duration penalties
@@ -508,12 +509,15 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     isPenalized = true;
     if (!triggeredRules.includes(p.rule_name)) triggeredRules.push(p.rule_name);
     
+    let cIds: number[] = [];
     if (p.contributing_violation_ids) {
-      const ids = p.contributing_violation_ids.split(',').filter(Boolean).map(Number);
-      ids.forEach((id: number) => {
+      cIds = p.contributing_violation_ids.split(',').filter(Boolean).map(Number);
+      cIds.forEach((id: number) => {
         if (!triggeredViolationIds.includes(id)) triggeredViolationIds.push(id);
       });
     }
+    
+    triggeredRulesDetails.push({ rule_id: p.rule_id, rule_name: p.rule_name, contributing_ids: cIds });
     
     if (p.penalty_method === 'BAN') {
       penaltyMethod = 'BAN';
@@ -606,6 +610,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       currentViolationIds.forEach(id => {
         if (!triggeredViolationIds.includes(id)) triggeredViolationIds.push(id);
       });
+      triggeredRulesDetails.push({ rule_id: rule.id, rule_name: rule.name, contributing_ids: currentViolationIds });
       
       let ruleUnbanTime: Date | null = null;
       if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
@@ -703,7 +708,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     }
   }
 
-  return { isPenalized, penaltyMethod, reason, restrictions, violation_ids: triggeredViolationIds };
+  return { isPenalized, penaltyMethod, reason, restrictions, violation_ids: triggeredViolationIds, triggered_rules_details: triggeredRulesDetails };
 }
 
 // API Routes
@@ -1881,7 +1886,7 @@ app.post('/api/violations/my', (req, res) => {
   if (!student_id || !student_name) return res.status(400).json({ error: 'Missing credentials' });
   
   let query = `
-    SELECT v.*, r.student_id, r.student_name, e.name as equipment_name 
+    SELECT v.*, r.student_id, r.student_name, r.booking_code, e.name as equipment_name 
     FROM violation_records v
     JOIN reservations r ON v.reservation_id = r.id
     JOIN equipment e ON r.equipment_id = e.id
@@ -1899,7 +1904,12 @@ app.post('/api/violations/my', (req, res) => {
   
   const violations = db.prepare(query).all(...params);
   
-  res.json(violations);
+  let userPenaltyDetails = null;
+  if (!violation_ids) {
+    userPenaltyDetails = checkUserPenalty(student_id);
+  }
+  
+  res.json({ violations, userPenaltyDetails });
 });
 
 app.post('/api/violations/:id/appeal', (req, res) => {
