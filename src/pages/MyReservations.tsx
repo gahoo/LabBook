@@ -41,6 +41,15 @@ export default function MyReservations() {
   const [loadingAvailability, setLoadingAvailability] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  const [settings, setSettings] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setSettings(data))
+      .catch(console.error);
+  }, []);
+
   const [hideExpired, setHideExpired] = useState(() => {
     const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_hide_expired='));
     return cookie ? cookie.split('=')[1] === 'true' : true;
@@ -692,7 +701,7 @@ export default function MyReservations() {
 
                   <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
                     {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (() => {
-                      const maxLateMinutes = resv.release_noshow_slots ? 15 : 30;
+                      const maxLateMinutes = settings?.violation_no_show_grace_minutes ? Number(settings.violation_no_show_grace_minutes) : 30;
                       const isPastGracePeriod = new Date().getTime() > new Date(resv.start_time).getTime() + maxLateMinutes * 60000;
                       return (
                         <>
@@ -716,7 +725,7 @@ export default function MyReservations() {
                       );
                     })()}
                     {resv.status === 'approved' && !editingId && (() => {
-                      const maxLateMinutes = resv.release_noshow_slots ? 15 : 30;
+                      const maxLateMinutes = settings?.violation_no_show_grace_minutes ? Number(settings.violation_no_show_grace_minutes) : 30;
                       const isPastGracePeriod = new Date().getTime() > new Date(resv.start_time).getTime() + maxLateMinutes * 60000;
                       return (
                         <button 
