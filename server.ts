@@ -5,7 +5,7 @@ dotenv.config();
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
 import cronParser from 'cron-parser';
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
@@ -472,6 +472,40 @@ function evaluatePenaltiesOnViolation(student_id: string) {
   }
 }
 
+const typeTranslationMap: Record<string, string> = {
+  late: '迟到',
+  overdue: '超时',
+  'no-show': '爽约',
+  'late-cancel': '临期取消',
+  'late_cancel': '临期取消'
+};
+
+function formatRuleName(ruleName: string, triggerConfigStr?: string, defaultViolationType?: string) {
+  try {
+    let violationTypes: string[] = [];
+    if (triggerConfigStr) {
+      const tg = JSON.parse(triggerConfigStr);
+      if (tg.violation_types && tg.violation_types.length > 0) {
+        violationTypes = tg.violation_types;
+      } else if (tg.violation_type) {
+        violationTypes = [tg.violation_type];
+      }
+    }
+    
+    if (violationTypes.length === 0 && defaultViolationType && defaultViolationType !== 'combo') {
+      violationTypes = [defaultViolationType];
+    }
+    
+    if (violationTypes.length > 0) {
+      const translated = violationTypes.map(t => typeTranslationMap[t] || t).join(' 或 ');
+      return `${ruleName}（包含：${translated}）`;
+    }
+  } catch (e) {
+    // Parsing error or empty, fallback to original
+  }
+  return ruleName;
+}
+
 function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
   const nowStr = new Date().toISOString();
@@ -492,7 +526,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
 
   // 1. Check fixed duration penalties
   const fixedPenalties = db.prepare(`
-    SELECT p.*, r.name as rule_name FROM user_penalties p
+    SELECT p.*, r.name as rule_name, r.trigger_config, r.violation_type FROM user_penalties p
     JOIN penalty_rules r ON p.rule_id = r.id
     WHERE p.student_id = ? AND p.end_time > ? AND p.status = 'active'
   `).all(student_id, nowStr) as any[];
@@ -501,13 +535,14 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     const params = JSON.parse(p.restrictions || '{}');
     
     if (target_equipment_id && params.restricted_equipment_ids && Array.isArray(params.restricted_equipment_ids) && params.restricted_equipment_ids.length > 0) {
-      if (!params.restricted_equipment_ids.includes(target_equipment_id)) {
+      if (!params.restricted_equipment_ids.some((id: any) => String(id) === String(target_equipment_id))) {
         continue;
       }
     }
 
     isPenalized = true;
-    if (!triggeredRules.includes(p.rule_name)) triggeredRules.push(p.rule_name);
+    const formattedRuleName = formatRuleName(p.rule_name, p.trigger_config, p.violation_type);
+    if (!triggeredRules.includes(formattedRuleName)) triggeredRules.push(formattedRuleName);
     
     let cIds: number[] = [];
     if (p.contributing_violation_ids) {
@@ -517,7 +552,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       });
     }
     
-    triggeredRulesDetails.push({ rule_id: p.rule_id, rule_name: p.rule_name, contributing_ids: cIds });
+    triggeredRulesDetails.push({ rule_id: p.rule_id, rule_name: formattedRuleName, contributing_ids: cIds });
     
     if (p.penalty_method === 'BAN') {
       penaltyMethod = 'BAN';
@@ -545,7 +580,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     if (action.duration_type === 'fixed' && action.duration_days) continue; // Skip rules that are handled by fixed penalties
     
     if (target_equipment_id && trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
-      if (!trigger.scope.includes(target_equipment_id)) {
+      if (!trigger.scope.some((id: any) => String(id) === String(target_equipment_id))) {
         continue;
       }
     }
@@ -606,11 +641,12 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
 
     if (metricValue >= trigger.threshold) {
       isPenalized = true;
-      if (!triggeredRules.includes(rule.name)) triggeredRules.push(rule.name);
+      const formattedRuleName = formatRuleName(rule.name, rule.trigger_config, rule.violation_type);
+      if (!triggeredRules.includes(formattedRuleName)) triggeredRules.push(formattedRuleName);
       currentViolationIds.forEach(id => {
         if (!triggeredViolationIds.includes(id)) triggeredViolationIds.push(id);
       });
-      triggeredRulesDetails.push({ rule_id: rule.id, rule_name: rule.name, contributing_ids: currentViolationIds });
+      triggeredRulesDetails.push({ rule_id: rule.id, rule_name: formattedRuleName, contributing_ids: currentViolationIds });
       
       let ruleUnbanTime: Date | null = null;
       if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {

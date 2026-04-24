@@ -298,8 +298,13 @@ export default function ViolationQuery() {
                   timeDesc = `在本月内`;
                 }
 
+                let typesStr = getViolationTypeLabel(rule.violation_type);
+                if (trigger.violation_types && Array.isArray(trigger.violation_types)) {
+                  typesStr = trigger.violation_types.map((t: string) => getViolationTypeLabel(t)).join(' 或 ');
+                }
+
                 const metricDesc = trigger.metric === 'count' ? `次数达到 ${trigger.threshold} 次` : `累计时长达到 ${trigger.threshold} 分钟`;
-                return `${timeDesc}，${getViolationTypeLabel(rule.violation_type)}${metricDesc}`;
+                return `${timeDesc}，${typesStr}${metricDesc}`;
               };
 
               const getActionDesc = () => {
