@@ -4,6 +4,7 @@ import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter,
 import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock, DollarSign, AlertCircle, X, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
+import { ViolationRecord, MyViolationsResponse } from '../types';
 
 interface Equipment {
   id: number;
@@ -62,7 +63,7 @@ export default function Booking() {
   const [applyingWhitelist, setApplyingWhitelist] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [showBannedModal, setShowBannedModal] = useState(false);
-  const [bannedViolations, setBannedViolations] = useState<any[]>([]);
+  const [bannedViolations, setBannedViolations] = useState<ViolationRecord[]>([]);
   const [bannedErrorMsg, setBannedErrorMsg] = useState('');
   const [appealingId, setAppealingId] = useState<number | null>(null);
   const [appealReason, setAppealReason] = useState('');
@@ -243,8 +244,8 @@ export default function Booking() {
             })
           });
           if (vRes.ok) {
-            const vData = await vRes.json();
-            setBannedViolations(vData.violations || vData);
+            const vData = await vRes.json() as MyViolationsResponse;
+            setBannedViolations(vData.violations);
           }
           setShowBannedModal(true);
           return;
@@ -417,8 +418,8 @@ export default function Booking() {
           })
         });
         if (vRes.ok) {
-          const vData = await vRes.json();
-          setBannedViolations(vData.violations || vData);
+          const vData = await vRes.json() as MyViolationsResponse;
+          setBannedViolations(vData.violations);
         }
       } else {
         const err = await res.json();

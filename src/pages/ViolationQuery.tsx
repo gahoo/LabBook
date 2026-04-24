@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { ViolationRecord, UserPenaltyDetails, MyViolationsResponse } from '../types';
 
 export default function ViolationQuery() {
   const [studentId, setStudentId] = useState('');
   const [studentName, setStudentName] = useState('');
-  const [violations, setViolations] = useState<any[]>([]);
-  const [penaltyDetails, setPenaltyDetails] = useState<any>(null);
+  const [violations, setViolations] = useState<ViolationRecord[]>([]);
+  const [penaltyDetails, setPenaltyDetails] = useState<UserPenaltyDetails | null>(null);
   const [highlightRuleId, setHighlightRuleId] = useState<number | null>(null);
   const [highlightRecordIds, setHighlightRecordIds] = useState<number[]>([]);
 
@@ -55,9 +56,9 @@ export default function ViolationQuery() {
         body: JSON.stringify({ student_id: id, student_name: name })
       });
       if (res.ok) {
-        const data = await res.json();
-        setViolations(data.violations || data);
-        setPenaltyDetails(data.userPenaltyDetails || null);
+        const data = await res.json() as MyViolationsResponse;
+        setViolations(data.violations);
+        setPenaltyDetails(data.userPenaltyDetails);
         setHasSearched(true);
       } else {
         toast.error('查询失败');
