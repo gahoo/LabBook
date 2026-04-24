@@ -244,7 +244,7 @@ export default function Booking() {
           });
           if (vRes.ok) {
             const vData = await vRes.json();
-            setBannedViolations(vData);
+            setBannedViolations(vData.violations || vData);
           }
           setShowBannedModal(true);
           return;
@@ -418,7 +418,7 @@ export default function Booking() {
         });
         if (vRes.ok) {
           const vData = await vRes.json();
-          setBannedViolations(vData);
+          setBannedViolations(vData.violations || vData);
         }
       } else {
         const err = await res.json();
