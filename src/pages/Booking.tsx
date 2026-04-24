@@ -472,7 +472,7 @@ export default function Booking() {
       />
       {/* Drawer Panel */}
       <div 
-        className={`fixed top-0 right-0 h-full w-full sm:max-w-md md:max-w-lg lg:max-w-xl bg-white z-50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out overflow-hidden ${showBannedModal ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] lg:w-[768px] bg-white z-50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out overflow-hidden ${showBannedModal ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-5 border-b border-neutral-100 bg-red-50/50">
           <div className="flex items-center gap-3">
