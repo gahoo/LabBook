@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter, startOfDay, endOfDay } from 'date-fns';
 import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock, DollarSign, AlertCircle, X, AlertTriangle } from 'lucide-react';
@@ -65,8 +65,34 @@ export default function Booking() {
   const [showBannedModal, setShowBannedModal] = useState(false);
   const [bannedViolations, setBannedViolations] = useState<ViolationRecord[]>([]);
   const [bannedErrorMsg, setBannedErrorMsg] = useState('');
+  const [structuredPenalty, setStructuredPenalty] = useState<any>(null);
   const [appealingId, setAppealingId] = useState<number | null>(null);
   const [appealReason, setAppealReason] = useState('');
+
+  const filteredRules = useMemo(() => {
+    if (!structuredPenalty || !structuredPenalty.triggered_rules) return [];
+    const rules = structuredPenalty.triggered_rules;
+    
+    // Group by violation_types and penalty_method
+    const groups: Record<string, any[]> = {};
+    for (const rule of rules) {
+      const typesKey = (rule.violation_types || []).slice().sort().join(',');
+      const methodKey = rule.penalty_method || 'UNKNOWN';
+      const key = `${typesKey}_${methodKey}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(rule);
+    }
+
+    // Select the most severe from each group
+    const filtered: any[] = [];
+    Object.values(groups).forEach(group => {
+      // Sort by descending duration_days
+      group.sort((a, b) => (b.duration_days || 0) - (a.duration_days || 0));
+      filtered.push(group[0]);
+    });
+
+    return filtered;
+  }, [structuredPenalty]);
 
   useEffect(() => {
     fetch('/api/equipment')
@@ -232,7 +258,14 @@ export default function Booking() {
           setNeedsWhitelist(true);
           throw new Error('您不在白名单中，请先申请使用权限');
         }
-        if (res.status === 403 && data.error && data.error.includes('因触发')) {
+        if (res.status === 403 && data.structured_penalty) {
+          setBannedErrorMsg(`${formData.student_name}（学号：${formData.student_id}）${data.error}`);
+          const penalty = { ...data.structured_penalty, student_name: formData.student_name };
+          setStructuredPenalty(penalty);
+          setBannedViolations(penalty.violation_records || []);
+          setShowBannedModal(true);
+          return;
+        } else if (res.status === 403 && data.error && data.error.includes('因触发')) {
           setBannedErrorMsg(`${formData.student_name}（学号：${formData.student_id}）${data.error}`);
           const vRes = await fetch('/api/violations/my', {
             method: 'POST',
@@ -442,7 +475,7 @@ export default function Booking() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-red-900">账号受限，预约失败</h3>
-                  <p className="text-sm text-red-700 mt-0.5">{bannedErrorMsg}</p>
+                  {!structuredPenalty && <p className="text-sm text-red-700 mt-0.5">{bannedErrorMsg}</p>}
                 </div>
               </div>
               <button onClick={() => setShowBannedModal(false)} className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full transition-colors">
@@ -451,7 +484,36 @@ export default function Booking() {
             </div>
             
             <div className="p-6 overflow-y-auto flex-1 bg-neutral-50/50">
-              <h4 className="text-sm font-bold text-neutral-900 mb-4">您的违规记录</h4>
+              {structuredPenalty && (
+                <>
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-white p-4 rounded-xl border border-neutral-200">
+                      <div className="text-xs text-neutral-500 mb-1">预约人</div>
+                      <div className="font-medium">{structuredPenalty.student_name} ({structuredPenalty.student_id})</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-neutral-200">
+                      <div className="text-xs text-neutral-500 mb-1">解封时间</div>
+                      <div className="font-medium text-red-600">
+                        {structuredPenalty.unban_time ? format(new Date(structuredPenalty.unban_time), 'yyyy-MM-dd HH:mm') : '未知 / 动态评估'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <h4 className="text-sm font-bold text-neutral-900 mb-3">限制原因</h4>
+                  <div className="space-y-3 mb-6">
+                    {filteredRules.map((rule, idx) => (
+                      <div key={idx} className="bg-white p-3 rounded-lg border border-red-100 flex items-center justify-between shadow-sm">
+                        <span className="font-medium text-neutral-800">{rule.rule_name}</span>
+                        <span className="text-xs font-bold px-2 py-1 bg-red-50 text-red-700 rounded-md">
+                          {rule.penalty_method === 'BAN' ? (rule.duration_days ? `封禁 ${rule.duration_days} 天` : '封禁') : (rule.penalty_method === 'REQUIRE_APPROVAL' ? '转为需审批' : '使用受限')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <h4 className="text-sm font-bold text-neutral-900 mb-4">触发违规记录</h4>
               <div className="space-y-4">
                 {bannedViolations.length === 0 ? (
                   <p className="text-sm text-neutral-500 text-center py-8">暂无违规记录</p>
@@ -480,6 +542,7 @@ export default function Booking() {
                             </span>
                             <div className="text-sm font-medium text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}</div>
                             <div className="text-xs text-neutral-500 mt-1">关联仪器：{v.equipment_name}</div>
+                            {v.booking_code && <div className="text-xs text-neutral-500 mt-0.5">预约码：{v.booking_code}</div>}
                           </div>
                           
                           <div className="flex flex-col items-end gap-2">
@@ -554,6 +617,21 @@ export default function Booking() {
                   })
                 )}
               </div>
+            </div>
+            
+            <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex justify-end gap-3">
+              <button 
+                onClick={() => setShowBannedModal(false)}
+                className="px-6 py-2.5 rounded-xl text-neutral-600 font-medium hover:bg-neutral-200 transition-colors"
+              >
+                关闭
+              </button>
+              <button
+                onClick={() => navigate('/violations')}
+                className="px-6 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors shadow-sm"
+              >
+                查询完整记录与申诉
+              </button>
             </div>
           </div>
         </div>

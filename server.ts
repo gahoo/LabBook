@@ -525,12 +525,12 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   
   const triggeredRules: string[] = [];
   const triggeredViolationIds: number[] = [];
-  const triggeredRulesDetails: { rule_id: number, rule_name: string, contributing_ids: number[] }[] = [];
+  const triggeredRulesDetails: { rule_id: number, rule_name: string, contributing_ids: number[], violation_types: string[], penalty_method: string, duration_days: number, params: any }[] = [];
   let maxUnbanTime: Date | null = null;
 
   // 1. Check fixed duration penalties
   const fixedPenalties = db.prepare(`
-    SELECT p.*, r.name as rule_name, r.trigger_config, r.violation_type FROM user_penalties p
+    SELECT p.*, r.name as rule_name, r.trigger_config, r.violation_type, r.action_config FROM user_penalties p
     JOIN penalty_rules r ON p.rule_id = r.id
     WHERE p.student_id = ? AND p.end_time > ? AND p.status = 'active'
   `).all(student_id, nowStr) as any[];
@@ -556,7 +556,33 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       });
     }
     
-    triggeredRulesDetails.push({ rule_id: p.rule_id, rule_name: formattedRuleName, contributing_ids: cIds });
+    let rawViolationTypes: string[] = [];
+    try {
+      if (p.trigger_config) {
+        const tg = JSON.parse(p.trigger_config);
+        rawViolationTypes = tg.violation_types || [tg.violation_type || p.violation_type];
+      } else {
+        rawViolationTypes = [p.violation_type];
+      }
+    } catch(e) {}
+    
+    let durationDays = 0;
+    try {
+      if (p.action_config) {
+        const ac = JSON.parse(p.action_config);
+        durationDays = ac.duration_days || 0;
+      }
+    } catch(e) {}
+
+    triggeredRulesDetails.push({ 
+      rule_id: p.rule_id, 
+      rule_name: formattedRuleName, 
+      contributing_ids: cIds,
+      violation_types: rawViolationTypes,
+      penalty_method: p.penalty_method,
+      duration_days: durationDays,
+      params: params
+    });
     
     if (p.penalty_method === 'BAN') {
       penaltyMethod = 'BAN';
@@ -650,7 +676,15 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       currentViolationIds.forEach(id => {
         if (!triggeredViolationIds.includes(id)) triggeredViolationIds.push(id);
       });
-      triggeredRulesDetails.push({ rule_id: rule.id, rule_name: formattedRuleName, contributing_ids: currentViolationIds });
+      triggeredRulesDetails.push({ 
+        rule_id: rule.id, 
+        rule_name: formattedRuleName, 
+        contributing_ids: currentViolationIds,
+        violation_types: violationTypes,
+        penalty_method: action.type === 'ban' ? 'BAN' : (action.type === 'require_approval' ? 'REQUIRE_APPROVAL' : 'RESTRICTED'),
+        duration_days: action.duration_days || 0,
+        params: action.params || {}
+      });
       
       let ruleUnbanTime: Date | null = null;
       if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
@@ -748,7 +782,43 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     }
   }
 
-  return { isPenalized, penaltyMethod, reason, restrictions, violation_ids: triggeredViolationIds, triggered_rules_details: triggeredRulesDetails };
+  let violationRecords: any[] = [];
+  let structuredPenalty: any = null;
+
+  if (isPenalized) {
+    if (triggeredViolationIds.length > 0) {
+      const placeholders = triggeredViolationIds.map(() => '?').join(',');
+      violationRecords = db.prepare(`
+        SELECT v.id, v.student_id, v.reservation_id, v.violation_type, v.violation_time, v.duration_minutes, v.status, v.remark, e.name as equipment_name, r.booking_code 
+        FROM violation_records v
+        LEFT JOIN reservations r ON v.reservation_id = r.id
+        LEFT JOIN equipment e ON r.equipment_id = e.id
+        WHERE v.id IN (${placeholders})
+        ORDER BY v.violation_time DESC
+      `).all(...triggeredViolationIds) as any[];
+    }
+    
+    let studentName = student_id;
+
+    structuredPenalty = {
+      student_id,
+      student_name: studentName,
+      unban_time: maxUnbanTime ? maxUnbanTime.toISOString() : null,
+      penalty_method: penaltyMethod,
+      triggered_rules: triggeredRulesDetails,
+      violation_records: violationRecords || []
+    };
+  }
+
+  return { 
+    isPenalized, 
+    penaltyMethod, 
+    reason, 
+    restrictions, 
+    violation_ids: triggeredViolationIds, 
+    triggered_rules_details: triggeredRulesDetails,
+    structured_penalty: structuredPenalty
+  };
 }
 
 // API Routes
@@ -1175,7 +1245,11 @@ app.post('/api/reservations', (req, res) => {
   }
 
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
-    return res.status(403).json({ error: penaltyCheck.reason, violation_ids: penaltyCheck.violation_ids });
+    return res.status(403).json({ 
+      error: penaltyCheck.reason, 
+      violation_ids: penaltyCheck.violation_ids,
+      structured_penalty: penaltyCheck.structured_penalty 
+    });
   }
   
   if (equipment.is_hidden) {
@@ -1454,7 +1528,10 @@ app.post('/api/reservations/update', (req, res) => {
 
   const penaltyCheck = checkUserPenalty(reservation.student_id, reservation.equipment_id);
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
-    return res.status(403).json({ error: penaltyCheck.reason });
+    return res.status(403).json({ 
+      error: penaltyCheck.reason,
+      structured_penalty: penaltyCheck.structured_penalty
+    });
   }
 
   const start = new Date(start_time);
