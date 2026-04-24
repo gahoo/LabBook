@@ -477,7 +477,11 @@ const typeTranslationMap: Record<string, string> = {
   overdue: '超时',
   'no-show': '爽约',
   'late-cancel': '临期取消',
-  'late_cancel': '临期取消'
+  'late_cancel': '临期取消',
+  hygiene_issue: '卫生不达标',
+  improper_operation: '违规操作',
+  proxy_booking: '代预约',
+  other_manual: '其他违规'
 };
 
 function formatRuleName(ruleName: string, triggerConfigStr?: string, defaultViolationType?: string) {
