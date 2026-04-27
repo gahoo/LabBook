@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { flattenObj, unflattenObj } from '../../../utils';
-import { Save, Bell, Mail, Webhook } from 'lucide-react';
+import { Save, Bell, Mail, Webhook, Settings, Play } from 'lucide-react';
 
 interface NotificationsTabProps {
   token: string | null;
@@ -10,13 +10,14 @@ interface NotificationsTabProps {
 export default function NotificationsTab({ token }: NotificationsTabProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [config, setConfig] = useState<any>({
-    smtp: { enabled: false },
-    webhook: { enabled: false, events: {} },
-    email: { events: {} }
-  });
+    const [config, setConfig] = useState<any>({
+      notification_interval_seconds: '1',
+      smtp: { enabled: false, admin_emails: '' },
+      webhook: { enabled: false, events: {} },
+      email: { events: {} }
+    });
 
-  const EVENT_TYPES = [
+    const EVENT_TYPES = [
     { id: 'booking_created', name: '预约成功', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}' },
     { id: 'booking_cancelled', name: '预约取消', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}' },
     { id: 'violation_created', name: '违规记录', vars: '{{ student_id }}, {{ violation_type }}, {{ equipment_name }}' },
@@ -86,6 +87,55 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     });
   };
 
+  const testConnection = async (type: 'smtp' | 'webhook') => {
+    const toastId = toast.loading(`正在测试 ${type.toUpperCase()} 连接...`);
+    try {
+      const res = await fetch('/api/admin/notifications/test-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ type, config: config[type] })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message, { id: toastId });
+      } else {
+        toast.error(data.error, { id: toastId });
+      }
+    } catch (e) {
+      toast.error('网络请求失败', { id: toastId });
+    }
+  };
+
+  const testEvent = async (event: string, type: 'smtp' | 'webhook') => {
+    const toastId = toast.loading(`正在测试推送 ${event}...`);
+    try {
+      const res = await fetch('/api/admin/notifications/test-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          event, 
+          type, 
+          config: config[type],
+          eventConfig: config[type]?.events?.[event] || {}
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message, { id: toastId });
+      } else {
+        toast.error(data.error, { id: toastId });
+      }
+    } catch (e) {
+      toast.error('网络请求失败', { id: toastId });
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-neutral-500">加载中...</div>;
 
   return (
@@ -109,6 +159,38 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* 全局设置区 */}
+        <div className="bg-white p-6 rounded-lg border border-neutral-200 col-span-1 lg:col-span-2">
+          <h3 className="text-base font-medium text-neutral-900 flex items-center gap-2 mb-4">
+            <Settings className="w-4 h-4" />
+            全局流控限制
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-neutral-600 mb-1">通知发送时间间隔(秒)</label>
+              <input
+                type="number"
+                value={config.notification_interval_seconds || '1'}
+                onChange={(e) => updateConfig(['notification_interval_seconds'], e.target.value)}
+                placeholder="1"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm"
+              />
+              <p className="text-xs text-neutral-500 mt-1">控制消息分发队列在发送时的最快吐出速率，防止过度拥堵或被拉黑限制。</p>
+            </div>
+            <div>
+              <label className="block text-sm text-neutral-600 mb-1">系统管理员邮箱列表</label>
+              <input
+                type="text"
+                value={config.smtp?.admin_emails || ''}
+                onChange={(e) => updateConfig(['smtp', 'admin_emails'], e.target.value)}
+                placeholder="admin1@test.com, admin2@test.com"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm"
+              />
+              <p className="text-xs text-neutral-500 mt-1">支持英文逗号分隔的多邮箱。后续可配置将部分事件抄送给名单成员。</p>
+            </div>
+          </div>
+        </div>
+
         {/* SMTP 配置区 */}
         <div className="bg-white p-6 rounded-lg border border-neutral-200">
           <div className="flex items-center justify-between mb-4">
@@ -116,15 +198,23 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               <Mail className="w-4 h-4" />
               SMTP 邮件服务器
             </h3>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-sm text-neutral-600">全局启用</span>
-              <input
-                type="checkbox"
-                className="w-4 h-4 text-indigo-600 rounded"
-                checked={String(config.smtp?.enabled) === 'true'}
-                onChange={(e) => updateConfig(['smtp', 'enabled'], e.target.checked ? 'true' : 'false')}
-              />
-            </label>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => testConnection('smtp')} 
+                className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                <Play className="w-3 h-3" /> 测试连接
+              </button>
+              <label className="flex items-center gap-2 cursor-pointer border-l border-neutral-300 pl-4">
+                <span className="text-sm text-neutral-600">全局启用</span>
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 text-indigo-600 rounded"
+                  checked={String(config.smtp?.enabled) === 'true'}
+                  onChange={(e) => updateConfig(['smtp', 'enabled'], e.target.checked ? 'true' : 'false')}
+                />
+              </label>
+            </div>
           </div>
           
           <div className="grid grid-cols-2 gap-4">
@@ -198,15 +288,23 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               <Webhook className="w-4 h-4" />
               Webhook 频道设定
             </h3>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-sm text-neutral-600">全局启用</span>
-              <input
-                type="checkbox"
-                className="w-4 h-4 text-indigo-600 rounded"
-                checked={String(config.webhook?.enabled) === 'true'}
-                onChange={(e) => updateConfig(['webhook', 'enabled'], e.target.checked ? 'true' : 'false')}
-              />
-            </label>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => testConnection('webhook')} 
+                className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                <Play className="w-3 h-3" /> 测试连接
+              </button>
+              <label className="flex items-center gap-2 cursor-pointer border-l border-neutral-300 pl-4">
+                <span className="text-sm text-neutral-600">全局启用</span>
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 text-indigo-600 rounded"
+                  checked={String(config.webhook?.enabled) === 'true'}
+                  onChange={(e) => updateConfig(['webhook', 'enabled'], e.target.checked ? 'true' : 'false')}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -278,15 +376,23 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                         <Webhook className="w-4 h-4 text-neutral-400" />
                         Webhook 模板
                       </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 text-indigo-600 rounded"
-                          checked={webhookEnabled}
-                          onChange={(e) => updateConfig(['webhook', 'events', evt.id, 'enabled'], e.target.checked ? 'true' : 'false')}
-                        />
-                        <span className="text-xs text-neutral-600">启用该事件</span>
-                      </label>
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => testEvent(evt.id, 'webhook')} 
+                          className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          <Play className="w-3 h-3" /> 测试模板
+                        </button>
+                        <label className="flex items-center gap-2 cursor-pointer border-l pl-4 border-neutral-300">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-indigo-600 rounded"
+                            checked={webhookEnabled}
+                            onChange={(e) => updateConfig(['webhook', 'events', evt.id, 'enabled'], e.target.checked ? 'true' : 'false')}
+                          />
+                          <span className="text-xs text-neutral-600">启用该事件</span>
+                        </label>
+                      </div>
                     </div>
                     <p className="text-xs text-neutral-500 mb-2">
                       可用变量：<code className="text-indigo-600 bg-indigo-50 px-1 rounded">{evt.vars}</code>
@@ -307,15 +413,41 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                         <Mail className="w-4 h-4 text-neutral-400" />
                         Email 模板
                       </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 text-indigo-600 rounded"
-                          checked={emailEnabled}
-                          onChange={(e) => updateConfig(['email', 'events', evt.id, 'enabled'], e.target.checked ? 'true' : 'false')}
-                        />
-                        <span className="text-xs text-neutral-600">启用该事件</span>
-                      </label>
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => testEvent(evt.id, 'smtp')} 
+                          className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          <Play className="w-3 h-3" /> 测试模板
+                        </button>
+                        <label className="flex items-center gap-1 cursor-pointer border-l pl-4 border-neutral-300">
+                          <input
+                            type="checkbox"
+                            className="w-3.5 h-3.5 text-indigo-600 rounded"
+                            checked={String(config.email?.events?.[evt.id]?.notify_user) !== 'false'}
+                            onChange={(e) => updateConfig(['email', 'events', evt.id, 'notify_user'], e.target.checked ? 'true' : 'false')}
+                          />
+                          <span className="text-xs text-neutral-600">发给当事人</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="w-3.5 h-3.5 text-indigo-600 rounded"
+                            checked={String(config.email?.events?.[evt.id]?.notify_admin) === 'true'}
+                            onChange={(e) => updateConfig(['email', 'events', evt.id, 'notify_admin'], e.target.checked ? 'true' : 'false')}
+                          />
+                          <span className="text-xs text-neutral-600">抄送管理员</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer border-l pl-4 border-neutral-300">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-indigo-600 rounded"
+                            checked={emailEnabled}
+                            onChange={(e) => updateConfig(['email', 'events', evt.id, 'enabled'], e.target.checked ? 'true' : 'false')}
+                          />
+                          <span className="text-xs text-neutral-600">启用该事件</span>
+                        </label>
+                      </div>
                     </div>
                     
                     <div className="space-y-3">

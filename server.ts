@@ -10,7 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
-import { notifyEvent } from './src/services/notificationService';
+import { marked } from 'marked';
+import { notifyEvent, processNotificationQueue } from './src/services/notificationService';
 
 const app = express();
 app.use(express.json());
@@ -238,6 +239,21 @@ try {
         contributing_violation_ids TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      target TEXT,
+      reference_code TEXT,
+      payload TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      retry_count INTEGER DEFAULT 0,
+      next_retry_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
   
   try {
@@ -308,6 +324,14 @@ export function reloadBackupCron() {
 }
 
 reloadBackupCron();
+
+// Start the notification processor
+processNotificationQueue(db).catch(console.error);
+
+// Fallback cron for retries or stuck tasks
+cron.schedule('* * * * *', () => {
+  processNotificationQueue(db).catch(console.error);
+});
 
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
@@ -1432,6 +1456,14 @@ app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) 
   
   db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run(whitelist.join('\n'), app.equipment_id);
   db.prepare("UPDATE whitelist_applications SET status = 'approved' WHERE id = ?").run(id);
+
+  notifyEvent(db, 'whitelist_resolved', {
+    student_id: app.student_id,
+    student_name: app.student_name,
+    equipment_name: equipment.name,
+    resolution: 'approved',
+    reason: app.reason || ''
+  }, app.student_email || undefined);
   
   res.json({ success: true });
 });
@@ -1439,7 +1471,20 @@ app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) 
 // Admin reject whitelist application
 app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) => {
   const { id } = req.params;
+  const appRecord = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
+  if (!appRecord) return res.status(404).json({ error: '未找到申请' });
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(appRecord.equipment_id) as any;
+
   db.prepare("UPDATE whitelist_applications SET status = 'rejected' WHERE id = ?").run(id);
+
+  notifyEvent(db, 'whitelist_resolved', {
+    student_id: appRecord.student_id,
+    student_name: appRecord.student_name,
+    equipment_name: equipment ? equipment.name : '未知仪器',
+    resolution: 'rejected',
+    reason: appRecord.reason || ''
+  }, appRecord.student_email || undefined);
+
   res.json({ success: true });
 });
 
@@ -1814,6 +1859,8 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
   const { student_id, student_name, supervisor, phone, email, start_time, end_time, status } = req.body;
   
+  const oldRes = db.prepare('SELECT r.status, r.booking_code, e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
+
   const stmt = db.prepare(`
     UPDATE reservations 
     SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, status = ?
@@ -1821,6 +1868,26 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   `);
   stmt.run(student_id, student_name, supervisor, phone, email, start_time, end_time, status, id);
   
+  if (oldRes && oldRes.status === 'pending' && status === 'approved') {
+    notifyEvent(db, 'booking_approved', {
+      booking_code: oldRes.booking_code,
+      student_id,
+      student_name,
+      equipment_name: oldRes.equipment_name,
+      start_time,
+      end_time
+    }, email || undefined);
+  } else if (oldRes && oldRes.status === 'pending' && (status === 'cancelled' || status === 'rejected')) {
+    notifyEvent(db, 'booking_rejected', {
+      booking_code: oldRes.booking_code,
+      student_id,
+      student_name,
+      equipment_name: oldRes.equipment_name,
+      start_time,
+      end_time
+    }, email || undefined);
+  }
+
   res.json({ success: true });
 });
 
@@ -2141,6 +2208,7 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   
+  const violationRecord = db.prepare('SELECT v.*, r.student_name, r.email FROM violation_records v LEFT JOIN reservations r ON v.reservation_id = r.id WHERE v.id = ?').get(id) as any;
   const violation = db.prepare('SELECT remark FROM violation_records WHERE id = ?').get(id) as any;
   let remarkObj: any = {};
   if (violation && violation.remark) {
@@ -2177,6 +2245,16 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
     )
   `).run(`${id}`, `%,${id},%`, `${id},%`, `%,${id}`);
 
+  if (violationRecord && remarkObj.appeal_reason) {
+    notifyEvent(db, 'appeal_resolved', {
+      violation_id: id,
+      student_id: violationRecord.student_id,
+      student_name: violationRecord.student_name || '未知',
+      resolution: 'revoked',
+      reply: remarkObj.appeal_reply
+    }, violationRecord.email || undefined);
+  }
+
   res.json({ success: true });
 });
 
@@ -2184,6 +2262,7 @@ app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   
+  const violationRecord = db.prepare('SELECT v.*, r.student_name, r.email FROM violation_records v LEFT JOIN reservations r ON v.reservation_id = r.id WHERE v.id = ?').get(id) as any;
   const violation = db.prepare('SELECT remark FROM violation_records WHERE id = ?').get(id) as any;
   let remarkObj: any = {};
   if (violation && violation.remark) {
@@ -2211,6 +2290,16 @@ app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
   // Note: We don't automatically restore user_penalties because we don't know if they should still be active
   // based on current time, or if other violations have occurred. The next violation will trigger a re-evaluation.
   
+  if (violationRecord && remarkObj.appeal_reason) {
+    notifyEvent(db, 'appeal_resolved', {
+      violation_id: id,
+      student_id: violationRecord.student_id,
+      student_name: violationRecord.student_name || '未知',
+      resolution: 'restored',
+      reply: remarkObj.appeal_reply
+    }, violationRecord.email || undefined);
+  }
+
   res.json({ success: true });
 });
 
@@ -2218,6 +2307,7 @@ app.post('/api/admin/violation-records/:id/reject-appeal', adminAuth, (req, res)
   const { id } = req.params;
   const { remark } = req.body;
   
+  const violationRecord = db.prepare('SELECT v.*, r.student_name, r.email FROM violation_records v LEFT JOIN reservations r ON v.reservation_id = r.id WHERE v.id = ?').get(id) as any;
   const violation = db.prepare('SELECT remark FROM violation_records WHERE id = ?').get(id) as any;
   let remarkObj: any = {};
   if (violation && violation.remark) {
@@ -2239,6 +2329,17 @@ app.post('/api/admin/violation-records/:id/reject-appeal', adminAuth, (req, res)
   remarkObj.appeal_reply = newRemarkObj.admin_note || '申诉已驳回';
   
   db.prepare("UPDATE violation_records SET remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), id);
+
+  if (violationRecord && remarkObj.appeal_reason) {
+    notifyEvent(db, 'appeal_resolved', {
+      violation_id: id,
+      student_id: violationRecord.student_id,
+      student_name: violationRecord.student_name || '未知',
+      resolution: 'rejected',
+      reply: remarkObj.appeal_reply
+    }, violationRecord.email || undefined);
+  }
+
   res.json({ success: true });
 });
 
@@ -2650,6 +2751,153 @@ app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
   
   const logs = db.prepare(query).all(...params);
   res.json(logs);
+});
+
+app.post('/api/admin/notifications/test-connection', adminAuth, async (req, res) => {
+  const { type, config } = req.body;
+  
+  try {
+    if (type === 'smtp') {
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: config.host,
+        port: parseInt(config.port || '465', 10),
+        secure: parseInt(config.port || '465', 10) === 465,
+        auth: { user: config.user, pass: config.pass }
+      });
+      await transporter.verify();
+      res.json({ success: true, message: 'SMTP 连接成功' });
+    } else if (type === 'webhook') {
+      const response = await fetch(config.url, {
+        method: 'POST',
+        headers: config.headers ? JSON.parse(config.headers) : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true, message: 'Ping from booking system' }),
+      });
+      if (response.ok) {
+        res.json({ success: true, message: `Webhook 测试成功, 状态码: ${response.status}` });
+      } else {
+        throw new Error(`Webhook 响应异常, 状态码: ${response.status}`);
+      }
+    } else {
+      res.status(400).json({ error: '不支持的类型' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || String(error) });
+  }
+});
+
+app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
+  const { event, type, config, eventConfig } = req.body;
+  
+  // Mock Data
+  const mockData: Record<string, string> = {
+    booking_code: 'TEST-1234',
+    student_id: '12345678',
+    student_name: '测试用户',
+    equipment_name: '蔡司LSM980激光共聚焦显微镜',
+    start_time: new Date().toISOString(),
+    end_time: new Date(Date.now() + 3600000).toISOString(),
+    action: 'test_action',
+    reason: '测试原因',
+    resolution: 'approved',
+    reply: '测试回复'
+  };
+
+  try {
+    const { renderTemplate } = await import('./src/services/notificationService');
+    
+    if (type === 'webhook') {
+      const payloadString = renderTemplate(eventConfig.template || '', mockData);
+      let payload;
+      try {
+        payload = JSON.parse(payloadString);
+      } catch(e) {
+        throw new Error('解析Webhook模板JSON失败');
+      }
+      
+      const response = await fetch(config.url, {
+        method: 'POST',
+        headers: config.headers ? JSON.parse(config.headers) : { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+      res.json({ success: true, message: 'Webhook 推送成功' });
+      
+    } else if (type === 'smtp') {
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: config.host,
+        port: parseInt(config.port || '465', 10),
+        secure: parseInt(config.port || '465', 10) === 465,
+        auth: { user: config.user, pass: config.pass }
+      });
+      
+      const subject = renderTemplate(eventConfig.subject || '测试通知', mockData);
+      const markdown = renderTemplate(eventConfig.template || '', mockData);
+      const html = await marked.parse(markdown);
+      
+      const toEmail = req.body.to_email || config.user; // Send to themselves for testing if not provided
+
+      await transporter.sendMail({
+        from: `"${config.from_name || 'System'}" <${config.from_email || config.user}>`,
+        to: toEmail,
+        subject,
+        html
+      });
+      res.json({ success: true, message: '邮件推送测试成功' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || String(error) });
+  }
+});
+
+app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
+  const { status, reference_code, page = '1', limit = '50' } = req.query;
+  try {
+    let query = `SELECT id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at FROM notifications WHERE 1=1`;
+    const params: any[] = [];
+    
+    if (status && status !== '全部' && status !== 'All') {
+      const statusMap: Record<string, string> = {
+        '待发送': 'pending',
+        '重试中': 'retrying',
+        '发送成功': 'success',
+        '发送失败': 'failed'
+      };
+      const dbStatus = statusMap[status as string] || status;
+      query += ` AND status = ?`;
+      params.push(dbStatus);
+    }
+    
+    if (reference_code) {
+      query += ` AND reference_code LIKE ?`;
+      params.push(`%${reference_code}%`);
+    }
+
+    const countQuery = query.replace('id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at', 'count(*) as total');
+    const totalRow = db.prepare(countQuery).get(...params) as any;
+    const total = totalRow ? totalRow.total : 0;
+
+    query += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    params.push(parseInt(limit as string), offset);
+
+    const logs = db.prepare(query).all(...params);
+    res.json({ logs, total });
+  } catch (error) {
+    console.error('Error fetching delivery logs', error);
+    res.status(500).json({ error: 'Failed to fetch delivery logs' });
+  }
+});
+
+app.post('/api/admin/delivery-logs/:id/retry', adminAuth, (req, res) => {
+  try {
+      db.prepare(`UPDATE notifications SET status = 'pending', retry_count = 0, next_retry_time = CURRENT_TIMESTAMP WHERE id = ?`).run(req.params.id);
+      setTimeout(() => { processNotificationQueue(db).catch(console.error); }, 100);
+      res.json({ success: true });
+  } catch(e) {
+      res.status(500).json({ error: 'Failed to retry' });
+  }
 });
 
 let noShowScannerInterval: NodeJS.Timeout | null = null;

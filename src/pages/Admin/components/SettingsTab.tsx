@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { Save, Upload, X, Settings, ShieldAlert } from 'lucide-react';
 import BackupTab from './BackupTab';
+import NotificationsTab from './NotificationsTab';
+import DeliveryLogsTab from './DeliveryLogsTab';
 
 interface SettingsTabProps {
   token: string;
 }
 
 export default function SettingsTab({ token }: SettingsTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'system' | 'backup'>('system');
+  const [activeSubTab, setActiveSubTab] = useState<'system' | 'backup' | 'notifications' | 'delivery_logs'>('system');
   const [appName, setAppName] = useState('LabBook');
   const [defaultRoute, setDefaultRoute] = useState('/');
   const [appLogo, setAppLogo] = useState('');
@@ -91,18 +93,30 @@ export default function SettingsTab({ token }: SettingsTabProps) {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-      <div className="flex border-b border-neutral-200 bg-neutral-50 px-2">
+      <div className="flex border-b border-neutral-200 bg-neutral-50 px-2 overflow-x-auto">
         <button
           onClick={() => setActiveSubTab('system')}
-          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'system' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeSubTab === 'system' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
         >
           系统常规设置
         </button>
         <button
           onClick={() => setActiveSubTab('backup')}
-          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'backup' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeSubTab === 'backup' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
         >
           数据备份
+        </button>
+        <button
+          onClick={() => setActiveSubTab('notifications')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeSubTab === 'notifications' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
+        >
+          通知配置
+        </button>
+        <button
+          onClick={() => setActiveSubTab('delivery_logs')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeSubTab === 'delivery_logs' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
+        >
+          投递队列与日志
         </button>
       </div>
 
@@ -198,6 +212,14 @@ export default function SettingsTab({ token }: SettingsTabProps) {
 
       {activeSubTab === 'backup' && (
         <BackupTab token={token} />
+      )}
+
+      {activeSubTab === 'notifications' && (
+        <NotificationsTab token={token} />
+      )}
+
+      {activeSubTab === 'delivery_logs' && (
+        <DeliveryLogsTab token={token} />
       )}
     </div>
   );
