@@ -42,26 +42,32 @@
   - 后端安装 `marked` 及 `@types/marked`。
   - 在 `notificationService.ts` 发送邮件的逻辑里，将之前渲染变量后的 Markdown 用 `marked.parse()` 转换为 HTML 后再交给 Nodemailer 发送。
 
-- [ ] **任务 12: 建立 notification_logs 表及写入逻辑**
-  - 在 `server.ts` 或对应 DB 初始化脚本中增加 `notification_logs` 表机构。
-  - 在 `notificationService.ts` 的发送外发代码处包一层记录日志的逻辑（记录通道、目标、状态及异常）。
-  - 创建获取通知日志的前端查询 API 接口 (`GET /api/admin/notification-logs`)。
+- [ ] **任务 12: 建立 notifications 持续化队列表及预渲染入队**
+  - 在 `server.ts` 或 DB 初始化处增加 `notifications` 队列表构（加入 `reference_code` 及保存发送镜像内容的 `payload` 等字段）。
+  - 重构现有的 `dispatchWebhook` 与 `dispatchEmail`，让业务流转为：获取设定 → 立刻合并数据完成模板渲染（生成不可变的富文本/JSON快照） → 将目的地 `target` 即镜像载入数据库标记为 `pending`。
+  - 成功落库后触发内存函数启动投递消费（任务17）。
 
 - [ ] **任务 13: 设置页组件重构 (Split Settings Component)**
-  - 将庞大的 `SettingsTab.tsx` 重构拆分为左侧导航：General Settings, Backup, Notification Setup, Delivery Logs。
+  - 将庞大的 `SettingsTab.tsx` 保持现有的风格横向选项卡拆分为：General, Backup, Notifications, Delivery Logs。
   - 将目前放在 Admin Root 层的 `NotificationsTab` 移入 `SettingsTab` 内部。
-  - 创建并编写简单的 `DeliveryLogs` 列表供展示第12步搜集的投递结果。
+  - 创建 `DeliveryLogs` 列表供展示队列明细，增加“只看失败”、“发送成功”、“待发送” 的横向过滤以及根据 `reference_code` 相关信息搜索的能力。
 
-- [ ] **任务 14: 增加多业务场景通知钩子与管理员发送逻辑**
-  - 重构 `dispatchEmail`，让其可以同时检查并发送给用户 (`notify_user`) 及 管理员 (`smtp.admin_emails` -> `notify_admin`)。
-  - 在 `server.ts` 中新增以下事件发信：`booking_approved`, `booking_rejected` (预约审批)，`appeal_resolved` (处理违规申诉)，`whitelist_resolved` (白名单审批)。
+- [ ] **任务 14: 增加多业务场景通知钩子与多目标管理员选项**
+  - 在生成队伍记录的过程中支持 `notify_user` 和通过 `smtp.admin_emails` 生成投递给 `notify_admin` 管理员的多条任务记录。
+  - 在 `server.ts` 中新增以下事件推队：`booking_approved`, `booking_rejected` (预约审批)，`appeal_resolved` (处理违规申诉)，`whitelist_resolved` (白名单审批)。
 
-- [ ] **任务 15: 后端实现连通性与事件测试接口**
+- [ ] **任务 15: 后端实现连通性与事件模拟测试接口**
   - 新增 `POST /api/admin/notifications/test-connection`: 接收邮件 SMTP 及 Webhook 的当前输入配置尝试连通，返回成功/错误信息。
-  - 新增 `POST /api/admin/notifications/test-event`: 接收某事具体的 Event ID 及其测试模板，生成一份 Mock Context （含如 `student_id: 'test_user'` 等）并调用通知模块单次发信逻辑，返回结果日志。
+  - 新增 `POST /api/admin/notifications/test-event`: 接收具体 Event ID 及其测试模板，生成一份 Mock Context，直接走网关发送并抛回实时日志（测试接口不走消息队列）。
 
-- [ ] **任务 16: 前端 UI 引入发送目标复选、测试按钮与新事件**
-  - 在基础设置内加管理员邮箱输入框 `smtp.admin_emails`。
-  - 展开每个 Email 事件面板时补充 `发送给用户` 和 `发送给管理员` 的多选复选框。
-  - 在 Webhook 与 SMTP 面板分别增加连通性测试按钮并拦截结果。
-  - 在每个事件的 Webhook 和 Email 自定义模板编辑器旁增加“用此模板试发 (Test this template)” 的动作按钮。
+- [ ] **任务 16: 前端 UI 更新设置选项板与操作动作**
+  - 基础设置网关内加上“全局流控：发信最小间隔（秒）”，以及管理员邮箱集合 `smtp.admin_emails`。
+  - 事件手风琴下补充 `[ ] 发生对象` 和 `[ ] 系统管理员` 复选框。
+  - 提供上述提及的各类“连通性试发”和“模板试发”触接按钮。
+
+- [ ] **任务 17: 开发持久化抗灾的内置队列 Processor**
+  - 在 `notificationService.ts` 下添加 `processNotificationQueue` 作为异步 Worker。
+  - 一旦被唤醒则检查全局 `isProcessing` 锁防止复发拉取；逐条提取 `next_retry_time <= now` 且状态待处理的任务。
+  - 成功则变更 DB 状态；异常则利用指数退避算法更新 `retry_count` 及 `next_retry_time` 放入 `retrying` 池内等待下次兜底唤起。
+  - 每发处理一个条目无论成败均执行 `await sleep(interval)` 防止网关限流。
+  - 修改 `server.ts` 结合定时任务模块，每 1 分钟无条件调用一次拉取漏扫任务作为安全兜底网。

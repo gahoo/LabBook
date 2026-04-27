@@ -51,37 +51,48 @@
 * `appeal_resolved`: 违规申诉处理结果
 * `whitelist_resolved`: 白名单申请审核结果
 
-### 3.3 通知日志表 (Notification Logs Table)
-独立数据表 `notification_logs` 收敛发送状态：
+### 3.3 通知队列与记录表 (Notifications Table)
+独立数据表 `notifications` 收敛发送状态，作为持久化队列和投递日志使用：
 * `id`: INTEGER PK
 * `event`: TEXT (如 'booking_created')
 * `channel`: TEXT ('email' 或 'webhook')
-* `target`: TEXT (目标邮箱地址 或 Webhook URL)
-* `status`: TEXT ('success' 或 'failed')
-* `error_message`: TEXT (失败堆栈，方便排查)
+* `target`: TEXT (发送目标：具体 Email 地址 或 Webhook URL。作为历史镜像保存，防止配置被改后无记录可查)
+* `reference_code`: TEXT (关联单号：如预约码，便于后期在排查时精准定向搜索)
+* `payload`: TEXT (【镜像持久化】保存发送所需的“完整已渲染 Markdown/HTML” 或 “完整编译后 JSON”。不用每次读盘重建，保证发送内容的绝对准确且抗原数据删除)
+* `status`: TEXT ('pending', 'retrying', 'success', 'failed')
+* `retry_count`: INTEGER (当前重试次数，默认0)
+* `next_retry_time`: DATETIME (下次调度时间)
+* `error_message`: TEXT (最近一次异常信息，方便排查)
 * `created_at`: DATETIME
+* `updated_at`: DATETIME
 
 ## 4. 后端架构 (Backend Architecture)
 
 ### 4.1 模板渲染引擎 (Template Render)
 实现统一的变量替换函数 `renderTemplate`，即可用于 Webhook JSON，又可用于邮件标题和正文的渲染。
 
-### 4.2 通知分发服务 (Notification Service)
+### 4.2 通知分发服务 (Notification Service - Enqueue)
 1. 在核心业务处抛出事件。
-2. 从 `settings` 表加载所有通知相关的配置。
-3. **处理 Webhook**: 检查 `webhook.enabled` 和对应事件项。如果为 true，渲染 Payload 并发起异步 POST 请求。记录一条 `notification_logs` (不管成功或失败)。
-4. **处理 Email**: 如果 `smtp.enabled` 及该事件邮箱开启，使用 `marked` 解析 Markdown 为 HTML。根据 `notify_user` 判断投递给发生动作的学生，根据 `notify_admin` 取全局配置中的 `smtp.admin_emails` 分发给管理员，分别执行 `nodemailer.sendMail`。对应产生 `notification_logs` 记录。
+2. **入队模型**: 系统不直接在业务流内发起请求，而是立刻解析收件目标及将模板合并数据生成最终的 Payload 内容快照。在 `notifications` 表内生成一条或多条 `channel: email / webhook` 的 `pending` 记录，并带上关联的 `reference_code`。
+3. 记录落库后立刻通过内存事件（如 `EventEmitter` 或直接调用函数）**唤醒队列处理器**，实现“即时发送”。
+
+### 4.3 后台队列处理器与限流治理 (Queue Processor & Resiliency)
+* **内存异步消费 (In-Memory Worker)**: 队列唤醒后，基于单一全局的 `isProcessing` 锁异步拉取 DB 任务。DB 仅仅做持久化存储。
+* **退避重试 (Exponential Backoff)**: 遇到发送失败时，累加 `retry_count`，并根据退避算法算出下一次的 `next_retry_time`（如 1分钟后、5分钟后），改库状态为 `retrying`。
+* **速率屏蔽 (Rate Limiting)**: 单线程在分发相邻的通知时，执行 `await sleep(interval_seconds)`（在全局设置中配置），防止流量浪涌触发封控。
+* **定时兜底 (Cron Fallback)**: 虽然正常任务入队时会即时触发内存处理器，但退避重试的延迟任务（或者 Node.js 崩溃重启断档）需要定时扫描。依靠系统原有 1 分钟一跑的定时器做一轮兜底扫描，仅拉取 `next_retry_time <= now()` 的任务送入内存进行补发。
 
 ## 5. 前端界面与设置交互设计 (Frontend & Settings UI)
 
 ### 5.1 设置面板组件拆分 (SettingsTab Refactoring)
-为了避免 `SettingsTab.tsx` 过于臃肿，现将整个设置菜单改造成 **“左侧导航字典结构 (Sub-navigation Sidebar/Pills)”**：
+使用与系统主体风格一致的 **“横向选项卡 (Horizontal Tabs)”** 将大体积的 Settings 页面进行平级拆分：
 1. **常规设置 (General Settings)**：包含预约规则、容错规则等。
-2. **备份设置 (Backup Settings)**：自动备份相关的 Cron 与保留策略。
-3. **通知配置 (Notification Setup)**：承担下方所有的配置功能。
-4. **投递日志 (Delivery Logs)**：按时间倒序展示系统所有发往外界被成功或拦下的日志表格，辅助网络排查。
+2. **备份设置 (Backup Settings)**：自动备份相关的设定。
+3. **通知配置 (Notification Setup)**：承担下方通讯管道的配置功能。
+4. **投递队列与日志 (Delivery Logs)**：展示系统所有外发队列状态。支持按 `全部`, `待发送`, `重试中`, `发送成功`, `发送失败` 筛选展示结果。
 
 ### 5.2 基础通信网关配置区 (Gateways)
+* **全局流控**: 发送时间间隔限制 (默认为 1 秒)。
 * **SMTP 邮件网关**: Host, Port, Auth, 发件人，以及全局的 **系统管理员邮箱（支持多填）**。支持【连通性测试按钮】。
 * **Webhook 网关**: URL, Headers。支持【连通性测试按钮】。
 
