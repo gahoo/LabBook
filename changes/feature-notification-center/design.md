@@ -27,6 +27,7 @@
 * `smtp.pass`: "********"
 * `smtp.from_name`: "实验室预约系统"
 * `smtp.from_email`: "no-reply@..."
+* `smtp.admin_emails`: "admin1@example.com, admin2@example.com" (用于接收系统级通知)
 * `webhook.enabled`: "true" / "false"
 * `webhook.url`: "https://hook.example.com/api/send"
 * `webhook.headers`: "{\"Authorization\":\"Bearer token\"}"
@@ -35,52 +36,64 @@
 * `webhook.events.booking_created.enabled`: "true" / "false"
 * `webhook.events.booking_created.template`: "{\"msgtype\": \"text\", \"text\": {\"content\": \"预约成功 {{ booking_code }}\"}}"
 * `email.events.booking_created.enabled`: "true" / "false"
+* `email.events.booking_created.notify_user`: "true" / "false" (是否发给触发事件的学生)
+* `email.events.booking_created.notify_admin`: "true" / "false" (是否发给管理员邮箱)
 * `email.events.booking_created.subject`: "预约成功通知 - {{ equipment_name }}"
-* `email.events.booking_created.template`: "<h1>你好 {{ student_id }}</h1><p>您的预约码是: {{ booking_code }}</p>"
+* `email.events.booking_created.template`: "## 你好 {{ student_id }}\n您的预约码是: **{{ booking_code }}**"
 
-*其他支持的事件如：违规记录生成 (`violation_created`)、账号封禁触发 (`penalty_triggered`)等依此类推。*
+*最新扩充的完整事件列表包括：*
+* `booking_created`: 预约成功
+* `booking_cancelled`: 预约取消
+* `booking_approved`: 预约（需审核）通过
+* `booking_rejected`: 预约（需审核）驳回
+* `violation_created`: 违规记录生成
+* `penalty_triggered`: 触发封禁处罚
+* `appeal_resolved`: 违规申诉处理结果
+* `whitelist_resolved`: 白名单申请审核结果
+
+### 3.3 通知日志表 (Notification Logs Table)
+独立数据表 `notification_logs` 收敛发送状态：
+* `id`: INTEGER PK
+* `event`: TEXT (如 'booking_created')
+* `channel`: TEXT ('email' 或 'webhook')
+* `target`: TEXT (目标邮箱地址 或 Webhook URL)
+* `status`: TEXT ('success' 或 'failed')
+* `error_message`: TEXT (失败堆栈，方便排查)
+* `created_at`: DATETIME
 
 ## 4. 后端架构 (Backend Architecture)
 
 ### 4.1 模板渲染引擎 (Template Render)
-实现统一的变量替换函数 `renderTemplate`，即可用于 Webhook JSON，又可用于邮件标题和正文的渲染：
-```typescript
-function renderTemplate(template: string, data: Record<string, any>): string {
-  return template.replace(/\{\{\s*(.*?)\s*\}\}/g, (match, key) => {
-    return data[key] !== undefined ? String(data[key]) : match;
-  });
-}
-```
+实现统一的变量替换函数 `renderTemplate`，即可用于 Webhook JSON，又可用于邮件标题和正文的渲染。
 
 ### 4.2 通知分发服务 (Notification Service)
 1. 在核心业务处抛出事件。
 2. 从 `settings` 表加载所有通知相关的配置。
-3. **处理 Webhook**: 检查 `webhook.enabled` 和对应事件项（如 `webhook.events.booking_created.enabled`）。如果全部为 true，则提取 Webhook URL、Headers 及该事件的模板。使用上下文 `data` 对象渲染 JSON Payload 模板，发起异步 API POST 请求。
-4. **处理 Email**: 如果 `smtp.enabled` 及对应事件项的邮件通知已开启且触发对象拥有合理邮箱，则提取 Subject 和 HTML 模板完成渲染，投递给 NodeMailer 异步发出。
+3. **处理 Webhook**: 检查 `webhook.enabled` 和对应事件项。如果为 true，渲染 Payload 并发起异步 POST 请求。记录一条 `notification_logs` (不管成功或失败)。
+4. **处理 Email**: 如果 `smtp.enabled` 及该事件邮箱开启，使用 `marked` 解析 Markdown 为 HTML。根据 `notify_user` 判断投递给发生动作的学生，根据 `notify_admin` 取全局配置中的 `smtp.admin_emails` 分发给管理员，分别执行 `nodemailer.sendMail`。对应产生 `notification_logs` 记录。
 
-## 5. 前端界面设计 (Frontend / Admin UI)
+## 5. 前端界面与设置交互设计 (Frontend & Settings UI)
 
-由于数据存储层采用了平铺的基于 dot-notation 的 KV 结构，如果直接在前端操作这些平铺的字符串字典，不仅不易维护状态，而且无法用现代基于对象绑定的前端组件库（如 React Hook Form / 状态对象）。
+### 5.1 设置面板组件拆分 (SettingsTab Refactoring)
+为了避免 `SettingsTab.tsx` 过于臃肿，现将整个设置菜单改造成 **“左侧导航字典结构 (Sub-navigation Sidebar/Pills)”**：
+1. **常规设置 (General Settings)**：包含预约规则、容错规则等。
+2. **备份设置 (Backup Settings)**：自动备份相关的 Cron 与保留策略。
+3. **通知配置 (Notification Setup)**：承担下方所有的配置功能。
+4. **投递日志 (Delivery Logs)**：按时间倒序展示系统所有发往外界被成功或拦下的日志表格，辅助网络排查。
 
-### 5.1 数据转换与状态管理层
-此时需要在前端做一层隔离与转换：
-* **加载与组装 (Loading & Parse)**: 
-  系统访问现有的 `GET /api/settings` 接口，提取 `smtp.`, `webhook.`, `email.` 前缀的数据。遍历这些键，利用 `.` 分隔符将其组装成一棵高层级的 JS 对象（如 `settingsObj.webhook.events.booking_created.template`）赋予 React 内部状态，方便数据结构理解和双层级组件渲染。
-* **修改与扁平化拆解 (Stringify & Save)**:
-  用户在界面完成复杂设置点击保存后，前端首先将当前的树形对象（或者各局部状态）遍历分解，重新转换成打平的带层级点命名键值对 `{"smtp.enabled": "true", "webhook.events.booking_created.template": "..."}`。然后使用保存配置接口写入后端数据库。
+### 5.2 基础通信网关配置区 (Gateways)
+* **SMTP 邮件网关**: Host, Port, Auth, 发件人，以及全局的 **系统管理员邮箱（支持多填）**。支持【连通性测试按钮】。
+* **Webhook 网关**: URL, Headers。支持【连通性测试按钮】。
 
-### 5.2 界面布局视图
-在管理后台新增名为 **"通知设置" (Notifications Tab)** 页面模块。页面分两大部分：
+### 5.3 事件与通知模板管理区 (Event Handlers)
+* 扩展支持 8 个主要事件触发体系。
+* 每项事件展开后，**邮件配置区** 内新增接收目标选项 `[✓] 用户本人`，`[ ] 系统管理员` 的复选框。
+* Webhook 与 Email 皆配有基于此上下文的【试发测试按钮】。
 
-* **基础通信设置区**:
-  * **邮件网关**: Host、Port、认证信息及发件人配置。总控开关。
-  * **Webhook 网关**: URL 地址、Headers （KV配置）、总控开关。
-* **事件与通知模板管理区 (Accordion/Tabs 组件)**:
-  * 按业务列出可用事件列表（预约通知、违规判定、系统处罚）。
-  * 展开某一事件详情后，分为两列或子区块：
-    * **左侧 / 顶部 (Webhook 面板)**: 独立启用开关、支持 `{{ 变量 }}` 语法的 JSON 编辑器，并在外侧注明明面当前事件上下文可用的填充变量。
-    * **右侧 / 底部 (邮件通知 面板)**: 独立启用开关、Subject 输入框、HTML 邮件内容编辑器（同样给出可用变量名指引）。
-
-## 6. 后续演进计划
+## 6. 新增后端测试 API 及 Markdown 支持
+为了支持界面上的测试按钮需求以及 Markdown 解析需求，后端增加以下基建设施：
+1. 引入并安装 `marked` 库，在 `dispatchEmail` 发送邮件之前，先进行变量替换，再调用 `marked.parse(renderedMarkdown)` 将其转换成友好的 HTML。
+2. 增加 `/api/admin/notifications/test-connection` 接口：接收 SMTP 或 Webhook 对象，尝试发送一封 “Hello World” 测试连接。
+3. 增加 `/api/admin/notifications/test-event` 接口：接收特定的 `event_id` 及临时填写的 Template，在后端注入一套假数据上下文（Mock Data）后触发投递并返回执行结果给前端。
 1. **统一占位符映射与 IM 接入**: 在用户表中新增真实的 `im_id`，并作为上下文变量传输，提供原生对接企微/飞书能力的准备。
 2. **多目标/多通道演进**: 本基于事件的命名空间 KV 方案可以很方便横向扩充，如增加 `sms.events.xxx`, 或者按多组 Webhook 拆分 `webhook.robot1.events.xxx`，向后的重构摩擦力非常小。

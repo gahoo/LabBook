@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
+import { notifyEvent } from './src/services/notificationService';
 
 const app = express();
 app.use(express.json());
@@ -452,10 +453,22 @@ function evaluatePenaltiesOnViolation(student_id: string) {
           }
 
           const idsStr = `,${contributingIds.join(',')},`;
-          db.prepare(`
+          const info = db.prepare(`
             INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time, contributing_violation_ids)
             VALUES (?, ?, ?, ?, ?, ?, ?)
           `).run(student_id, rule.id, penaltyMethod, JSON.stringify(restrictionsData), nowStr, endDate.toISOString(), idsStr);
+
+          const userEmailRow = db.prepare('SELECT email FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(student_id) as any;
+          const email = userEmailRow?.email;
+
+          notifyEvent(db, 'penalty_triggered', {
+            penalty_id: info.lastInsertRowid,
+            student_id,
+            rule_name: rule.name,
+            penalty_method: penaltyMethod,
+            start_time: nowStr,
+            end_time: endDate.toISOString()
+          }, email);
         }
       }
 
@@ -893,17 +906,7 @@ app.get('/api/settings', (req, res) => {
 
 // Update settings (Admin)
 app.post('/api/admin/settings', adminAuth, (req, res) => {
-  const { 
-    app_name, default_route, app_logo,
-    violation_late_grace_minutes,
-    violation_overtime_grace_minutes,
-    violation_late_cancel_hours,
-    violation_no_show_grace_minutes,
-    cron_no_show_scan_interval_minutes,
-    auto_backup_enabled,
-    auto_backup_cron,
-    auto_backup_retention
-  } = req.body;
+  const bodyKeys = Object.keys(req.body);
   
   const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
   const insertStmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
@@ -915,30 +918,16 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
     }
   };
 
-  updateSetting('app_name', app_name);
-  updateSetting('default_route', default_route);
-  updateSetting('app_logo', app_logo);
-  updateSetting('violation_late_grace_minutes', violation_late_grace_minutes);
-  updateSetting('violation_overtime_grace_minutes', violation_overtime_grace_minutes);
-  updateSetting('violation_late_cancel_hours', violation_late_cancel_hours);
-  updateSetting('violation_no_show_grace_minutes', violation_no_show_grace_minutes);
+  for (const key of bodyKeys) {
+    updateSetting(key, req.body[key]);
+  }
   
-  if (cron_no_show_scan_interval_minutes !== undefined) {
-    updateSetting('cron_no_show_scan_interval_minutes', cron_no_show_scan_interval_minutes);
+  if (req.body.cron_no_show_scan_interval_minutes !== undefined) {
     startNoShowScanner(); // Restart the scanner with new interval
   }
 
   let backupSettingsChanged = false;
-  if (auto_backup_enabled !== undefined) {
-    updateSetting('auto_backup_enabled', auto_backup_enabled);
-    backupSettingsChanged = true;
-  }
-  if (auto_backup_cron !== undefined) {
-    updateSetting('auto_backup_cron', auto_backup_cron);
-    backupSettingsChanged = true;
-  }
-  if (auto_backup_retention !== undefined) {
-    updateSetting('auto_backup_retention', auto_backup_retention);
+  if (req.body.auto_backup_enabled !== undefined || req.body.auto_backup_cron !== undefined || req.body.auto_backup_retention !== undefined) {
     backupSettingsChanged = true;
   }
   
@@ -1384,6 +1373,17 @@ app.post('/api/reservations', (req, res) => {
 
   const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
 
+  notifyEvent(db, 'booking_created', {
+    booking_id: info.lastInsertRowid,
+    booking_code,
+    student_id,
+    student_name,
+    equipment_name: equipment.name,
+    start_time,
+    end_time,
+    status
+  }, email);
+
   res.json({ 
     id: info.lastInsertRowid, 
     booking_code, 
@@ -1491,13 +1491,25 @@ app.post('/api/reservations/cancel', (req, res) => {
         db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time) VALUES (?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'late_cancel', nowStr);
       }
       
-      return { isLateCancel, student_id: reservation.student_id };
+      return { isLateCancel, student_id: reservation.student_id, reservation };
     })();
     
     if (result.isLateCancel) {
       evaluatePenaltiesOnViolation(result.student_id);
     }
     
+    notifyEvent(db, 'booking_cancelled', {
+      booking_id: result.reservation.id,
+      booking_code: result.reservation.booking_code,
+      student_id: result.reservation.student_id,
+      student_name: result.reservation.student_name,
+      equipment_id: result.reservation.equipment_id,
+      start_time: result.reservation.start_time,
+      end_time: result.reservation.end_time,
+      status: 'cancelled',
+      is_late_cancel: result.isLateCancel
+    }, result.reservation.email);
+
     res.json({ success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -1937,11 +1949,19 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
       if (!mv.id) {
         // Insert
         const remarkObj = { admin_note: mv.remark };
+        const nowIso = new Date().toISOString();
         db.prepare(`
           INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, remark)
           VALUES (?, ?, ?, ?, ?)
-        `).run(oldRes.student_id, id, mv.type, new Date().toISOString(), JSON.stringify(remarkObj));
+        `).run(oldRes.student_id, id, mv.type, nowIso, JSON.stringify(remarkObj));
         violationChanged = true;
+
+        notifyEvent(db, 'violation_created', {
+          student_id: oldRes.student_id,
+          violation_type: mv.type,
+          equipment_name: '系统管理员录入', 
+          booking_code: oldRes.booking_code
+        }, oldRes.email);
       } else {
         // Update
         const existing = existingManuals.find(e => e.id === mv.id);

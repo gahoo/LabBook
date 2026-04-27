@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart3, CalendarDays, List, Lock, FileText, Settings, ShieldAlert } from 'lucide-react';
+import { BarChart3, CalendarDays, List, Lock, FileText, Settings, ShieldAlert, Bell } from 'lucide-react';
 import AuditLogsTab from './components/AuditLogsTab';
 import WhitelistAppsTab from './components/WhitelistAppsTab';
 import ReservationsTab from './components/ReservationsTab';
@@ -7,13 +7,14 @@ import ReportsTab from './components/ReportsTab';
 import EquipmentManagementTab from './components/EquipmentManagementTab';
 import SettingsTab from './components/SettingsTab';
 import ViolationsAndPenaltiesTab from './components/ViolationsAndPenaltiesTab';
+import NotificationsTab from './components/NotificationsTab';
 
 export default function Admin() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings' | 'violations'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings' | 'violations' | 'notifications'>('reservations');
   const [targetBookingCode, setTargetBookingCode] = useState<string | null>(null);
   const [targetReservationDate, setTargetReservationDate] = useState<string | null>(null);
 
@@ -147,6 +148,13 @@ export default function Admin() {
               <Settings className="w-4 h-4" />
               <span className={activeTab === 'settings' ? 'inline' : 'hidden sm:inline'}>设置</span>
             </button>
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'notifications' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+            >
+              <Bell className="w-4 h-4" />
+              <span className={activeTab === 'notifications' ? 'inline' : 'hidden sm:inline'}>通知</span>
+            </button>
           </div>
           <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline shrink-0">退出</button>
         </div>
@@ -194,6 +202,9 @@ export default function Admin() {
       )}
       {activeTab === 'settings' && (
         <SettingsTab token={token} />
+      )}
+      {activeTab === 'notifications' && (
+        <NotificationsTab token={token} />
       )}
     </div>
   );

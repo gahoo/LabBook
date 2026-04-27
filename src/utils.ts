@@ -15,3 +15,33 @@ export const getViolationTypeLabel = (type: string | undefined | null): string =
     default: return type;
   }
 };
+
+export function unflattenObj(data: Record<string, any>): any {
+  const result: any = {};
+  for (const key in data) {
+    const keys = key.split('.');
+    let current = result;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (i === keys.length - 1) {
+        current[k] = data[key];
+      } else {
+        current[k] = current[k] || {};
+        current = current[k];
+      }
+    }
+  }
+  return result;
+}
+
+export function flattenObj(data: any, prefix = ''): Record<string, any> {
+  let result: Record<string, any> = {};
+  for (const key in data) {
+    if (typeof data[key] === 'object' && data[key] !== null && !Array.isArray(data[key])) {
+      result = { ...result, ...flattenObj(data[key], `${prefix}${key}.`) };
+    } else {
+      result[`${prefix}${key}`] = data[key] === undefined ? '' : String(data[key]);
+    }
+  }
+  return result;
+}
