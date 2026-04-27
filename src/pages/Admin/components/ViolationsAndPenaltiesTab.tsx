@@ -4,6 +4,7 @@ import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import PenaltyRulesTab from './PenaltyRulesTab';
 import ViolationParamsTab from './ViolationParamsTab';
+import { getViolationTypeLabel } from '../../../utils';
 
 interface ViolationsAndPenaltiesTabProps {
   token: string | null;
@@ -197,20 +198,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
       />
     </div>
   );
-
-  const getViolationTypeLabel = (type: string) => {
-    switch (type) {
-      case 'late': return '迟到';
-      case 'overdue': return '超时';
-      case 'no-show': return '爽约';
-      case 'late_cancel': return '临期取消';
-      case 'hygiene_issue': return '卫生不达标';
-      case 'improper_operation': return '违规操作';
-      case 'proxy_booking': return '代预约';
-      case 'other_manual': return '其他违规';
-      default: return type;
-    }
-  };
 
   const [recordsFilterUser, setRecordsFilterUser] = useState('');
   const [recordsFilterEquipment, setRecordsFilterEquipment] = useState('');
@@ -454,7 +441,11 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                           { value: 'late', label: '迟到' },
                           { value: 'overdue', label: '超时' },
                           { value: 'no-show', label: '爽约' },
-                          { value: 'late_cancel', label: '临期取消' }
+                          { value: 'late_cancel', label: '临期取消' },
+                          { value: 'hygiene_issue', label: '卫生不达标' },
+                          { value: 'improper_operation', label: '违规操作' },
+                          { value: 'proxy_booking', label: '代预约' },
+                          { value: 'other_manual', label: '其他违规' }
                         ].map((item) => (
                           <label key={item.value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
                             <input 

@@ -5,6 +5,7 @@ import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapP
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { ViolationRecord, MyViolationsResponse } from '../types';
+import { getViolationTypeLabel } from '../utils';
 
 interface Equipment {
   id: number;
@@ -541,10 +542,7 @@ export default function Booking() {
                           <div className="flex justify-between items-start mb-3">
                             <div>
                               <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-100 mb-2">
-                                {v.violation_type?.toLowerCase() === 'late' ? '迟到' : 
-                                 (v.violation_type?.toLowerCase() === 'overdue' || v.violation_type?.toLowerCase() === 'overtime') ? '超时' : 
-                                 (v.violation_type?.toLowerCase() === 'no-show' || v.violation_type?.toLowerCase() === 'noshow') ? '爽约' : 
-                                 '临期取消'}
+                                {getViolationTypeLabel(v.violation_type)}
                               </span>
                               <div className="text-sm font-medium text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}</div>
                               <div className="text-xs text-neutral-500 mt-1">关联仪器：{v.equipment_name}</div>

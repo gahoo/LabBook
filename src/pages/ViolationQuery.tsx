@@ -3,6 +3,7 @@ import { AlertTriangle, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { ViolationRecord, UserPenaltyDetails, MyViolationsResponse } from '../types';
+import { getViolationTypeLabel } from '../utils';
 
 export default function ViolationQuery() {
   const [studentId, setStudentId] = useState('');
@@ -173,10 +174,7 @@ export default function ViolationQuery() {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-100 mb-2">
-                        {v.violation_type?.toLowerCase() === 'late' ? '迟到' : 
-                         (v.violation_type?.toLowerCase() === 'overdue' || v.violation_type?.toLowerCase() === 'overtime') ? '超时' : 
-                         (v.violation_type?.toLowerCase() === 'no-show' || v.violation_type?.toLowerCase() === 'noshow') ? '爽约' : 
-                         '临期取消'}
+                        {getViolationTypeLabel(v.violation_type)}
                       </span>
                       <div className="text-base font-medium text-neutral-900">{format(new Date(v.violation_time), 'yyyy-MM-dd HH:mm')}</div>
                       <div className="text-sm text-neutral-500 mt-1">关联仪器：{v.equipment_name}</div>
@@ -273,23 +271,6 @@ export default function ViolationQuery() {
                 trigger = JSON.parse(rule.trigger_config);
                 action = JSON.parse(rule.action_config);
               } catch (e) {}
-
-              const getViolationTypeLabel = (type: string) => {
-                switch (type?.toLowerCase()) {
-                  case 'late': return '迟到';
-                  case 'overdue': return '超时';
-                  case 'no-show': return '爽约';
-                  case 'late_cancel': return '临期取消';
-                  case 'overtime': return '超时';
-                  case 'noshow': return '爽约';
-                  case 'cancel_late': return '临期取消';
-                  case 'hygiene_issue': return '卫生不达标';
-                  case 'improper_operation': return '违规操作';
-                  case 'proxy_booking': return '代预约';
-                  case 'other_manual': return '其他违规';
-                  default: return type;
-                }
-              };
 
               const getTriggerDesc = () => {
                 let timeDesc = '';
