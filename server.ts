@@ -1408,11 +1408,15 @@ app.post('/api/reservations', (req, res) => {
     status
   }, email);
 
+  const deliverySetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery');
+  const booking_code_delivery = deliverySetting ? JSON.parse(deliverySetting.value) : { web: 'true', email: 'false', webhook: 'false' };
+
   res.json({ 
     id: info.lastInsertRowid, 
     booking_code, 
     status,
-    message: penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL' ? penaltyCheck.reason : undefined
+    message: penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL' ? penaltyCheck.reason : undefined,
+    booking_code_delivery
   });
 });
 
@@ -2852,21 +2856,36 @@ app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
 });
 
 app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
-  const { status, reference_code, page = '1', limit = '50' } = req.query;
+  const { status, reference_code, target, events, startDate, endDate, page = '1', limit = '50' } = req.query;
   try {
     let query = `SELECT id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at FROM notifications WHERE 1=1`;
     const params: any[] = [];
     
     if (status && status !== '全部' && status !== 'All') {
+      const statusList = (status as string).split(',');
       const statusMap: Record<string, string> = {
         '待发送': 'pending',
         '重试中': 'retrying',
         '发送成功': 'success',
         '发送失败': 'failed'
       };
-      const dbStatus = statusMap[status as string] || status;
-      query += ` AND status = ?`;
-      params.push(dbStatus);
+      
+      const dbStatuses = statusList
+        .map(s => statusMap[s] || s)
+        .filter(s => ['pending', 'retrying', 'success', 'failed'].includes(s));
+        
+      if (dbStatuses.length > 0) {
+        query += ` AND status IN (${dbStatuses.map(() => '?').join(',')})`;
+        params.push(...dbStatuses);
+      }
+    }
+
+    if (events && events !== '全部' && events !== 'All') {
+      const eventList = (events as string).split(',').filter(Boolean);
+      if (eventList.length > 0) {
+        query += ` AND event IN (${eventList.map(() => '?').join(',')})`;
+        params.push(...eventList);
+      }
     }
     
     if (reference_code) {
@@ -2874,11 +2893,26 @@ app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
       params.push(`%${reference_code}%`);
     }
 
+    if (target) {
+      query += ` AND target LIKE ?`;
+      params.push(`%${target}%`);
+    }
+
+    if (startDate) {
+      query += ` AND created_at >= ?`;
+      params.push(`${startDate}T00:00:00.000Z`);
+    }
+
+    if (endDate) {
+      query += ` AND created_at <= ?`;
+      params.push(`${endDate}T23:59:59.999Z`);
+    }
+
     const countQuery = query.replace('id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at', 'count(*) as total');
     const totalRow = db.prepare(countQuery).get(...params) as any;
     const total = totalRow ? totalRow.total : 0;
 
-    query += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
+    query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
     params.push(parseInt(limit as string), offset);
 

@@ -116,7 +116,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
           onClick={() => setActiveSubTab('delivery_logs')}
           className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeSubTab === 'delivery_logs' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
         >
-          投递队列与日志
+          消息队列日志
         </button>
       </div>
 

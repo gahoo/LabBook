@@ -60,6 +60,7 @@ export default function Booking() {
 
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [bookingStatus, setBookingStatus] = useState<string | null>(null);
+  const [bookingCodeDelivery, setBookingCodeDelivery] = useState<any>(null);
   const [needsWhitelist, setNeedsWhitelist] = useState(false);
   const [applyingWhitelist, setApplyingWhitelist] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
@@ -289,6 +290,7 @@ export default function Booking() {
 
       setBookingCode(data.booking_code);
       setBookingStatus(data.status);
+      setBookingCodeDelivery(data.booking_code_delivery);
       if (data.message) {
         toast(data.message, { icon: '⚠️', duration: 5000 });
       }
@@ -385,6 +387,10 @@ export default function Booking() {
 
   if (bookingCode) {
     const isApproved = bookingStatus === 'approved';
+    const showCodeOnWeb = bookingCodeDelivery?.web === 'true';
+    const deliverEmail = bookingCodeDelivery?.email === 'true';
+    const deliverWebhook = bookingCodeDelivery?.webhook === 'true';
+
     return (
       <div className="max-w-md mx-auto mt-12 bg-white p-8 rounded-2xl shadow-sm border border-neutral-200 text-center">
         <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${isApproved ? 'bg-emerald-100' : 'bg-amber-100'}`}>
@@ -400,8 +406,18 @@ export default function Booking() {
         
         <div className="bg-neutral-50 rounded-xl p-6 mb-8 border border-neutral-200">
           <p className="text-sm text-neutral-500 mb-2 uppercase tracking-wider font-semibold">您的预约码</p>
-          <p className="text-4xl font-mono font-bold text-red-600 tracking-widest">{bookingCode}</p>
-          <p className="text-xs text-neutral-400 mt-4">请妥善保存此预约码！您需要使用它进行上机、下机或取消预约。</p>
+          {showCodeOnWeb ? (
+            <p className="text-4xl font-mono font-bold text-red-600 tracking-widest">{bookingCode}</p>
+          ) : (
+            <p className="text-lg font-medium text-neutral-800">
+              预约码已通过 {deliverEmail && 'Email'} {deliverEmail && deliverWebhook && ' 及 '} {deliverWebhook && 'Webhook'} 发送
+            </p>
+          )}
+          <p className="text-xs text-neutral-400 mt-4">
+            {showCodeOnWeb 
+              ? '请妥善保存此预约码！您需要使用它进行上机、下机或取消预约。'
+              : '为了保护您的预约安全，预约码不再在网页中直接显示。请前往对应渠道查看您的预约码。请妥善保存预约码，您需要使用它进行上机、下机或取消预约。'}
+          </p>
         </div>
 
         <div className="bg-amber-50 rounded-xl p-4 mb-8 border border-amber-200 text-left">

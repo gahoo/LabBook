@@ -71,3 +71,19 @@
   - 成功则变更 DB 状态；异常则利用指数退避算法更新 `retry_count` 及 `next_retry_time` 放入 `retrying` 池内等待下次兜底唤起。
   - 每发处理一个条目无论成败均执行 `await sleep(interval)` 防止网关限流。
   - 修改 `server.ts` 结合定时任务模块，每 1 分钟无条件调用一次拉取漏扫任务作为安全兜底网。
+
+## 阶段六：UI优化与交互体验升级 (UI Refinement)
+
+- [ ] **任务 18: 统一通知配置与队列日志的 UI 风格**
+  - 调整 `NotificationsTab.tsx` 和 `DeliveryLogsTab.tsx` 中使用的 `indigo` 系颜色为当前的 `red` 系主色调。
+  - 给 `NotificationsTab` 顶部外层增加 `p-6`，确保内部 Padding 和边距与其余系统配置标签页（如日志队列）保持一致。
+
+- [ ] **任务 19: 投递队列与日志表头筛选器改造**
+  - 在 `DeliveryLogsTab.tsx` 中，移除原有的顶栏外部搜索框与外部横向状态 Pill 筛选器。
+  - 参考系统已有报表页面（如 `ReportsTab.tsx` ）中“详细预约记录”表格的格式，将 "关联单号（reference_code）" 的模糊搜索与 "状态 (status)" 的下拉选择器直接嵌入到对应列的 `<th>` 中。
+
+- [ ] **任务 20: 通知与事件面板采用 Drawer 交互**
+  - 在 `NotificationsTab.tsx` 的事件选项卡区块，补全新增的补充事件支持（`booking_approved`, `booking_rejected`, `appeal_resolved`, `whitelist_resolved`）。
+  - 将整个界面重构为三大主干收起/展开折叠区区块："SMTP配置", "Webhook配置" 和 "事件列表"。
+  - 取消原来事件明细的内联 Accordion 形式，替换为更加直观的扁平化列表项（每行带有快捷的整体启用 Switch 控制权）。
+  - 点击列表某项的“进入配置”按钮后，滑出一个 Drawer 组件（悬浮侧边栏），并在内部渲染具体的邮件/Webhook设置区域及测试按钮。
