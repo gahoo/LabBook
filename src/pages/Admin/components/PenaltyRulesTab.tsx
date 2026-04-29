@@ -222,7 +222,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
         description: '',
         violation_type: 'late',
         trigger: { metric: 'count', threshold: 1, window_type: 'rolling_days', period_days: 30, violation_types: ['late'], count_strategy: 'by_record' },
-        action: { type: 'ban', duration_type: 'dynamic' },
+        action: { type: 'ban', duration_type: 'dynamic', params: { cancel_future_reservations: false } },
         is_active: 1
       });
     }
@@ -615,7 +615,18 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                       <label className="block text-sm text-neutral-600 mb-1">惩罚类型</label>
                       <select
                         value={formData.action.type}
-                        onChange={e => setFormData({...formData, action: { type: e.target.value as any, params: {}, duration_type: formData.action.duration_type, duration_days: formData.action.duration_days }})}
+                        onChange={e => {
+                          const newType = e.target.value as any;
+                          let defaultParams: any = {};
+                          if (newType === 'double_fee') {
+                            defaultParams = { multiplier: 2.0 };
+                          } else if (newType === 'reduce_advance_days') {
+                            defaultParams = { reduce_days: 1, min_retain_days: 1 };
+                          } else if (newType === 'ban') {
+                            defaultParams = { cancel_future_reservations: false };
+                          }
+                          setFormData({...formData, action: { type: newType, params: defaultParams, duration_type: formData.action.duration_type, duration_days: formData.action.duration_days }});
+                        }}
                         className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-orange-500 outline-none bg-white"
                       >
                         {Object.entries(actionTypeMap).map(([k, v]) => (

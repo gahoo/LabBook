@@ -53,35 +53,35 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
   const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string}> = {
     booking_created: {
       subject: '[通知] 预约成功：{{ equipment_name }}',
-      template: '## 预约成功\\n\\n您好，您已成功预约 **{{ equipment_name }}**。\\n\\n**预约详情：**\\n- 预约码：{{ booking_code }}\\n- 开始时间：{{ start_time }}\\n- 结束时间：{{ end_time }}\\n\\n您可以使用预约码在网页端或设备端进行上机。\\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+      template: '## 预约成功\n\n您好，您已成功预约 **{{ equipment_name }}**。\n\n**预约详情：**\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n您可以使用预约码在网页端或设备端进行上机。\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
     },
     booking_approved: {
       subject: '[通知] 您的预约已通过审批',
-      template: '## 审批通过\\n\\n您好，您对 **{{ equipment_name }}** 的预约申请已通过。\\n\\n- 预约码：{{ booking_code }}\\n- 开始时间：{{ start_time }}\\n- 结束时间：{{ end_time }}\\n\\n[点击查看预约]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+      template: '## 审批通过\n\n您好，您对 **{{ equipment_name }}** 的预约申请已通过。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n[点击查看预约]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
     },
     booking_rejected: {
       subject: '[通知] 您的预约被驳回',
-      template: '## 预约被驳回\\n\\n非常抱歉，您对 **{{ equipment_name }}** 的预约申请未通过审批。'
+      template: '## 预约被驳回\n\n非常抱歉，您对 **{{ equipment_name }}** 的预约申请未通过审批。'
     },
     booking_cancelled: {
       subject: '[通知] 预约取消',
-      template: '## 预约已取消\\n\\n您的预约已取消。\\n\\n- 设备：{{ equipment_name }}\\n- 预约码：{{ booking_code }}'
+      template: '## 预约已取消\n\n您的预约已取消。\n\n- 设备：{{ equipment_name }}\n- 预约码：{{ booking_code }}'
     },
     violation_created: {
       subject: '[警告] 新的违规记录',
-      template: '## 违规记录\\n\\n您好，系统检测到您存在一条新的违规记录。\\n\\n- 违规类型：{{ violation_type }}\\n- 关联设备：{{ equipment_name }}\\n\\n如有异议，请在系统内提交申诉。'
+      template: '## 违规记录\n\n您好，系统检测到您存在一条新的违规记录。\n\n- 违规类型：{{ violation_type }}\n- 关联设备：{{ equipment_name }}\n\n如有异议，请在系统内提交申诉。'
     },
     appeal_resolved: {
       subject: '[通知] 违规申诉结果',
-      template: '## 申诉处理结果\\n\\n您的违规记录申诉已由管理员处理。\\n\\n- 处理结果：{{ resolution }}\\n- 管理员回复：{{ reply }}'
+      template: '## 申诉处理结果\n\n您的违规记录申诉已由管理员处理。\n\n- 处理结果：{{ resolution }}\n- 管理员回复：{{ reply }}'
     },
     whitelist_resolved: {
       subject: '[通知] 白名单申请结果',
-      template: '## 白名单申请处理完毕\\n\\n您对 **{{ equipment_name }}** 的白名单准入申请已出结果。\\n\\n- 状态：{{ resolution }}\\n- 备注：{{ reason }}'
+      template: '## 白名单申请处理完毕\n\n您对 **{{ equipment_name }}** 的白名单准入申请已出结果。\n\n- 状态：{{ resolution }}\n- 备注：{{ reason }}'
     },
     penalty_triggered: {
       subject: '[警告] 处罚生效',
-      template: '## 处罚触发通知\\n\\n由于累计多次违规，您已触发系统限制。\\n\\n- 限制方式：{{ penalty_method }}\\n- 原因：{{ reason }}'
+      template: '## 处罚触发通知\n\n由于累计多次违规，您已触发系统限制。\n\n- 限制方式：{{ penalty_method }}\n- 原因：{{ reason }}'
     }
   };
 
@@ -221,9 +221,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
   };
 
   const updateAndSaveToggle = (path: string[], value: string) => {
-    // To prevent double execution from React Strict Mode, we handle the state and fetch separately.
-    let payloadToSave: any = null;
-    
+    // Determine the next state functionally to avoid relying on stale state
     setConfig((prev: any) => {
       const newConfig = { ...prev };
       let current = newConfig;
@@ -232,34 +230,33 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
         current = current[path[i]];
       }
       current[path[path.length - 1]] = value;
-      payloadToSave = flattenObj(newConfig);
       return newConfig;
     });
 
-    // We can run the fetch outside `setConfig` by doing it immediately with our own built payload
-    setTimeout(() => {
-        if (!payloadToSave) {
-            const newConfig = { ...config };
-            let current = newConfig;
-            for (let i = 0; i < path.length - 1; i++) {
-                if (!current[path[i]]) current[path[i]] = {};
-                current = current[path[i]];
-            }
-            current[path[path.length - 1]] = value;
-            payloadToSave = flattenObj(newConfig);
+    // Instead of using setState's prev value which can cause double-execution in Strict Mode,
+    // we use `config` and build the payload directly here.
+    // React's event handlers guarantee `config` is the state at the time of the click.
+    const newConfigForPayload = { ...config };
+    let currentPayload = newConfigForPayload;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (!currentPayload[path[i]]) currentPayload[path[i]] = {};
+      currentPayload = currentPayload[path[i]];
+    }
+    currentPayload[path[path.length - 1]] = value;
+    
+    const payloadToSave = flattenObj(newConfigForPayload);
+
+    fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payloadToSave)
+    }).then(res => res.json()).then(data => {
+        if (data.error) {
+            toast.error(data.error);
+        } else {
+            toast.success('设置已自动保存', { id: `toggle-save` });
         }
-        fetch('/api/admin/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payloadToSave)
-        }).then(res => res.json()).then(data => {
-            if (data.error) {
-                toast.error(data.error);
-            } else {
-                toast.success('设置已自动保存', { id: `toggle-save-${path.join('-')}` }); // Fixed toast ID prevents double toasts on UI
-            }
-        }).catch(err => toast.error('自动保存失败: ' + err.message));
-    }, 0);
+    }).catch(err => toast.error('自动保存失败: ' + err.message));
   };
 
   const testConnection = async (type: 'smtp' | 'webhook') => {
@@ -622,7 +619,13 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                 <div>
                   <label className="block text-sm text-neutral-600 mb-1">请求头 Headers (JSON)</label>
                   <textarea
-                    value={typeof config.webhook?.headers === 'object' ? JSON.stringify(config.webhook.headers, null, 2) : (config.webhook?.headers || '')}
+                    value={
+                      (typeof config.webhook?.headers === 'object' 
+                        ? JSON.stringify(config.webhook.headers, null, 2) 
+                        : config.webhook?.headers) === '[object Object]' 
+                        ? '' 
+                        : (typeof config.webhook?.headers === 'object' ? JSON.stringify(config.webhook.headers, null, 2) : (config.webhook?.headers || ''))
+                    }
                     onChange={(e) => updateConfig(['webhook', 'headers'], e.target.value)}
                     placeholder='{"Authorization": "Bearer TOKEN"}'
                     rows={3}
