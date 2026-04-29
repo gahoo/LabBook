@@ -937,8 +937,9 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   
   const updateSetting = (key: string, value: any) => {
     if (value !== undefined) {
-      insertStmt.run(key, value.toString());
-      stmt.run(value.toString(), key);
+      const stringValue = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+      insertStmt.run(key, stringValue);
+      stmt.run(stringValue, key);
     }
   };
 
@@ -1261,7 +1262,7 @@ app.post('/api/reservations', (req, res) => {
     return res.status(403).json({ 
       error: penaltyCheck.reason, 
       violation_ids: penaltyCheck.violation_ids,
-      structured_penalty: penaltyCheck.structured_penalty 
+      structured_penalty: (penaltyCheck as any).structured_penalty 
     });
   }
   
@@ -1408,8 +1409,15 @@ app.post('/api/reservations', (req, res) => {
     status
   }, email);
 
-  const deliverySetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery');
-  const booking_code_delivery = deliverySetting ? JSON.parse(deliverySetting.value) : { web: 'true', email: 'false', webhook: 'false' };
+  const deliveryWeb = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.web') as any;
+  const deliveryEmail = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.email') as any;
+  const deliveryWebhook = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.webhook') as any;
+
+  const booking_code_delivery = {
+    web: deliveryWeb ? deliveryWeb.value : 'true',
+    email: deliveryEmail ? deliveryEmail.value : 'false',
+    webhook: deliveryWebhook ? deliveryWebhook.value : 'false',
+  };
 
   res.json({ 
     id: info.lastInsertRowid, 

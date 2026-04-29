@@ -16,8 +16,11 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     webhook: false,
     events: true,
   });
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null); // Drawer state
   
+  const [showTestEmailModal, setShowTestEmailModal] = useState<{isOpen: boolean, actionType: 'event' | 'connection' | '', event: string, email: string, type: 'smtp' | 'webhook' | ''}>({ isOpen: false, actionType: '', event: '', email: '', type: '' });
+
   const [config, setConfig] = useState<any>({
     notification_interval_seconds: '30',
     smtp: { enabled: false, admin_emails: '' },
@@ -57,9 +60,23 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       if (!res.ok) throw new Error('获取设置失败');
       const data = await res.json();
       
-      const unflattened = unflattenObj(data);
+      const parsedData: any = {};
+      for (const [k, v] of Object.entries(data)) {
+         try {
+           if (typeof v === 'string' && (v.startsWith('{') || v.startsWith('['))) {
+             parsedData[k] = JSON.parse(v);
+           } else {
+             parsedData[k] = v;
+           }
+         } catch {
+           parsedData[k] = v;
+         }
+      }
+      
+      const unflattened = unflattenObj(parsedData);
       setConfig({
         notification_interval_seconds: unflattened.notification_interval_seconds || '30',
+        booking_code_delivery: unflattened.booking_code_delivery || { web: 'true' },
         smtp: unflattened.smtp || { enabled: false },
         webhook: unflattened.webhook || { enabled: false, events: {} },
         email: unflattened.email || { events: {} }
@@ -71,27 +88,87 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveGlobal = async () => {
+    // 校验至少选择一种发放方式
+    const delivery = config.booking_code_delivery || { web: 'true' };
+    if (String(delivery.web) !== 'true' && String(delivery.email) !== 'true' && String(delivery.webhook) !== 'true') {
+      toast.error('请至少选择一种预约码发放方式！');
+      return;
+    }
+
     setSaving(true);
     try {
-      const flatData = flattenObj({
+      const payload = flattenObj({
         notification_interval_seconds: config.notification_interval_seconds,
-        smtp: config.smtp,
-        webhook: config.webhook,
-        email: config.email
+        booking_code_delivery: config.booking_code_delivery || { web: 'true' }
       });
 
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(flatData)
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error('保存失败');
-      toast.success('通知设置已保存');
+      if (!res.ok) throw new Error('保存全局配置失败');
+      toast.success('全局配置已保存');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveSmtp = async () => {
+    setSaving(true);
+    try {
+      const payload = flattenObj({ smtp: config.smtp });
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('保存SMTP配置失败');
+      toast.success('SMTP 配置已保存');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveWebhook = async () => {
+    setSaving(true);
+    try {
+      const payload = flattenObj({ webhook: config.webhook });
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('保存Webhook配置失败');
+      toast.success('Webhook 配置已保存');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveEvents = async () => {
+    setSaving(true);
+    try {
+      const payload = flattenObj({ 
+        email: config.email,
+        webhook: config.webhook 
+      });
+      
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('保存事件模板配置失败');
+      toast.success('事件模板配置已保存');
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -113,6 +190,15 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
   };
 
   const testConnection = async (type: 'smtp' | 'webhook') => {
+    if (type === 'smtp') {
+      const defaultEmail = (config.admin_emails || config.smtp?.user || '').split(',')[0].trim();
+      setShowTestEmailModal({ isOpen: true, actionType: 'connection', event: '', type, email: defaultEmail });
+      return;
+    }
+    await executeTestConnection(type, '');
+  };
+
+  const executeTestConnection = async (type: 'smtp' | 'webhook', toEmail: string) => {
     const toastId = toast.loading(`正在测试 ${type.toUpperCase()} 连接...`);
     try {
       const res = await fetch('/api/admin/notifications/test-connection', {
@@ -121,20 +207,44 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ type, config: config[type] })
+        body: JSON.stringify({ type, config: config[type], to_email: toEmail })
       });
       const data = await res.json();
       if (res.ok) {
         toast.success(data.message, { id: toastId });
       } else {
-        toast.error(data.error, { id: toastId });
+        toast.error(data.error || '测试失败', { id: toastId });
       }
     } catch (e) {
       toast.error('网络请求失败', { id: toastId });
     }
   };
 
+  const handleTestEmailConfirm = async () => {
+    const { actionType, event, email, type } = showTestEmailModal;
+    if (!email.trim()) {
+      toast.error('邮箱地址不能为空');
+      return;
+    }
+    setShowTestEmailModal({ isOpen: false, actionType: '', event: '', email: '', type: '' });
+    
+    if (actionType === 'connection') {
+      await executeTestConnection(type as 'smtp' | 'webhook', email);
+    } else {
+      await executeTestEvent(event, 'smtp', email);
+    }
+  };
+
   const testEvent = async (event: string, type: 'smtp' | 'webhook') => {
+    if (type === 'smtp') {
+      const defaultEmail = (config.admin_emails || config.smtp?.user || '').split(',')[0].trim();
+      setShowTestEmailModal({ isOpen: true, actionType: 'event', event, type, email: defaultEmail });
+      return;
+    }
+    await executeTestEvent(event, type, '');
+  };
+
+  const executeTestEvent = async (event: string, type: 'smtp' | 'webhook', toEmail: string) => {
     const toastId = toast.loading(`正在测试推送 ${event}...`);
     try {
       const res = await fetch('/api/admin/notifications/test-event', {
@@ -147,14 +257,15 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
           event, 
           type, 
           config: config[type],
-          eventConfig: config[type]?.events?.[event] || {}
+          eventConfig: config[type]?.events?.[event] || {},
+          to_email: toEmail
         })
       });
       const data = await res.json();
       if (res.ok) {
         toast.success(data.message, { id: toastId });
       } else {
-        toast.error(data.error, { id: toastId });
+        toast.error(data.error || '测试失败', { id: toastId });
       }
     } catch (e) {
       toast.error('网络请求失败', { id: toastId });
@@ -178,35 +289,36 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
           <h2 className="text-lg font-bold text-neutral-800">通知配置</h2>
           <p className="text-sm text-neutral-500 mt-1">控制系统产生核心事件时的投递途径，包含邮件(SMTP)、及自定义回调(Webhook)。系统采用队列机制限速分发。</p>
         </div>
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full md:w-auto bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-70 whitespace-nowrap"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? '保存中...' : '保存全局配置'}
-          </button>
-        </div>
       </div>
 
       <div className="space-y-4">
         {/* 全局设置区 */}
         <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-          <button 
-            type="button" 
+          <div 
             onClick={() => toggleSection('global')} 
-            className="w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
+            className="cursor-pointer w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
           >
             <div className="flex items-center gap-2 text-neutral-800 font-medium h-6">
               <Settings className="w-4 h-4 text-neutral-500" />
               全局流控与配置
             </div>
-            {openSections['global'] ? <ChevronDown className="w-5 h-5 text-neutral-400" /> : <ChevronRight className="w-5 h-5 text-neutral-400" />}
-          </button>
+            <div className="flex items-center gap-4">
+              {openSections['global'] ? <ChevronDown className="w-5 h-5 text-neutral-400" /> : <ChevronRight className="w-5 h-5 text-neutral-400" />}
+            </div>
+          </div>
           
           {openSections['global'] && (
             <div className="p-6 border-t border-neutral-200 space-y-6">
+              <div className="flex items-center justify-end mb-4">
+                <button
+                  onClick={handleSaveGlobal}
+                  disabled={saving}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-70"
+                >
+                  <Save className="w-4 h-4" />
+                  {saving ? '保存中...' : '保存全局配置'}
+                </button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm text-neutral-600 mb-1">通知发送时间间隔(秒)</label>
@@ -232,7 +344,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                 </div>
               </div>
               <div className="pt-4 border-t border-neutral-100">
-                <label className="block text-sm font-medium text-neutral-800 mb-3">预约码发放方式组合</label>
+                <label className="block text-sm font-medium text-neutral-800 mb-3">预约码发放方式</label>
                 <div className="flex flex-wrap gap-6 items-center">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input 
@@ -272,10 +384,9 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
 
         {/* SMTP 配置区 */}
         <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-          <button 
-            type="button" 
+          <div 
             onClick={() => toggleSection('smtp')} 
-            className="w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
+            className="cursor-pointer w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
           >
             <div className="flex items-center gap-2 text-neutral-800 font-medium h-6">
               <Mail className="w-4 h-4 text-neutral-500" />
@@ -283,10 +394,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               {String(config.smtp?.enabled) === 'true' && <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">已启用</span>}
             </div>
             <div className="flex items-center gap-4">
-              <div 
-                className="flex items-center gap-2 text-sm text-neutral-600 font-normal outline-none focus:outline-none" 
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="flex items-center gap-4">
                 <span>全局启用</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -301,16 +409,24 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               </div>
               {openSections['smtp'] ? <ChevronDown className="w-5 h-5 text-neutral-400" /> : <ChevronRight className="w-5 h-5 text-neutral-400" />}
             </div>
-          </button>
+          </div>
 
           {openSections['smtp'] && (
             <div className="p-6 border-t border-neutral-200">
-               <div className="flex items-center justify-end mb-4">
+               <div className="flex items-center justify-end gap-3 mb-4">
                  <button 
                   onClick={() => testConnection('smtp')} 
                   className="text-xs flex items-center gap-1.5 font-medium px-3 py-1.5 rounded bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 shadow-sm"
                  >
                    <Play className="w-3.5 h-3.5" /> 测试通道连通性
+                 </button>
+                 <button
+                  onClick={handleSaveSmtp}
+                  disabled={saving}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-70"
+                 >
+                  <Save className="w-4 h-4" />
+                  {saving ? '保存中...' : '保存SMTP配置'}
                  </button>
                </div>
               <div className="grid grid-cols-2 gap-4">
@@ -382,10 +498,9 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
 
         {/* Webhook 配置区 */}
         <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-          <button 
-            type="button" 
+          <div 
             onClick={() => toggleSection('webhook')} 
-            className="w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
+            className="cursor-pointer w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
           >
             <div className="flex items-center gap-2 text-neutral-800 font-medium h-6">
               <Webhook className="w-4 h-4 text-neutral-500" />
@@ -393,10 +508,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               {String(config.webhook?.enabled) === 'true' && <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">已启用</span>}
             </div>
             <div className="flex items-center gap-4">
-              <div 
-                className="flex items-center gap-2 text-sm text-neutral-600 font-normal outline-none focus:outline-none" 
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="flex items-center gap-4">
                 <span>全局启用</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -411,16 +523,24 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               </div>
               {openSections['webhook'] ? <ChevronDown className="w-5 h-5 text-neutral-400" /> : <ChevronRight className="w-5 h-5 text-neutral-400" />}
             </div>
-          </button>
+          </div>
 
           {openSections['webhook'] && (
             <div className="p-6 border-t border-neutral-200">
-               <div className="flex items-center justify-end mb-4">
+               <div className="flex items-center justify-end gap-3 mb-4">
                  <button 
                   onClick={() => testConnection('webhook')} 
                   className="text-xs flex items-center gap-1.5 font-medium px-3 py-1.5 rounded bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 shadow-sm"
                  >
                    <Play className="w-3.5 h-3.5" /> 测试通道连通性
+                 </button>
+                 <button
+                  onClick={handleSaveWebhook}
+                  disabled={saving}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-70"
+                 >
+                  <Save className="w-4 h-4" />
+                  {saving ? '保存中...' : '保存Webhook配置'}
                  </button>
                </div>
               <div className="space-y-4">
@@ -453,17 +573,16 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
 
         {/* 系统级通知事件分发 */}
         <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-          <button 
-            type="button" 
+          <div 
             onClick={() => toggleSection('events')} 
-            className="w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
+            className="cursor-pointer w-full flex items-center justify-between p-4 bg-neutral-50 hover:bg-neutral-100 transition-colors pointer-events-auto"
           >
             <div className="flex items-center gap-2 text-neutral-800 font-medium h-6">
               <Bell className="w-4 h-4 text-neutral-500" />
               事件通知管理 ({EVENT_TYPES.length})
             </div>
             {openSections['events'] ? <ChevronDown className="w-5 h-5 text-neutral-400" /> : <ChevronRight className="w-5 h-5 text-neutral-400" />}
-          </button>
+          </div>
 
           {openSections['events'] && (
             <div className="border-t border-neutral-200 p-0">
@@ -510,7 +629,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                                      </div>
                                 </div>
                                 <button 
-                                  onClick={() => setSelectedEvent(evt)} 
+                                  onClick={() => { setSelectedEvent(evt); setIsDrawerOpen(true); }} 
                                   className="text-neutral-500 hover:text-red-600 bg-neutral-100 hover:bg-red-50 p-2 rounded-lg transition-colors cursor-pointer"
                                   title="配置该事件"
                                 >
@@ -527,10 +646,13 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       </div>
 
       {/* Settings Drawer for Event */}
-      {selectedEvent && (
-        <>
-          <div className="fixed inset-0 bg-neutral-900/40 z-40 transition-opacity backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-xl z-50 transform transition-transform overflow-hidden flex flex-col border-l border-neutral-200">
+      <div className={`fixed inset-0 bg-neutral-900/40 z-40 transition-opacity duration-300 backdrop-blur-sm ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsDrawerOpen(false)} />
+      
+      <div 
+        className={`fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-xl z-50 overflow-hidden flex flex-col border-l border-neutral-200 transform transition-transform duration-300 ease-in-out ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        {selectedEvent && (
+          <>
             <div className="flex justify-between items-center px-6 py-5 border-b border-neutral-200 bg-neutral-50/50">
               <div>
                 <h3 className="text-lg font-bold text-neutral-900 leading-tight">{selectedEvent.name}</h3>
@@ -538,14 +660,14 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={handleSave}
+                  onClick={handleSaveEvents}
                   disabled={saving}
                   className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-70"
                 >
                   <Save className="w-4 h-4" />
                   {saving ? '保存中...' : '保存事件模板'}
                 </button>
-                <button onClick={() => setSelectedEvent(null)} className="text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200 p-2 rounded-full transition-colors">
+                <button onClick={() => setIsDrawerOpen(false)} className="text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200 p-2 rounded-full transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -674,8 +796,38 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                </div>
 
             </div>
+          </>
+        )}
+      </div>
+
+      {showTestEmailModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowTestEmailModal({ isOpen: false, actionType: '', type: '', event: '', email: '' })}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-[400px] transform transition-transform" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-neutral-900 mb-2">测试邮件设置</h3>
+            <p className="text-sm text-neutral-500 mb-4">请输入用来接收测试邮件的邮箱地址：</p>
+            <input 
+              type="text" 
+              value={showTestEmailModal.email}
+              onChange={e => setShowTestEmailModal({...showTestEmailModal, email: e.target.value})}
+              className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none text-sm mb-6"
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowTestEmailModal({ isOpen: false, actionType: '', type: '', event: '', email: '' })}
+                className="px-4 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors border border-transparent"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleTestEmailConfirm}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors border border-transparent"
+              >
+                发送测试邮件
+              </button>
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

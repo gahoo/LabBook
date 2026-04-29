@@ -20,9 +20,7 @@ export default function DeliveryLogsTab({ token }: DeliveryLogsTabProps) {
   const limit = 20;
 
   const [showStatusFilterPopup, setShowStatusFilterPopup] = useState(false);
-  const [showTimePopup, setShowTimePopup] = useState(false);
   const statusPopupRef = useRef<HTMLDivElement>(null);
-  const timePopupRef = useRef<HTMLDivElement>(null);
   const [showFailureReasonId, setShowFailureReasonId] = useState<number | null>(null);
 
   const STATUSES = ['待发送', '重试中', '发送成功', '发送失败'];
@@ -48,9 +46,6 @@ export default function DeliveryLogsTab({ token }: DeliveryLogsTabProps) {
     function handleClickOutside(event: MouseEvent) {
       if (statusPopupRef.current && !statusPopupRef.current.contains(event.target as Node)) {
         setShowStatusFilterPopup(false);
-      }
-      if (timePopupRef.current && !timePopupRef.current.contains(event.target as Node)) {
-        setShowTimePopup(false);
       }
       if (eventPopupRef.current && !eventPopupRef.current.contains(event.target as Node)) {
         setShowEventFilterPopup(false);
@@ -166,40 +161,20 @@ export default function DeliveryLogsTab({ token }: DeliveryLogsTabProps) {
     <div className="p-6">
       <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
         <h2 className="text-lg font-bold text-neutral-800">消息队列日志</h2>
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="relative" ref={timePopupRef}>
-            <button 
-              onClick={() => setShowTimePopup(!showTimePopup)}
-              className="px-3 py-2 text-sm rounded-lg border border-neutral-300 bg-white flex items-center gap-2 outline-none hover:bg-neutral-50 focus:border-red-500 text-neutral-600 transition-colors shadow-sm"
-            >
-              <Filter className="w-4 h-4" />
-              {startDate === endDate ? startDate : `${startDate} 至 ${endDate}`}
-            </button>
-            {showTimePopup && (
-              <div className="absolute top-full right-0 mt-2 p-4 bg-white border border-neutral-200 rounded-xl shadow-xl z-20 w-72 font-normal">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1.5">开始日期</label>
-                    <input 
-                      type="date" 
-                      value={startDate} 
-                      onChange={e => { setStartDate(e.target.value); setPage(1); }}
-                      className="w-full text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:ring-red-500 focus:border-red-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1.5">结束日期</label>
-                    <input 
-                      type="date" 
-                      value={endDate} 
-                      onChange={e => { setEndDate(e.target.value); setPage(1); }}
-                      className="w-full text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:ring-red-500 focus:border-red-500 outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+          <input 
+            type="date" 
+            value={startDate} 
+            onChange={e => { setStartDate(e.target.value); setPage(1); }}
+            className="px-3 py-2 bg-white border border-neutral-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500" 
+          />
+          <span className="text-neutral-500 text-sm whitespace-nowrap">至</span>
+          <input 
+            type="date" 
+            value={endDate} 
+            onChange={e => { setEndDate(e.target.value); setPage(1); }}
+            className="px-3 py-2 bg-white border border-neutral-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500" 
+          />
         </div>
       </div>
 
