@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Play, Square, XCircle, CheckCircle2, Clock, Calendar, ChevronDown, ChevronUp, Edit3, Save, X, Trash2 } from 'lucide-react';
 import { format, isBefore, addMinutes, parseISO } from 'date-fns';
 import clsx from 'clsx';
@@ -27,7 +28,8 @@ interface Reservation {
 }
 
 export default function MyReservations() {
-  const [code, setCode] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [code, setCode] = useState(() => searchParams.get('code') || '');
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -116,19 +118,14 @@ export default function MyReservations() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchMyReservations();
-  }, [fetchMyReservations]);
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!code.trim()) return;
+  const performSearch = async (searchCode: string) => {
+    if (!searchCode.trim()) return;
     
     setLoading(true);
     setError('');
     
     try {
-      const res = await fetch(`/api/reservations/${code.trim().toUpperCase()}`);
+      const res = await fetch(`/api/reservations/${searchCode.trim().toUpperCase()}`);
       const data = await res.json();
       
       if (res.ok) {
@@ -153,6 +150,23 @@ export default function MyReservations() {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchMyReservations();
+    
+    const urlCode = searchParams.get('code');
+    if (urlCode) {
+      setCode(urlCode.toUpperCase());
+      performSearch(urlCode);
+      searchParams.delete('code');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [fetchMyReservations, searchParams, setSearchParams]);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    performSearch(code);
   };
 
   const [consumableQty, setConsumableQty] = useState<number>(1);

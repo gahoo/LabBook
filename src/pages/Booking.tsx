@@ -61,6 +61,7 @@ export default function Booking() {
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [bookingStatus, setBookingStatus] = useState<string | null>(null);
   const [bookingCodeDelivery, setBookingCodeDelivery] = useState<any>(null);
+  const [webhookAlias, setWebhookAlias] = useState<string>('Webhook');
   const [needsWhitelist, setNeedsWhitelist] = useState(false);
   const [applyingWhitelist, setApplyingWhitelist] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
@@ -291,17 +292,22 @@ export default function Booking() {
       setBookingCode(data.booking_code);
       setBookingStatus(data.status);
       setBookingCodeDelivery(data.booking_code_delivery);
+      if (data.webhook_alias) {
+          setWebhookAlias(data.webhook_alias);
+      }
       if (data.message) {
         toast(data.message, { icon: '⚠️', duration: 5000 });
       }
       
       // Save booking code to cookies
-      const existingCodes = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('lab_booking_codes='))
-        ?.split('=')[1] || '';
-      const newCodes = existingCodes ? `${existingCodes},${data.booking_code}` : data.booking_code;
-      document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
+      if (data.booking_code) {
+        const existingCodes = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('lab_booking_codes='))
+          ?.split('=')[1] || '';
+        const newCodes = existingCodes ? `${existingCodes},${data.booking_code}` : data.booking_code;
+        document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
+      }
     } catch (err: any) {
       console.error('Reservation error:', err);
       toast.error(err.message || '预约失败，请重试');
@@ -385,9 +391,9 @@ export default function Booking() {
     };
   });
 
-  if (bookingCode) {
+  if (bookingStatus) {
     const isApproved = bookingStatus === 'approved';
-    const showCodeOnWeb = bookingCodeDelivery?.web === 'true';
+    const showCodeOnWeb = bookingCodeDelivery?.web === 'true' || bookingCodeDelivery?.web === true || bookingCodeDelivery?.web === undefined;
     const deliverEmail = bookingCodeDelivery?.email === 'true';
     const deliverWebhook = bookingCodeDelivery?.webhook === 'true';
 
@@ -410,7 +416,7 @@ export default function Booking() {
             <p className="text-4xl font-mono font-bold text-red-600 tracking-widest">{bookingCode}</p>
           ) : (
             <p className="text-lg font-medium text-neutral-800">
-              预约码已通过 {deliverEmail && 'Email'} {deliverEmail && deliverWebhook && ' 及 '} {deliverWebhook && 'Webhook'} 发送
+              预约码已通过 {deliverEmail && 'Email'} {deliverEmail && deliverWebhook && ' 及 '} {deliverWebhook && webhookAlias} 发送
             </p>
           )}
           <p className="text-xs text-neutral-400 mt-4">

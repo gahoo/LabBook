@@ -11,10 +11,15 @@ import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
 import { marked } from 'marked';
-import { notifyEvent, processNotificationQueue } from './src/services/notificationService';
+import { notifyEvent, processNotificationQueue, scheduleNextRun, setBaseUrl } from './src/services/notificationService';
 
 const app = express();
 app.use(express.json());
+
+app.use((req, res, next) => {
+  setBaseUrl(req.protocol + '://' + req.get('host'));
+  next();
+});
 
 const db = new Database('lab_equipment.db');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
@@ -327,11 +332,6 @@ reloadBackupCron();
 
 // Start the notification processor
 processNotificationQueue(db).catch(console.error);
-
-// Fallback cron for retries or stuck tasks
-cron.schedule('* * * * *', () => {
-  processNotificationQueue(db).catch(console.error);
-});
 
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
@@ -932,6 +932,34 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/admin/settings', adminAuth, (req, res) => {
   const bodyKeys = Object.keys(req.body);
   
+  // Validation for booking_code_delivery.web
+  // Create a simulated next state for settings involved
+  const getCurrent = (k: string) => {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(k) as any;
+    return row ? row.value : null;
+  };
+  
+  const getNext = (k: string) => req.body[k] !== undefined ? req.body[k] : getCurrent(k);
+  
+  const webDelivery = getNext('booking_code_delivery.web') !== 'false';
+  
+  if (!webDelivery) {
+    const smtpEnabled = getNext('smtp.enabled') === 'true';
+    const smtpEventCreated = getNext('email.events.booking_created.enabled') === 'true';
+    const smtpEventApproved = getNext('email.events.booking_approved.enabled') === 'true';
+    
+    const webhookEnabled = getNext('webhook.enabled') === 'true';
+    const webhookEventCreated = getNext('webhook.events.booking_created.enabled') === 'true';
+    const webhookEventApproved = getNext('webhook.events.booking_approved.enabled') === 'true';
+    
+    const validSmtp = smtpEnabled && (smtpEventCreated || smtpEventApproved);
+    const validWebhook = webhookEnabled && (webhookEventCreated || webhookEventApproved);
+    
+    if (!validSmtp && !validWebhook) {
+      return res.status(400).json({ error: '必须至少保留一种有效的预约码获取途径。关闭网页展示时，需确保已全局开启并勾选了 Email 或 Webhook 相关的预约通知。' });
+    }
+  }
+
   const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
   const insertStmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   
@@ -1410,21 +1438,32 @@ app.post('/api/reservations', (req, res) => {
   }, email);
 
   const deliveryWeb = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.web') as any;
-  const deliveryEmail = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.email') as any;
-  const deliveryWebhook = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.webhook') as any;
+  const smtpEnabled = db.prepare('SELECT value FROM settings WHERE key = ?').get('smtp.enabled') as any;
+  const smtpEventCreated = db.prepare('SELECT value FROM settings WHERE key = ?').get('email.events.booking_created.enabled') as any;
+  const smtpEventApproved = db.prepare('SELECT value FROM settings WHERE key = ?').get('email.events.booking_approved.enabled') as any;
+
+  const webhookEnabled = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.enabled') as any;
+  const webhookEventCreated = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.events.booking_created.enabled') as any;
+  const webhookEventApproved = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.events.booking_approved.enabled') as any;
+
+  const hasSmtp = smtpEnabled?.value === 'true' && (smtpEventCreated?.value === 'true' || smtpEventApproved?.value === 'true');
+  const hasWebhook = webhookEnabled?.value === 'true' && (webhookEventCreated?.value === 'true' || webhookEventApproved?.value === 'true');
 
   const booking_code_delivery = {
     web: deliveryWeb ? deliveryWeb.value : 'true',
-    email: deliveryEmail ? deliveryEmail.value : 'false',
-    webhook: deliveryWebhook ? deliveryWebhook.value : 'false',
+    email: hasSmtp ? 'true' : 'false',
+    webhook: hasWebhook ? 'true' : 'false',
   };
+
+  const webhookAliasObj = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.alias') as any;
 
   res.json({ 
     id: info.lastInsertRowid, 
-    booking_code, 
+    booking_code: booking_code_delivery.web === 'false' ? undefined : booking_code, 
     status,
     message: penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL' ? penaltyCheck.reason : undefined,
-    booking_code_delivery
+    booking_code_delivery,
+    webhook_alias: webhookAliasObj?.value || 'Webhook'
   });
 });
 
@@ -2924,8 +2963,17 @@ app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
     params.push(parseInt(limit as string), offset);
 
-    const logs = db.prepare(query).all(...params);
-    res.json({ logs, total });
+    const logs = db.prepare(query).all(...params) as any[];
+    
+    // Process webhook alias
+    const webhookAliasRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.alias') as any;
+    const webhookAlias = webhookAliasRow ? webhookAliasRow.value : 'Webhook';
+    const processedLogs = logs.map(log => ({
+        ...log,
+        channel: log.channel === 'webhook' ? webhookAlias : log.channel
+    }));
+
+    res.json({ logs: processedLogs, total });
   } catch (error) {
     console.error('Error fetching delivery logs', error);
     res.status(500).json({ error: 'Failed to fetch delivery logs' });
@@ -2935,7 +2983,7 @@ app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
 app.post('/api/admin/delivery-logs/:id/retry', adminAuth, (req, res) => {
   try {
       db.prepare(`UPDATE notifications SET status = 'pending', retry_count = 0, next_retry_time = CURRENT_TIMESTAMP WHERE id = ?`).run(req.params.id);
-      setTimeout(() => { processNotificationQueue(db).catch(console.error); }, 100);
+      setTimeout(() => { scheduleNextRun(db); }, 100);
       res.json({ success: true });
   } catch(e) {
       res.status(500).json({ error: 'Failed to retry' });

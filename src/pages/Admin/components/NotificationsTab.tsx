@@ -50,6 +50,41 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     penalty_triggered: '违规记录累积导致处罚熔断，触发使用限制'
   };
 
+  const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string}> = {
+    booking_created: {
+      subject: '[通知] 预约成功：{{ equipment_name }}',
+      template: '## 预约成功\\n\\n您好，您已成功预约 **{{ equipment_name }}**。\\n\\n**预约详情：**\\n- 预约码：{{ booking_code }}\\n- 开始时间：{{ start_time }}\\n- 结束时间：{{ end_time }}\\n\\n您可以使用预约码在网页端或设备端进行上机。\\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+    },
+    booking_approved: {
+      subject: '[通知] 您的预约已通过审批',
+      template: '## 审批通过\\n\\n您好，您对 **{{ equipment_name }}** 的预约申请已通过。\\n\\n- 预约码：{{ booking_code }}\\n- 开始时间：{{ start_time }}\\n- 结束时间：{{ end_time }}\\n\\n[点击查看预约]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+    },
+    booking_rejected: {
+      subject: '[通知] 您的预约被驳回',
+      template: '## 预约被驳回\\n\\n非常抱歉，您对 **{{ equipment_name }}** 的预约申请未通过审批。'
+    },
+    booking_cancelled: {
+      subject: '[通知] 预约取消',
+      template: '## 预约已取消\\n\\n您的预约已取消。\\n\\n- 设备：{{ equipment_name }}\\n- 预约码：{{ booking_code }}'
+    },
+    violation_created: {
+      subject: '[警告] 新的违规记录',
+      template: '## 违规记录\\n\\n您好，系统检测到您存在一条新的违规记录。\\n\\n- 违规类型：{{ violation_type }}\\n- 关联设备：{{ equipment_name }}\\n\\n如有异议，请在系统内提交申诉。'
+    },
+    appeal_resolved: {
+      subject: '[通知] 违规申诉结果',
+      template: '## 申诉处理结果\\n\\n您的违规记录申诉已由管理员处理。\\n\\n- 处理结果：{{ resolution }}\\n- 管理员回复：{{ reply }}'
+    },
+    whitelist_resolved: {
+      subject: '[通知] 白名单申请结果',
+      template: '## 白名单申请处理完毕\\n\\n您对 **{{ equipment_name }}** 的白名单准入申请已出结果。\\n\\n- 状态：{{ resolution }}\\n- 备注：{{ reason }}'
+    },
+    penalty_triggered: {
+      subject: '[警告] 处罚生效',
+      template: '## 处罚触发通知\\n\\n由于累计多次违规，您已触发系统限制。\\n\\n- 限制方式：{{ penalty_method }}\\n- 原因：{{ reason }}'
+    }
+  };
+
   useEffect(() => {
     fetchSettings();
   }, [token]);
@@ -89,13 +124,6 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
   };
 
   const handleSaveGlobal = async () => {
-    // 校验至少选择一种发放方式
-    const delivery = config.booking_code_delivery || { web: 'true' };
-    if (String(delivery.web) !== 'true' && String(delivery.email) !== 'true' && String(delivery.webhook) !== 'true') {
-      toast.error('请至少选择一种预约码发放方式！');
-      return;
-    }
-
     setSaving(true);
     try {
       const payload = flattenObj({
@@ -109,7 +137,10 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error('保存全局配置失败');
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '保存全局配置失败');
+      }
       toast.success('全局配置已保存');
     } catch (err: any) {
       toast.error(err.message);
@@ -187,6 +218,48 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       current[path[path.length - 1]] = value;
       return newConfig;
     });
+  };
+
+  const updateAndSaveToggle = (path: string[], value: string) => {
+    // To prevent double execution from React Strict Mode, we handle the state and fetch separately.
+    let payloadToSave: any = null;
+    
+    setConfig((prev: any) => {
+      const newConfig = { ...prev };
+      let current = newConfig;
+      for (let i = 0; i < path.length - 1; i++) {
+        if (!current[path[i]]) current[path[i]] = {};
+        current = current[path[i]];
+      }
+      current[path[path.length - 1]] = value;
+      payloadToSave = flattenObj(newConfig);
+      return newConfig;
+    });
+
+    // We can run the fetch outside `setConfig` by doing it immediately with our own built payload
+    setTimeout(() => {
+        if (!payloadToSave) {
+            const newConfig = { ...config };
+            let current = newConfig;
+            for (let i = 0; i < path.length - 1; i++) {
+                if (!current[path[i]]) current[path[i]] = {};
+                current = current[path[i]];
+            }
+            current[path[path.length - 1]] = value;
+            payloadToSave = flattenObj(newConfig);
+        }
+        fetch('/api/admin/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payloadToSave)
+        }).then(res => res.json()).then(data => {
+            if (data.error) {
+                toast.error(data.error);
+            } else {
+                toast.success('设置已自动保存', { id: `toggle-save-${path.join('-')}` }); // Fixed toast ID prevents double toasts on UI
+            }
+        }).catch(err => toast.error('自动保存失败: ' + err.message));
+    }, 0);
   };
 
   const testConnection = async (type: 'smtp' | 'webhook') => {
@@ -277,7 +350,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
   };
 
   const toggleEventOnOff = (eventId: string, channel: 'email' | 'webhook', isEnabled: boolean) => {
-      updateConfig([channel, 'events', eventId, 'enabled'], isEnabled ? 'true' : 'false');
+      updateAndSaveToggle([channel, 'events', eventId, 'enabled'], isEnabled ? 'true' : 'false');
   };
 
   if (loading) return <div className="p-8 text-center text-neutral-500">加载中...</div>;
@@ -331,52 +404,21 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                   />
                   <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">控制消息分发队列在发送时的最快吐出速率，防止由于大面积通知发送而导致并发请求过多、过度拥堵或被服务商拉黑限制等问题。默认为 30 秒。</p>
                 </div>
-                <div>
-                  <label className="block text-sm text-neutral-600 mb-1">系统管理员邮箱列表</label>
-                  <input
-                    type="text"
-                    value={config.smtp?.admin_emails || ''}
-                    onChange={(e) => updateConfig(['smtp', 'admin_emails'], e.target.value)}
-                    placeholder="admin1@test.com, admin2@test.com"
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
-                  />
-                  <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">支持通过英文逗号 <code>,</code> 分隔多个邮箱地址。后续可在事件配置下选择将部分事件的内容抄送给该管理员名单内的所有成员。</p>
-                </div>
               </div>
               <div className="pt-4 border-t border-neutral-100">
-                <label className="block text-sm font-medium text-neutral-800 mb-3">预约码发放方式</label>
+                <label className="block text-sm font-medium text-neutral-800 mb-3">网页端预约码显示</label>
                 <div className="flex flex-wrap gap-6 items-center">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input 
                       type="checkbox" 
                       className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-500"
                       checked={String(config.booking_code_delivery?.web) !== 'false'}
-                      onChange={(e) => updateConfig(['booking_code_delivery', 'web'], e.target.checked ? 'true' : 'false')}
+                      onChange={(e) => updateAndSaveToggle(['booking_code_delivery', 'web'], e.target.checked ? 'true' : 'false')}
                     />
                     <span className="text-sm font-medium text-neutral-700">网页上展示预约码</span>
                   </label>
-                  <label className={`flex items-center gap-2 ${String(config.smtp?.enabled) !== 'true' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-500 disabled:opacity-50"
-                      disabled={String(config.smtp?.enabled) !== 'true'}
-                      checked={String(config.booking_code_delivery?.email) === 'true'}
-                      onChange={(e) => updateConfig(['booking_code_delivery', 'email'], e.target.checked ? 'true' : 'false')}
-                    />
-                    <span className="text-sm font-medium text-neutral-700">由 Email 信件投递发放</span>
-                  </label>
-                  <label className={`flex items-center gap-2 ${String(config.webhook?.enabled) !== 'true' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-500 disabled:opacity-50"
-                      disabled={String(config.webhook?.enabled) !== 'true'}
-                      checked={String(config.booking_code_delivery?.webhook) === 'true'}
-                      onChange={(e) => updateConfig(['booking_code_delivery', 'webhook'], e.target.checked ? 'true' : 'false')}
-                    />
-                    <span className="text-sm font-medium text-neutral-700">由 Webhook 通道通知发放</span>
-                  </label>
                 </div>
-                <p className="text-xs text-neutral-500 mt-2">注：Email及Webhook选项需要相应频道"全局启用"之后才可供选择使用。若您未勾选"网页"，那么网页上的预约成功界面则不显示预约代码，仅提醒用户通过其它方式查询。</p>
+                <p className="text-xs text-neutral-500 mt-2">注：若您取消勾选，则网页上的预约成功界面不显示预约码。此时系统强制要求您必须已经配置并启用了 <b>Email</b> 或 <b>Webhook</b> 的预约事件通知，以便用户通过其它渠道获取到预约码。</p>
               </div>
             </div>
           )}
@@ -402,7 +444,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                     value="" 
                     className="sr-only peer"
                     checked={String(config.smtp?.enabled) === 'true'}
-                    onChange={(e) => updateConfig(['smtp', 'enabled'], e.target.checked ? 'true' : 'false')}
+                    onChange={(e) => updateAndSaveToggle(['smtp', 'enabled'], e.target.checked ? 'true' : 'false')}
                   />
                   <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
                 </label>
@@ -430,6 +472,17 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                  </button>
                </div>
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm text-neutral-600 mb-1">系统管理员邮箱列表</label>
+                  <input
+                    type="text"
+                    value={config.smtp?.admin_emails || ''}
+                    onChange={(e) => updateConfig(['smtp', 'admin_emails'], e.target.value)}
+                    placeholder="admin1@test.com, admin2@test.com"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                  />
+                  <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">支持通过英文逗号 <code>,</code> 分隔多个邮箱地址。后续可在事件配置下选择将部分事件的内容抄送给该管理员名单内的所有成员。</p>
+                </div>
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-sm text-neutral-600 mb-1">Host 服务器地址</label>
                   <input
@@ -516,7 +569,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                     value="" 
                     className="sr-only peer"
                     checked={String(config.webhook?.enabled) === 'true'}
-                    onChange={(e) => updateConfig(['webhook', 'enabled'], e.target.checked ? 'true' : 'false')}
+                    onChange={(e) => updateAndSaveToggle(['webhook', 'enabled'], e.target.checked ? 'true' : 'false')}
                   />
                   <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
                 </label>
@@ -545,6 +598,17 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                </div>
               <div className="space-y-4">
                 <div>
+                  <label className="block text-sm text-neutral-600 mb-1">Webhook 别名</label>
+                  <input
+                    type="text"
+                    value={config.webhook?.alias || ''}
+                    onChange={(e) => updateConfig(['webhook', 'alias'], e.target.value)}
+                    placeholder="例如: 钉钉 / 企业微信 / 飞书"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                  />
+                  <p className="text-xs text-neutral-400 mt-1">用于给用户展示和在日志中显示，例如“您的预约码已通过 [别名] 发送”。默认显示 Webhook。</p>
+                </div>
+                <div>
                   <label className="block text-sm text-neutral-600 mb-1">Webhook 发送投递 URL</label>
                   <input
                     type="text"
@@ -558,7 +622,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                 <div>
                   <label className="block text-sm text-neutral-600 mb-1">请求头 Headers (JSON)</label>
                   <textarea
-                    value={config.webhook?.headers || ''}
+                    value={typeof config.webhook?.headers === 'object' ? JSON.stringify(config.webhook.headers, null, 2) : (config.webhook?.headers || '')}
                     onChange={(e) => updateConfig(['webhook', 'headers'], e.target.value)}
                     placeholder='{"Authorization": "Bearer TOKEN"}'
                     rows={3}
@@ -696,7 +760,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                               type="checkbox"
                               className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-500"
                               checked={String(config.email?.events?.[selectedEvent.id]?.notify_user) !== 'false'}
-                              onChange={(e) => updateConfig(['email', 'events', selectedEvent.id, 'notify_user'], e.target.checked ? 'true' : 'false')}
+                              onChange={(e) => updateAndSaveToggle(['email', 'events', selectedEvent.id, 'notify_user'], e.target.checked ? 'true' : 'false')}
                             />
                             <span className="text-sm text-neutral-600 select-none">当事人</span>
                           </label>
@@ -705,9 +769,9 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                               type="checkbox"
                               className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-500"
                               checked={String(config.email?.events?.[selectedEvent.id]?.notify_admin) === 'true'}
-                              onChange={(e) => updateConfig(['email', 'events', selectedEvent.id, 'notify_admin'], e.target.checked ? 'true' : 'false')}
+                              onChange={(e) => updateAndSaveToggle(['email', 'events', selectedEvent.id, 'notify_admin'], e.target.checked ? 'true' : 'false')}
                             />
-                            <span className="text-sm text-neutral-600 select-none">系统管理组</span>
+                            <span className="text-sm text-neutral-600 select-none">管理员</span>
                           </label>
                           <button 
                             onClick={() => testEvent(selectedEvent.id, 'smtp')} 
@@ -734,7 +798,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                         <label className="block text-sm font-medium text-neutral-700 mb-1.5">邮件标题 (Subject)</label>
                         <input
                           type="text"
-                          value={config.email?.events?.[selectedEvent.id]?.subject || ''}
+                          value={config.email?.events?.[selectedEvent.id]?.subject ?? DEFAULT_EMAIL_TEMPLATES[selectedEvent.id]?.subject ?? ''}
                           onChange={(e) => updateConfig(['email', 'events', selectedEvent.id, 'subject'], e.target.value)}
                           placeholder="[通知] 您的预约设置触发了通知..."
                           className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-colors"
@@ -746,7 +810,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                             <span className="text-xs text-neutral-400 font-mono">支持 Markdown 排版语法，投递时会自动转为 HTML</span>
                         </div>
                         <textarea
-                          value={config.email?.events?.[selectedEvent.id]?.template || ''}
+                          value={config.email?.events?.[selectedEvent.id]?.template ?? DEFAULT_EMAIL_TEMPLATES[selectedEvent.id]?.template ?? ''}
                           onChange={(e) => updateConfig(['email', 'events', selectedEvent.id, 'template'], e.target.value)}
                           placeholder="## 尊敬的用户你好&#10;&#10;关于您在系统里的操作发生了以下改变......"
                           rows={10}

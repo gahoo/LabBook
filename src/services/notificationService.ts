@@ -1,6 +1,7 @@
 import { Database } from 'better-sqlite3';
 import nodemailer from 'nodemailer';
 import { marked } from 'marked';
+import { format } from 'date-fns';
 
 export function renderTemplate(template: string, data: Record<string, any>): string {
   if (!template) return '';
@@ -23,7 +24,7 @@ function enqueueNotification(db: Database, event: string, channel: string, targe
     
     // Asynchronously trigger the processor
     setTimeout(() => {
-      processNotificationQueue(db).catch(console.error);
+      scheduleNextRun(db);
     }, 100);
   } catch (err) {
     console.error(`[Enqueue] Failed to enqueue ${channel} notification for ${event}:`, err);
@@ -67,6 +68,41 @@ export async function dispatchWebhook(db: Database, event: string, data: Record<
   }
 }
 
+const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string}> = {
+  booking_created: {
+    subject: '[通知] 预约成功：{{ equipment_name }}',
+    template: '## 预约成功\\n\\n您好，您已成功预约 **{{ equipment_name }}**。\\n\\n**预约详情：**\\n- 预约码：{{ booking_code }}\\n- 开始时间：{{ start_time }}\\n- 结束时间：{{ end_time }}\\n\\n您可以使用预约码在网页端或设备端进行上机。\\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+  },
+  booking_approved: {
+    subject: '[通知] 您的预约已通过审批',
+    template: '## 审批通过\\n\\n您好，您对 **{{ equipment_name }}** 的预约申请已通过。\\n\\n- 预约码：{{ booking_code }}\\n- 开始时间：{{ start_time }}\\n- 结束时间：{{ end_time }}\\n\\n[点击查看预约]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+  },
+  booking_rejected: {
+    subject: '[通知] 您的预约被驳回',
+    template: '## 预约被驳回\\n\\n非常抱歉，您对 **{{ equipment_name }}** 的预约申请未通过审批。'
+  },
+  booking_cancelled: {
+    subject: '[通知] 预约取消',
+    template: '## 预约已取消\\n\\n您的预约已取消。\\n\\n- 设备：{{ equipment_name }}\\n- 预约码：{{ booking_code }}'
+  },
+  violation_created: {
+    subject: '[警告] 新的违规记录',
+    template: '## 违规记录\\n\\n您好，系统检测到您存在一条新的违规记录。\\n\\n- 违规类型：{{ violation_type }}\\n- 关联设备：{{ equipment_name }}\\n\\n如有异议，请在系统内提交申诉。'
+  },
+  appeal_resolved: {
+    subject: '[通知] 违规申诉结果',
+    template: '## 申诉处理结果\\n\\n您的违规记录申诉已由管理员处理。\\n\\n- 处理结果：{{ resolution }}\\n- 管理员回复：{{ reply }}'
+  },
+  whitelist_resolved: {
+    subject: '[通知] 白名单申请结果',
+    template: '## 白名单申请处理完毕\\n\\n您对 **{{ equipment_name }}** 的白名单准入申请已出结果。\\n\\n- 状态：{{ resolution }}\\n- 备注：{{ reason }}'
+  },
+  penalty_triggered: {
+    subject: '[警告] 处罚生效',
+    template: '## 处罚触发通知\\n\\n由于累计多次违规，您已触发系统限制。\\n\\n- 限制方式：{{ penalty_method }}\\n- 原因：{{ reason }}'
+  }
+};
+
 export async function dispatchEmail(db: Database, event: string, userEmail: string | undefined, data: Record<string, any>) {
   try {
     const settings = getSettingsMap(db);
@@ -108,8 +144,8 @@ export async function dispatchEmail(db: Database, event: string, userEmail: stri
       return;
     }
 
-    const subjectTemplate = settings[`email.events.${event}.subject`] || '通知';
-    const markdownTemplate = settings[`email.events.${event}.template`] || '';
+    const subjectTemplate = settings[`email.events.${event}.subject`] ?? DEFAULT_EMAIL_TEMPLATES[event]?.subject ?? '通知';
+    const markdownTemplate = settings[`email.events.${event}.template`] ?? DEFAULT_EMAIL_TEMPLATES[event]?.template ?? '';
 
     const subject = renderTemplate(subjectTemplate, data);
     const renderedMarkdown = renderTemplate(markdownTemplate, data);
@@ -137,12 +173,35 @@ export async function dispatchEmail(db: Database, event: string, userEmail: stri
 }
 
 export function notifyEvent(db: Database, event: string, data: Record<string, any>, userEmail?: string) {
-  dispatchWebhook(db, event, data);
-  dispatchEmail(db, event, userEmail, data);
+  const enhancedData: Record<string, any> = {
+      BASE_URL: GLOBAL_BASE_URL,
+      ...data
+  };
+
+  // Format dates for humans if they exist
+  if (enhancedData.start_time) {
+      try {
+          enhancedData.start_time = format(new Date(enhancedData.start_time), 'yyyy-MM-dd HH:mm');
+      } catch (e) {}
+  }
+  if (enhancedData.end_time) {
+      try {
+          enhancedData.end_time = format(new Date(enhancedData.end_time), 'yyyy-MM-dd HH:mm');
+      } catch (e) {}
+  }
+
+  dispatchWebhook(db, event, enhancedData);
+  dispatchEmail(db, event, userEmail, enhancedData);
 }
 
 // Queue Processor
 let isProcessing = false;
+let nextRunTimer: NodeJS.Timeout | null = null;
+let GLOBAL_BASE_URL = 'http://localhost:3000';
+
+export function setBaseUrl(url: string) {
+  GLOBAL_BASE_URL = url;
+}
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -155,9 +214,45 @@ function calculateBackoff(retryCount: number): number {
   return intervals[idx] * 60 * 1000;
 }
 
+export function scheduleNextRun(db: Database) {
+  if (nextRunTimer) {
+    clearTimeout(nextRunTimer);
+    nextRunTimer = null;
+  }
+  
+  if (isProcessing) return; // processNotificationQueue will call this again in its finally block
+
+  try {
+    const nextRow = db.prepare(`
+      SELECT strftime('%s', next_retry_time) AS next_sec 
+      FROM notifications 
+      WHERE status IN ('pending', 'retrying') 
+      ORDER BY strftime('%s', next_retry_time) ASC LIMIT 1
+    `).get() as any;
+
+    if (nextRow && nextRow.next_sec) {
+      const delay = (parseInt(nextRow.next_sec, 10) * 1000) - Date.now();
+      if (delay <= 0) {
+        processNotificationQueue(db).catch(console.error);
+      } else {
+        nextRunTimer = setTimeout(() => {
+          processNotificationQueue(db).catch(console.error);
+        }, delay);
+      }
+    }
+  } catch (err) {
+    console.error('[NotificationProcessor] Failed to schedule next run:', err);
+  }
+}
+
 export async function processNotificationQueue(db: Database) {
   if (isProcessing) return;
   isProcessing = true;
+
+  if (nextRunTimer) {
+    clearTimeout(nextRunTimer);
+    nextRunTimer = null;
+  }
 
   try {
     const settings = getSettingsMap(db);
@@ -170,7 +265,7 @@ export async function processNotificationQueue(db: Database) {
       const pendingRow = db.prepare(`
         SELECT * FROM notifications 
         WHERE status IN ('pending', 'retrying') 
-        AND next_retry_time <= CURRENT_TIMESTAMP
+        AND strftime('%s', next_retry_time) <= strftime('%s', 'now')
         ORDER BY id ASC LIMIT 1
       `).get() as any;
 
@@ -232,10 +327,9 @@ export async function processNotificationQueue(db: Database) {
           db.prepare(`UPDATE notifications SET status = 'failed', retry_count = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
             .run(newRetryCount, errorMsg, pendingRow.id);
         } else {
-          const backoffTime = calculateBackoff(newRetryCount);
-          const nextRetry = new Date(Date.now() + backoffTime).toISOString();
-          db.prepare(`UPDATE notifications SET status = 'retrying', retry_count = ?, next_retry_time = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-            .run(newRetryCount, nextRetry, errorMsg, pendingRow.id);
+          const backoffTimeMs = calculateBackoff(newRetryCount);
+          db.prepare(`UPDATE notifications SET status = 'retrying', retry_count = ?, next_retry_time = datetime('now', '+' || ? || ' seconds'), error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+            .run(newRetryCount, Math.floor(backoffTimeMs / 1000), errorMsg, pendingRow.id);
         }
       }
 
@@ -246,5 +340,6 @@ export async function processNotificationQueue(db: Database) {
     console.error('[NotificationProcessor] Error:', err);
   } finally {
     isProcessing = false;
+    scheduleNextRun(db);
   }
 }
