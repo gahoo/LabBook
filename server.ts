@@ -843,7 +843,8 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       unban_time: maxUnbanTime ? maxUnbanTime.toISOString() : null,
       penalty_method: penaltyMethod,
       triggered_rules: triggeredRulesDetails,
-      violation_records: violationRecords || []
+      violation_records: violationRecords || [],
+      restrictions: restrictions
     };
   }
 
@@ -1335,22 +1336,32 @@ app.post('/api/reservations', (req, res) => {
   if (durationMinutes > maxDuration) return res.status(400).json({ error: `预约时长不能超过 ${maxDuration} 分钟` });
   if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
 
-  let advanceDays = availability.advanceDays || 7;
+  const originalAdvanceDays = availability.advanceDays || 7;
+  let penalizedAdvanceDays = originalAdvanceDays;
   if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
     if (penaltyCheck.restrictions.reduce_days > 0) {
-      advanceDays -= penaltyCheck.restrictions.reduce_days;
+      penalizedAdvanceDays -= penaltyCheck.restrictions.reduce_days;
     }
-    if (advanceDays < penaltyCheck.restrictions.min_retain_days) {
-      advanceDays = penaltyCheck.restrictions.min_retain_days;
+    if (penalizedAdvanceDays < penaltyCheck.restrictions.min_retain_days) {
+      penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
     }
   }
 
-  const maxDate = new Date(now);
-  maxDate.setDate(maxDate.getDate() + advanceDays);
-  maxDate.setHours(23, 59, 59, 999);
+  const maxOriginalDate = new Date(now);
+  maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
+  maxOriginalDate.setHours(23, 59, 59, 999);
+
+  const maxPenalizedDate = new Date(now);
+  maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
+  maxPenalizedDate.setHours(23, 59, 59, 999);
   
-  if (start > maxDate) {
-    return res.status(400).json({ error: penaltyCheck.isPenalized && penaltyCheck.restrictions?.reduce_days > 0 ? `受惩罚规则限制，您当前只能提前 ${advanceDays} 天预约` : `只能提前 ${advanceDays} 天预约` });
+  if (start > maxOriginalDate) {
+    return res.status(400).json({ error: `只能提前 ${originalAdvanceDays} 天预约` });
+  } else if (start > maxPenalizedDate) {
+    return res.status(403).json({ 
+      error: `受惩罚规则限制，您当前只能提前 ${penalizedAdvanceDays} 天预约`, 
+      structured_penalty: (penaltyCheck as any).structured_penalty || penaltyCheck
+    });
   }
 
   const dayOfWeek = start.getDay();
@@ -1463,7 +1474,8 @@ app.post('/api/reservations', (req, res) => {
     status,
     message: penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL' ? penaltyCheck.reason : undefined,
     booking_code_delivery,
-    webhook_alias: webhookAliasObj?.value || 'Webhook'
+    webhook_alias: webhookAliasObj?.value || 'Webhook',
+    structured_penalty: (penaltyCheck as any).structured_penalty || penaltyCheck
   });
 });
 
@@ -1667,21 +1679,32 @@ app.post('/api/reservations/update', (req, res) => {
   const now = new Date();
   const maxDate = new Date(now);
   
-  let advanceDays = availability.advanceDays || 7;
+  const originalAdvanceDays = availability.advanceDays || 7;
+  let penalizedAdvanceDays = originalAdvanceDays;
   if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
     if (penaltyCheck.restrictions.reduce_days > 0) {
-      advanceDays -= penaltyCheck.restrictions.reduce_days;
+      penalizedAdvanceDays -= penaltyCheck.restrictions.reduce_days;
     }
-    if (advanceDays < penaltyCheck.restrictions.min_retain_days) {
-      advanceDays = penaltyCheck.restrictions.min_retain_days;
+    if (penalizedAdvanceDays < penaltyCheck.restrictions.min_retain_days) {
+      penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
     }
   }
+
+  const maxOriginalDate = new Date(now);
+  maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
+  maxOriginalDate.setHours(23, 59, 59, 999);
+
+  const maxPenalizedDate = new Date(now);
+  maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
+  maxPenalizedDate.setHours(23, 59, 59, 999);
   
-  maxDate.setDate(maxDate.getDate() + advanceDays);
-  maxDate.setHours(23, 59, 59, 999);
-  
-  if (start > maxDate) {
-    return res.status(400).json({ error: penaltyCheck.isPenalized && penaltyCheck.restrictions?.reduce_days > 0 ? `受惩罚规则限制，您当前只能提前 ${advanceDays} 天预约` : `只能提前 ${advanceDays} 天预约` });
+  if (start > maxOriginalDate) {
+    return res.status(400).json({ error: `只能提前 ${originalAdvanceDays} 天预约` });
+  } else if (start > maxPenalizedDate) {
+    return res.status(403).json({ 
+      error: `受惩罚规则限制，您当前只能提前 ${penalizedAdvanceDays} 天预约`, 
+      structured_penalty: (penaltyCheck as any).structured_penalty || penaltyCheck
+    });
   }
   if (start < now) {
     return res.status(400).json({ error: '不能预约过去的时间' });

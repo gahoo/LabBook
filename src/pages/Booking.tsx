@@ -61,6 +61,7 @@ export default function Booking() {
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [bookingStatus, setBookingStatus] = useState<string | null>(null);
   const [bookingCodeDelivery, setBookingCodeDelivery] = useState<any>(null);
+  const [successStructuredPenalty, setSuccessStructuredPenalty] = useState<any>(null);
   const [webhookAlias, setWebhookAlias] = useState<string>('Webhook');
   const [needsWhitelist, setNeedsWhitelist] = useState(false);
   const [applyingWhitelist, setApplyingWhitelist] = useState(false);
@@ -292,6 +293,7 @@ export default function Booking() {
       setBookingCode(data.booking_code);
       setBookingStatus(data.status);
       setBookingCodeDelivery(data.booking_code_delivery);
+      setSuccessStructuredPenalty(data.structured_penalty);
       if (data.webhook_alias) {
           setWebhookAlias(data.webhook_alias);
       }
@@ -410,6 +412,23 @@ export default function Booking() {
           </p>
         </div>
         
+        {successStructuredPenalty?.restrictions?.fee_multiplier > 1.0 && (
+          <div className="bg-orange-50 rounded-xl p-5 mb-8 border border-orange-200 text-left">
+            <h3 className="text-sm font-bold text-orange-800 mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-orange-600" />
+              惩罚性费率提醒
+            </h3>
+            <p className="text-sm text-orange-700 leading-relaxed">
+              由于您存在的
+              <button type="button" onClick={() => navigate('/violations')} className="underline font-bold text-orange-800 hover:text-orange-900 mx-1">
+                违规记录
+              </button>
+              ，此笔预约及后续预订将受到惩罚性计费处理。
+              当前计费倍率为 <strong className="text-lg text-orange-900 mx-1">{successStructuredPenalty.restrictions.fee_multiplier} 倍</strong>。
+            </p>
+          </div>
+        )}
+
         <div className="bg-neutral-50 rounded-xl p-6 mb-8 border border-neutral-200">
           <p className="text-sm text-neutral-500 mb-2 uppercase tracking-wider font-semibold">您的预约码</p>
           {showCodeOnWeb ? (
@@ -503,8 +522,10 @@ export default function Booking() {
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-red-900">账号受限，预约失败</h3>
-              {!structuredPenalty && <p className="text-sm text-red-700 mt-0.5">{bannedErrorMsg}</p>}
+              <h3 className="text-lg font-bold text-red-900">
+                {structuredPenalty?.restrictions?.reduce_days > 0 && structuredPenalty?.penalty_method !== 'BAN' ? '账号受限，提前预约天数被限制' : '账号受限，预约失败'}
+              </h3>
+              <p className="text-sm text-red-700 mt-0.5">{bannedErrorMsg}</p>
             </div>
           </div>
           <button onClick={() => setShowBannedModal(false)} className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full transition-colors">
