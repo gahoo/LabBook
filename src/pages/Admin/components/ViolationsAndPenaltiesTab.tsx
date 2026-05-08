@@ -32,6 +32,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   // Data State
   const [records, setRecords] = useState<any[]>([]);
   const [stats, setStats] = useState<any[]>([]);
+  const [statsDimension, setStatsDimension] = useState<'user' | 'supervisor' | 'equipment'>('user');
   const [activePenalties, setActivePenalties] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -95,7 +96,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const query = new URLSearchParams({ startDate, endDate });
+      const query = new URLSearchParams({ startDate, endDate, dimension: statsDimension });
       const res = await fetch(`/api/admin/reports/violations?${query.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -108,6 +109,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeSubTab === 'stats') {
+      fetchStats();
+    }
+  }, [startDate, endDate, statsDimension, activeSubTab]);
 
   const fetchActivePenalties = async () => {
     setLoading(true);
@@ -299,7 +306,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
     if (recordsFilterUser) {
       const search = recordsFilterUser.toLowerCase();
       if (!v.student_name?.toLowerCase().includes(search) && 
-          !v.student_id?.toLowerCase().includes(search)) {
+          !v.student_id?.toLowerCase().includes(search) &&
+          !v.phone?.includes(search) &&
+          !v.email?.toLowerCase().includes(search) &&
+          !v.supervisor?.toLowerCase().includes(search)) {
         return false;
       }
     }
@@ -374,11 +384,11 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
               <div className="mb-2">违规时间</div>
             </th>
             <th className="py-3 px-4 font-medium align-top">
-              <div className="mb-2">学生</div>
+              <div className="mb-2">用户</div>
               {showFilters && !penaltyContext && (
                 <input 
                   type="text" 
-                  placeholder="学生姓名/学号" 
+                  placeholder="学生姓名/学号/导师" 
                   value={recordsFilterUser}
                   onChange={e => setRecordsFilterUser(e.target.value)}
                   className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
@@ -774,27 +784,33 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
     </div>
   );
 
-  const [statsFilterUser, setStatsFilterUser] = useState('');
+  const [statsFilterName, setStatsFilterName] = useState('');
   const [statsFilterLate, setStatsFilterLate] = useState<number>(0);
+  const [statsFilterLateMinutes, setStatsFilterLateMinutes] = useState<number>(0);
   const [statsFilterOvertime, setStatsFilterOvertime] = useState<number>(0);
+  const [statsFilterOvertimeMinutes, setStatsFilterOvertimeMinutes] = useState<number>(0);
   const [statsFilterNoshow, setStatsFilterNoshow] = useState<number>(0);
   const [statsFilterLateCancel, setStatsFilterLateCancel] = useState<number>(0);
+  const [statsFilterNormalCancel, setStatsFilterNormalCancel] = useState<number>(0);
   const [statsFilterTotal, setStatsFilterTotal] = useState<number>(0);
+  const [statsFilterViolationRate, setStatsFilterViolationRate] = useState<number>(0);
 
   const filteredStats = stats.filter(s => {
-    if (statsFilterUser) {
-      const search = statsFilterUser.toLowerCase();
-      if (!s.student_name?.toLowerCase().includes(search) && 
-          !s.student_id?.toLowerCase().includes(search) &&
-          !s.supervisor?.toLowerCase().includes(search)) {
+    if (statsFilterName) {
+      const search = statsFilterName.toLowerCase();
+      if (!s.name?.toLowerCase().includes(search) && !s.key?.toLowerCase().includes(search)) {
         return false;
       }
     }
     if (s.late_count < statsFilterLate) return false;
+    if (s.total_late_minutes < statsFilterLateMinutes) return false;
     if (s.overtime_count < statsFilterOvertime) return false;
+    if (s.total_overtime_minutes < statsFilterOvertimeMinutes) return false;
     if (s.noshow_count < statsFilterNoshow) return false;
     if (s.late_cancelled_count < statsFilterLateCancel) return false;
+    if (s.normal_cancelled_count < statsFilterNormalCancel) return false;
     if (s.total_violations < statsFilterTotal) return false;
+    if (s.violation_rate * 100 < statsFilterViolationRate) return false;
     return true;
   });
 
@@ -862,10 +878,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                 {renderTimeFilter()}
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-500 mb-1">学生</label>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">用户</label>
                 <input 
                   type="text" 
-                  placeholder="学生姓名/学号" 
+                  placeholder="学生姓名/学号/导师" 
                   value={recordsFilterUser}
                   onChange={e => setRecordsFilterUser(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
@@ -939,8 +955,8 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
 
       {activeSubTab === 'stats' && (
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-neutral-200 flex justify-between items-center bg-neutral-50/50">
-            <div className="flex items-center gap-4">
+          <div className="p-4 border-b border-neutral-200 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-neutral-50/50">
+            <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
               <h2 className="text-lg font-semibold text-neutral-900">违规统计</h2>
               <button
                 type="button"
@@ -951,8 +967,31 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                 <span className="text-sm font-medium">筛选</span>
               </button>
             </div>
-            <div className="hidden md:block">
-              {renderTimeFilter()}
+            
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 w-full md:w-auto">
+              <div className="flex bg-neutral-200/60 p-1 rounded-lg">
+                <button
+                  onClick={() => setStatsDimension('user')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${statsDimension === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+                >
+                  按用户
+                </button>
+                <button
+                  onClick={() => setStatsDimension('supervisor')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${statsDimension === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+                >
+                  按导师
+                </button>
+                <button
+                  onClick={() => setStatsDimension('equipment')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${statsDimension === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
+                >
+                  按设备
+                </button>
+              </div>
+              <div className="hidden md:block">
+                {renderTimeFilter()}
+              </div>
             </div>
           </div>
           {showMobileFilters && (
@@ -962,12 +1001,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                 {renderTimeFilter()}
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-500 mb-1">学生</label>
+                <label className="block text-xs font-medium text-neutral-500 mb-1">{statsDimension === 'user' ? '学生' : statsDimension === 'supervisor' ? '导师' : '设备'}</label>
                 <input 
                   type="text" 
-                  placeholder="学生姓名/学号/导师" 
-                  value={statsFilterUser}
-                  onChange={e => setStatsFilterUser(e.target.value)}
+                  placeholder={statsDimension === 'user' ? '搜索学生姓名/学号...' : statsDimension === 'supervisor' ? '搜索导师...' : '搜索设备...'} 
+                  value={statsFilterName}
+                  onChange={e => setStatsFilterName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
                 />
               </div>
@@ -982,11 +1021,29 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                   />
                 </div>
                 <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">迟到时长 &ge; {statsFilterLateMinutes}m</label>
+                  <input 
+                    type="range" min="0" max={Math.max(10, ...stats.map(s => s.total_late_minutes))} step="5"
+                    value={statsFilterLateMinutes} 
+                    onChange={e => setStatsFilterLateMinutes(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs font-medium text-neutral-500 mb-1">超时次数 &ge; {statsFilterOvertime}</label>
                   <input 
                     type="range" min="0" max={Math.max(1, ...stats.map(s => s.overtime_count))} 
                     value={statsFilterOvertime} 
                     onChange={e => setStatsFilterOvertime(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">超时时长 &ge; {statsFilterOvertimeMinutes}m</label>
+                  <input 
+                    type="range" min="0" max={Math.max(10, ...stats.map(s => s.total_overtime_minutes))} step="5"
+                    value={statsFilterOvertimeMinutes} 
+                    onChange={e => setStatsFilterOvertimeMinutes(Number(e.target.value))}
                     className="w-full accent-red-600"
                   />
                 </div>
@@ -1008,12 +1065,30 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                     className="w-full accent-red-600"
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-neutral-500 mb-1">违规总计 &ge; {statsFilterTotal}</label>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">取消(普通) &ge; {statsFilterNormalCancel}</label>
+                  <input 
+                    type="range" min="0" max={Math.max(1, ...stats.map(s => s.normal_cancelled_count))} 
+                    value={statsFilterNormalCancel} 
+                    onChange={e => setStatsFilterNormalCancel(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">违约总计 &ge; {statsFilterTotal}</label>
                   <input 
                     type="range" min="0" max={Math.max(1, ...stats.map(s => s.total_violations))} 
                     value={statsFilterTotal} 
                     onChange={e => setStatsFilterTotal(Number(e.target.value))}
+                    className="w-full accent-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">违规率 &ge; {statsFilterViolationRate}%</label>
+                  <input 
+                    type="range" min="0" max="100" step="1"
+                    value={statsFilterViolationRate} 
+                    onChange={e => setStatsFilterViolationRate(Number(e.target.value))}
                     className="w-full accent-red-600"
                   />
                 </div>
@@ -1023,75 +1098,122 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="hidden md:table-header-group">
-                <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50">
+                <tr className="border-b border-neutral-200 text-sm text-neutral-500 bg-neutral-50/50 whitespace-nowrap">
                   <th className="py-3 px-4 font-medium align-top">
-                    <div className="mb-2">学生</div>
+                    <div className="mb-2">{statsDimension === 'user' ? '名称' : statsDimension === 'supervisor' ? '导师' : '设备'}</div>
                     <input 
                       type="text" 
-                      placeholder="学生姓名/学号/导师" 
-                      value={statsFilterUser}
-                      onChange={e => setStatsFilterUser(e.target.value)}
-                      className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                      placeholder={statsDimension === 'user' ? '搜索学生姓名/学号...' : statsDimension === 'supervisor' ? '搜索导师...' : '搜索设备...'} 
+                      value={statsFilterName}
+                      onChange={e => setStatsFilterName(e.target.value)}
+                      className="w-40 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
                     />
                   </th>
-                  <th className="py-3 px-4 font-medium text-right align-top">
-                    <div className="mb-2">迟到次数</div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-xs font-normal text-neutral-400">&ge;{statsFilterLate}</span>
-                      <input 
-                        type="range" min="0" max={Math.max(1, ...stats.map(s => s.late_count))} 
-                        value={statsFilterLate} 
-                        onChange={e => setStatsFilterLate(Number(e.target.value))}
-                        className="w-16 accent-red-600"
-                      />
+                  <th className="py-3 px-4 font-medium text-right align-top border-l border-neutral-200">
+                    <div className="mb-2">迟到</div>
+                    <div className="flex flex-col gap-1 items-end">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">次&ge;{statsFilterLate}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(1, ...stats.map(s => s.late_count))} 
+                          value={statsFilterLate} onChange={e => setStatsFilterLate(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">分&ge;{statsFilterLateMinutes}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(10, ...stats.map(s => s.total_late_minutes))} step="5"
+                          value={statsFilterLateMinutes} onChange={e => setStatsFilterLateMinutes(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
                     </div>
                   </th>
                   <th className="py-3 px-4 font-medium text-right align-top">
-                    <div className="mb-2">超时次数</div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-xs font-normal text-neutral-400">&ge;{statsFilterOvertime}</span>
-                      <input 
-                        type="range" min="0" max={Math.max(1, ...stats.map(s => s.overtime_count))} 
-                        value={statsFilterOvertime} 
-                        onChange={e => setStatsFilterOvertime(Number(e.target.value))}
-                        className="w-16 accent-red-600"
-                      />
+                    <div className="mb-2">超时</div>
+                    <div className="flex flex-col gap-1 items-end">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">次&ge;{statsFilterOvertime}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(1, ...stats.map(s => s.overtime_count))} 
+                          value={statsFilterOvertime} onChange={e => setStatsFilterOvertime(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">分&ge;{statsFilterOvertimeMinutes}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(10, ...stats.map(s => s.total_overtime_minutes))} step="5"
+                          value={statsFilterOvertimeMinutes} onChange={e => setStatsFilterOvertimeMinutes(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
                     </div>
                   </th>
                   <th className="py-3 px-4 font-medium text-right align-top">
-                    <div className="mb-2">爽约次数</div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-xs font-normal text-neutral-400">&ge;{statsFilterNoshow}</span>
+                    <div className="mb-2">爽约</div>
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-[10px] font-normal text-neutral-400">&ge;{statsFilterNoshow}</span>
                       <input 
                         type="range" min="0" max={Math.max(1, ...stats.map(s => s.noshow_count))} 
-                        value={statsFilterNoshow} 
-                        onChange={e => setStatsFilterNoshow(Number(e.target.value))}
-                        className="w-16 accent-red-600"
+                        value={statsFilterNoshow} onChange={e => setStatsFilterNoshow(Number(e.target.value))}
+                        className="w-12 accent-red-600"
                       />
                     </div>
                   </th>
                   <th className="py-3 px-4 font-medium text-right align-top">
-                    <div className="mb-2">取消次数(临期)</div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-xs font-normal text-neutral-400">&ge;{statsFilterLateCancel}</span>
-                      <input 
-                        type="range" min="0" max={Math.max(1, ...stats.map(s => s.late_cancelled_count))} 
-                        value={statsFilterLateCancel} 
-                        onChange={e => setStatsFilterLateCancel(Number(e.target.value))}
-                        className="w-16 accent-red-600"
-                      />
+                    <div className="mb-2">取消</div>
+                    <div className="flex flex-col gap-1 items-end">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">临期&ge;{statsFilterLateCancel}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(1, ...stats.map(s => s.late_cancelled_count))} 
+                          value={statsFilterLateCancel} onChange={e => setStatsFilterLateCancel(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">普通&ge;{statsFilterNormalCancel}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(1, ...stats.map(s => s.normal_cancelled_count))} 
+                          value={statsFilterNormalCancel} onChange={e => setStatsFilterNormalCancel(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
                     </div>
                   </th>
-                  <th className="py-3 px-4 font-medium text-right align-top">
-                    <div className="mb-2">违规总计</div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-xs font-normal text-neutral-400">&ge;{statsFilterTotal}</span>
-                      <input 
-                        type="range" min="0" max={Math.max(1, ...stats.map(s => s.total_violations))} 
-                        value={statsFilterTotal} 
-                        onChange={e => setStatsFilterTotal(Number(e.target.value))}
-                        className="w-16 accent-red-600"
-                      />
+                  <th className="py-3 px-2 font-medium text-right align-top border-l border-neutral-200">
+                    <div className="mb-2 text-xs">卫生</div>
+                  </th>
+                  <th className="py-3 px-2 font-medium text-right align-top">
+                    <div className="mb-2 text-xs">违操</div>
+                  </th>
+                  <th className="py-3 px-2 font-medium text-right align-top">
+                    <div className="mb-2 text-xs">代约</div>
+                  </th>
+                  <th className="py-3 px-2 font-medium text-right align-top">
+                    <div className="mb-2 text-xs">其他</div>
+                  </th>
+                  <th className="py-3 px-4 font-medium text-right align-top border-l border-neutral-200">
+                    <div className="mb-2">违规数/预约数<br/>违规率</div>
+                    <div className="flex flex-col gap-1 items-end">
+                      <div className="flex justify-end items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">违约&ge;{statsFilterTotal}</span>
+                        <input 
+                          type="range" min="0" max={Math.max(1, ...stats.map(s => s.total_violations))} 
+                          value={statsFilterTotal} onChange={e => setStatsFilterTotal(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
+                      <div className="flex justify-end items-center gap-1">
+                        <span className="text-[10px] font-normal text-neutral-400">率&ge;{statsFilterViolationRate}%</span>
+                        <input 
+                          type="range" min="0" max="100" step="1"
+                          value={statsFilterViolationRate} onChange={e => setStatsFilterViolationRate(Number(e.target.value))}
+                          className="w-12 accent-red-600"
+                        />
+                      </div>
                     </div>
                   </th>
                 </tr>
@@ -1099,57 +1221,133 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
               <tbody className="text-sm block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                 {filteredStats.map(s => (
                   <tr 
-                    key={s.student_id}
+                    key={s.key}
                     className="block md:table-row hover:bg-neutral-50/50 cursor-pointer transition-colors border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none"
                     onClick={() => {
-                      setActiveSubTab('records');
-                      setRecordsFilterUser(s.student_id);
+                      if (statsDimension === 'user') {
+                        setActiveSubTab('records');
+                        setRecordsFilterUser(s.key);
+                      } else if (statsDimension === 'equipment') {
+                        setActiveSubTab('records');
+                        setRecordsFilterEquipment(s.name);
+                      } else if (statsDimension === 'supervisor') {
+                        setActiveSubTab('records');
+                        setRecordsFilterUser(s.name);
+                      }
                     }}
                   >
                     <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">学生</span>
-                        <div className="text-right md:text-left">
-                          <div className="font-medium text-neutral-900">{s.student_name}</div>
-                          <div className="text-xs text-neutral-500">{s.student_id} | {s.supervisor || '未知'}</div>
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
+                        <div className="text-right md:text-left flex items-center justify-end md:justify-start gap-2">
+                          <div>
+                            <div className="font-medium text-neutral-900 group relative inline-flex items-center gap-1">
+                              {s.name}
+                              {s.sub_items_list && s.sub_items_list.length > 0 && (
+                                <div className="relative group/tooltip">
+                                  <Info className="w-4 h-4 text-neutral-400 cursor-help" />
+                                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover/tooltip:block z-50">
+                                    <div className="bg-neutral-800 text-white text-xs rounded px-3 py-2 whitespace-nowrap min-w-[120px]">
+                                      <div className="font-semibold mb-1 text-neutral-300 border-b border-neutral-600 pb-1">
+                                        最常违规项
+                                      </div>
+                                      <div className="flex flex-col gap-1 mt-1">
+                                        {s.sub_items_list.map((item: any, idx: number) => (
+                                          <div key={idx} className="flex justify-between items-center gap-4">
+                                            <span>{item.name}</span>
+                                            <span className="text-red-400">{item.count}次</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="w-2 h-2 bg-neutral-800 rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2"></div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            {statsDimension === 'user' && <div className="text-xs text-neutral-500">{s.key}</div>}
+                          </div>
+                          {s.active_penalty && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 whitespace-nowrap">
+                              受限中
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none md:border-l">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">迟到</span>
+                        <div className="text-right flex flex-col md:items-end">
+                          <span>{s.late_count} 次</span>
+                          <span className="text-xs text-neutral-400">{s.total_late_minutes} 分钟</span>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">迟到次数</span>
-                        <span className="text-right">{s.late_count}</span>
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">超时</span>
+                        <div className="text-right flex flex-col md:items-end">
+                          <span>{s.overtime_count} 次</span>
+                          <span className="text-xs text-neutral-400">{s.total_overtime_minutes} 分钟</span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">超时次数</span>
-                        <span className="text-right">{s.overtime_count}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
-                      <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">爽约次数</span>
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">爽约</span>
                         <span className="text-right">{s.noshow_count}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">取消次数(临期)</span>
-                        <span className="text-right">{s.late_cancelled_count}</span>
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">取消</span>
+                        <div className="text-right flex flex-col md:items-end">
+                          <span>{s.late_cancelled_count} 临期</span>
+                          <span className="text-xs text-neutral-400">{s.normal_cancelled_count} 普通</span>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right">
+                    <td className="px-2 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none md:border-l">
                       <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">违规总计</span>
-                        <span className="text-right font-semibold text-red-600">{s.total_violations}</span>
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">卫生</span>
+                        <span className="text-right">{s.hygiene_issue}次</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">违操</span>
+                        <span className="text-right">{s.improper_operation}次</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">代约</span>
+                        <span className="text-right">{s.proxy_booking}次</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 md:py-4 block md:table-cell md:text-right border-b border-neutral-100 md:border-none">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">其他</span>
+                        <span className="text-right">{s.other_manual}次</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right md:border-l md:border-neutral-200">
+                      <div className="flex justify-between items-center md:block">
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">违约数/预约数</span>
+                        <div className="text-right flex flex-col md:items-end">
+                          <span className="text-neutral-900">
+                            {s.total_violations}违约 / {s.total_reservations}预约
+                          </span>
+                          <span className="text-xs text-neutral-500">违规率: {(s.violation_rate * 100).toFixed(1)}%</span>
+                        </div>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filteredStats.length === 0 && (
                   <tr className="block md:table-row">
-                    <td colSpan={6} className="py-8 text-center text-neutral-500 block md:table-cell">没有找到符合条件的统计数据</td>
+                    <td colSpan={12} className="py-8 text-center text-neutral-500 block md:table-cell">没有找到符合条件的统计数据</td>
                   </tr>
                 )}
               </tbody>
