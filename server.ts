@@ -2634,6 +2634,7 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
       statsMap.set(key, {
         key,
         name,
+        supervisor: dimension === 'user' ? (v.supervisor || '未知') : null,
         late_count: 0,
         total_late_minutes: 0,
         overtime_count: 0,
@@ -2657,6 +2658,8 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
     if (dimension === 'user' && v.equipment_name) {
       p.sub_items[v.equipment_name] = (p.sub_items[v.equipment_name] || 0) + 1;
     } else if (dimension === 'supervisor' && v.student_name) {
+      p.sub_items[v.student_name] = (p.sub_items[v.student_name] || 0) + 1;
+    } else if (dimension === 'equipment' && v.student_name) {
       p.sub_items[v.student_name] = (p.sub_items[v.student_name] || 0) + 1;
     }
     

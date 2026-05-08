@@ -1075,7 +1075,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-500 mb-1">违约总计 &ge; {statsFilterTotal}</label>
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">违规总计 &ge; {statsFilterTotal}</label>
                   <input 
                     type="range" min="0" max={Math.max(1, ...stats.map(s => s.total_violations))} 
                     value={statsFilterTotal} 
@@ -1199,7 +1199,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                     <div className="mb-2">违规数/预约数<br/>违规率</div>
                     <div className="flex flex-col gap-1 items-end">
                       <div className="flex justify-end items-center gap-1">
-                        <span className="text-[10px] font-normal text-neutral-400">违约&ge;{statsFilterTotal}</span>
+                        <span className="text-[10px] font-normal text-neutral-400">违规&ge;{statsFilterTotal}</span>
                         <input 
                           type="range" min="0" max={Math.max(1, ...stats.map(s => s.total_violations))} 
                           value={statsFilterTotal} onChange={e => setStatsFilterTotal(Number(e.target.value))}
@@ -1241,31 +1241,37 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                         <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
                         <div className="text-right md:text-left flex items-center justify-end md:justify-start gap-2">
                           <div>
-                            <div className="font-medium text-neutral-900 group relative inline-flex items-center gap-1">
-                              {s.name}
+                            <div className="font-medium text-neutral-900 group relative flex items-center gap-1">
+                              {statsDimension === 'user' ? (
+                                <div className="text-right md:text-left">
+                                  <div className="font-medium text-neutral-900">{s.name}</div>
+                                  <div className="text-xs text-neutral-500 font-normal mt-0.5">{s.key} | {s.supervisor || '无导师'}</div>
+                                </div>
+                              ) : (
+                                <span>{s.name}</span>
+                              )}
                               {s.sub_items_list && s.sub_items_list.length > 0 && (
                                 <div className="relative group/tooltip">
                                   <Info className="w-4 h-4 text-neutral-400 cursor-help" />
-                                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover/tooltip:block z-50">
-                                    <div className="bg-neutral-800 text-white text-xs rounded px-3 py-2 whitespace-nowrap min-w-[120px]">
-                                      <div className="font-semibold mb-1 text-neutral-300 border-b border-neutral-600 pb-1">
-                                        最常违规项
+                                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block z-50">
+                                    <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3 py-2 whitespace-nowrap min-w-[200px]">
+                                      <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
+                                        违规明细
                                       </div>
-                                      <div className="flex flex-col gap-1 mt-1">
+                                      <div className="flex flex-col gap-1.5 mt-1 max-h-48 overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
                                         {s.sub_items_list.map((item: any, idx: number) => (
                                           <div key={idx} className="flex justify-between items-center gap-4">
-                                            <span>{item.name}</span>
-                                            <span className="text-red-400">{item.count}次</span>
+                                            <span className="text-neutral-700">{item.name}</span>
+                                            <span className="text-red-600 text-[10px] bg-red-50/50 px-1.5 py-0.5 rounded font-medium">{item.count}次</span>
                                           </div>
                                         ))}
                                       </div>
                                     </div>
-                                    <div className="w-2 h-2 bg-neutral-800 rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2"></div>
+                                    <div className="w-3 h-3 bg-white border-b border-r border-neutral-200 rotate-45 absolute -bottom-1.5 left-2"></div>
                                   </div>
                                 </div>
                               )}
                             </div>
-                            {statsDimension === 'user' && <div className="text-xs text-neutral-500">{s.key}</div>}
                           </div>
                           {s.active_penalty && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 whitespace-nowrap">
@@ -1334,10 +1340,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                     </td>
                     <td className="px-4 py-3 md:py-4 block md:table-cell md:text-right md:border-l md:border-neutral-200">
                       <div className="flex justify-between items-center md:block">
-                        <span className="md:hidden font-medium text-neutral-500 text-xs">违约数/预约数</span>
+                        <span className="md:hidden font-medium text-neutral-500 text-xs">违规数/预约数</span>
                         <div className="text-right flex flex-col md:items-end">
                           <span className="text-neutral-900">
-                            {s.total_violations}违约 / {s.total_reservations}预约
+                            <span className="font-semibold text-red-600">{s.total_violations}违规</span> / {s.total_reservations}预约
                           </span>
                           <span className="text-xs text-neutral-500">违规率: {(s.violation_rate * 100).toFixed(1)}%</span>
                         </div>
