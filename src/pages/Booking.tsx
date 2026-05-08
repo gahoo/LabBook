@@ -959,7 +959,7 @@ export default function Booking() {
               <input required type="text" name="student_id" value={formData.student_id} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all" placeholder="20230001" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">导师</label>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">导师姓名</label>
               <input required type="text" name="supervisor" value={formData.supervisor} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all" placeholder="李四教授" />
             </div>
             <div>
