@@ -393,7 +393,13 @@ export default function MyReservations() {
         
         const dur = (end.getTime() - start.getTime()) / 60000;
         if (dur > maxDuration) {
-          toast.error(`预约时长不能超过 ${maxDuration} 分钟`);
+          toast.error(`超过仪器最大可预约时长，已重新设置开始时间`);
+          setEditData({
+            ...editData,
+            start_time: format(clickedTimeObj, "yyyy-MM-dd'T'HH:mm"),
+            end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+          });
+          setSelectionStep(1);
           return;
         }
 
