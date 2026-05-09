@@ -1154,12 +1154,17 @@ app.get('/api/equipment/availability/today', (req, res) => {
       };
     });
 
+    const windowStart = new Date(`${date}T00:00:00`);
+    windowStart.setDate(windowStart.getDate() - 1);
+    const windowEnd = new Date(`${date}T00:00:00`);
+    windowEnd.setDate(windowEnd.getDate() + 2);
+
     const reservationsRaw = db.prepare(`
       SELECT * FROM reservations 
       WHERE equipment_id = ? 
       AND status IN ('pending', 'approved', 'active')
-      AND date(start_time) IN (date(?, '-1 day'), date(?), date(?, '+1 day'))
-    `).all(eq.id, date, date, date);
+      AND start_time < ? AND end_time > ?
+    `).all(eq.id, windowEnd.toISOString(), windowStart.toISOString());
 
     let reservations = reservationsRaw;
     if (eq.release_noshow_slots) {
@@ -1229,12 +1234,17 @@ app.get('/api/equipment/:id/availability', (req, res) => {
     });
   });
 
+  const windowStart = new Date(`${date}T00:00:00`);
+  windowStart.setDate(windowStart.getDate() - 1);
+  const windowEnd = new Date(`${date}T00:00:00`);
+  windowEnd.setDate(windowEnd.getDate() + 2);
+
   // Fetch existing reservations for this date and adjacent dates to handle timezone offsets
   const reservationsRaw = db.prepare(`
     SELECT id, start_time, end_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-    AND date(start_time) IN (date(?, '-1 day'), date(?), date(?, '+1 day'))
-  `).all(id, date, date, date);
+    AND start_time < ? AND end_time > ?
+  `).all(id, windowEnd.toISOString(), windowStart.toISOString());
 
   let reservations = reservationsRaw;
   if (equipment.release_noshow_slots) {
@@ -1271,6 +1281,60 @@ app.get('/api/equipment/:id/reservations', (req, res) => {
   
   res.json(reservations);
 });
+
+function validateOperatingHours(start: Date, end: Date, availability: any, tzOffset: number): { isValid: boolean, error?: string, isOutOfHours: boolean } {
+  if (availability.allowOutOfHours) {
+    return { isValid: true, isOutOfHours: true };
+  }
+
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  
+  const localStartMs = startMs - tzOffset * 60000;
+  const localEndMs = endMs - tzOffset * 60000;
+
+  let currentMs = localStartMs;
+
+  while (currentMs < localEndMs) {
+    const currentLocal = new Date(currentMs);
+    const nextMidnightLocal = new Date(currentLocal);
+    nextMidnightLocal.setUTCHours(24, 0, 0, 0); 
+    
+    const chunkEndMs = Math.min(localEndMs, nextMidnightLocal.getTime());
+    
+    const dayOfWeek = currentLocal.getUTCDay();
+    
+    const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
+    
+    if (dayRules.length === 0) {
+      return { isValid: false, error: '所选时间包含了仪器不开放的日期', isOutOfHours: true };
+    }
+    
+    const startLocalMinutes = currentLocal.getUTCHours() * 60 + currentLocal.getUTCMinutes();
+    
+    const endDatesLocal = new Date(chunkEndMs);
+    let endLocalMinutes = endDatesLocal.getUTCHours() * 60 + endDatesLocal.getUTCMinutes();
+    if (endLocalMinutes === 0 && chunkEndMs > currentMs) {
+       endLocalMinutes = 24 * 60;
+    }
+    
+    const fallsWithinAnyRule = dayRules.some((rule: any) => {
+      const rsMins = parseInt(rule.start.split(':')[0]) * 60 + parseInt(rule.start.split(':')[1]);
+      let reMins = parseInt(rule.end.split(':')[0]) * 60 + parseInt(rule.end.split(':')[1]);
+      if (reMins === 1439) reMins = 1440; // 23:59 inclusive of midnight
+      return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
+    });
+
+    if (!fallsWithinAnyRule) {
+      const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
+      return { isValid: false, error: `部分所选时间不在仪器开放范围内 (该日开放: ${validRanges})`, isOutOfHours: true };
+    }
+    
+    currentMs = chunkEndMs;
+  }
+  
+  return { isValid: true, isOutOfHours: false };
+}
 
 // 4. Create reservation
 app.post('/api/reservations', (req, res) => {
@@ -1364,42 +1428,19 @@ app.post('/api/reservations', (req, res) => {
     });
   }
 
-  const dayOfWeek = start.getDay();
-  const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
-  
-  let isOutOfHours = false;
-  if (dayRules.length === 0) {
-    if (!availability.allowOutOfHours) {
-      return res.status(400).json({ error: '所选日期仪器不开放' });
-    }
-    isOutOfHours = true;
-  } else {
-    const tz_offset = req.body.tz_offset || 0;
-    const startLocalMinutes = (start.getUTCHours() * 60 + start.getUTCMinutes() - tz_offset + 1440) % 1440;
-    let endLocalMinutes = (end.getUTCHours() * 60 + end.getUTCMinutes() - tz_offset + 1440) % 1440;
-    if (endLocalMinutes === 0) endLocalMinutes = 24 * 60;
-
-    const fallsWithinAnyRule = dayRules.some((rule: any) => {
-      const rsMins = parseInt(rule.start.split(':')[0]) * 60 + parseInt(rule.start.split(':')[1]);
-      const reMins = parseInt(rule.end.split(':')[0]) * 60 + parseInt(rule.end.split(':')[1]);
-      return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
-    });
-
-    if (!fallsWithinAnyRule) {
-      if (!availability.allowOutOfHours) {
-        const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
-        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${validRanges})` });
-      }
-      isOutOfHours = true;
-    }
+  const tz_offset = req.body.tz_offset || 0;
+  const validResult = validateOperatingHours(start, end, availability, tz_offset);
+  if (!validResult.isValid) {
+    return res.status(400).json({ error: validResult.error });
   }
+  let isOutOfHours = validResult.isOutOfHours;
 
   // Check if slot is already booked
   const existingRaw = db.prepare(`
     SELECT id, start_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-    AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))
-  `).all(equipment_id, start_time, start_time, end_time, end_time);
+    AND start_time < ? AND end_time > ?
+  `).all(equipment_id, end_time, start_time);
 
   let hasConflict = false;
   if (existingRaw.length > 0) {
@@ -1710,42 +1751,19 @@ app.post('/api/reservations/update', (req, res) => {
     return res.status(400).json({ error: '不能预约过去的时间' });
   }
 
-  const dayOfWeek = start.getDay();
-  const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
-  
-  let isOutOfHours = false;
-  if (dayRules.length === 0) {
-    if (!availability.allowOutOfHours) {
-      return res.status(400).json({ error: '所选日期仪器不开放' });
-    }
-    isOutOfHours = true;
-  } else {
-    const tz_offset = req.body.tz_offset || 0;
-    const startLocalMinutes = (start.getUTCHours() * 60 + start.getUTCMinutes() - tz_offset + 1440) % 1440;
-    let endLocalMinutes = (end.getUTCHours() * 60 + end.getUTCMinutes() - tz_offset + 1440) % 1440;
-    if (endLocalMinutes === 0) endLocalMinutes = 24 * 60;
-
-    const fallsWithinAnyRule = dayRules.some((rule: any) => {
-      const rsMins = parseInt(rule.start.split(':')[0]) * 60 + parseInt(rule.start.split(':')[1]);
-      const reMins = parseInt(rule.end.split(':')[0]) * 60 + parseInt(rule.end.split(':')[1]);
-      return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
-    });
-
-    if (!fallsWithinAnyRule) {
-      if (!availability.allowOutOfHours) {
-        const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
-        return res.status(400).json({ error: `所选时间不在仪器开放范围内 (${validRanges})` });
-      }
-      isOutOfHours = true;
-    }
+  const tz_offset = req.body.tz_offset || 0;
+  const validResult = validateOperatingHours(start, end, availability, tz_offset);
+  if (!validResult.isValid) {
+    return res.status(400).json({ error: validResult.error });
   }
+  let isOutOfHours = validResult.isOutOfHours;
 
   // Check conflicts (excluding self)
   const conflictRaw = db.prepare(`
     SELECT id, start_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
-    AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))
-  `).all(reservation.equipment_id, reservation.id, start_time, start_time, end_time, end_time);
+    AND start_time < ? AND end_time > ?
+  `).all(reservation.equipment_id, reservation.id, end_time, start_time);
 
   let hasConflict = false;
   if (conflictRaw.length > 0) {

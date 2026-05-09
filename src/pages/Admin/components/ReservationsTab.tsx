@@ -593,24 +593,48 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-500 mb-1">开始时间</label>
-                  <input 
-                    type="datetime-local" 
-                    step="300"
-                    value={editingReservation.start_time} 
-                    onChange={e => setEditingReservation({...editingReservation, start_time: e.target.value})} 
-                    className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
-                  />
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">开始日期与时间</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="date" 
+                      value={editingReservation.start_time.split('T')[0]} 
+                      onChange={e => {
+                        if(e.target.value) {
+                          setEditingReservation({...editingReservation, start_time: `${e.target.value}T${editingReservation.start_time.split('T')[1] || '08:00'}`});
+                        }
+                      }} 
+                      className="w-3/5 px-4 py-2 rounded-xl border border-neutral-300 cursor-pointer" 
+                    />
+                    <input 
+                      type="time" 
+                      step="300"
+                      value={editingReservation.start_time.split('T')[1]?.substring(0, 5) || ''} 
+                      onChange={e => setEditingReservation({...editingReservation, start_time: `${editingReservation.start_time.split('T')[0]}T${e.target.value}`})} 
+                      className="w-2/5 px-4 py-2 rounded-xl border border-neutral-300 font-mono" 
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-500 mb-1">结束时间</label>
-                  <input 
-                    type="datetime-local" 
-                    step="300"
-                    value={editingReservation.end_time} 
-                    onChange={e => setEditingReservation({...editingReservation, end_time: e.target.value})} 
-                    className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
-                  />
+                  <label className="block text-xs font-medium text-neutral-500 mb-1">结束日期与时间</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="date" 
+                      value={editingReservation.end_time.split('T')[0]} 
+                      onChange={e => {
+                        if(e.target.value) {
+                          setEditingReservation({...editingReservation, end_time: `${e.target.value}T${editingReservation.end_time.split('T')[1] || '08:00'}`});
+                        }
+                      }} 
+                      className="w-3/5 px-4 py-2 rounded-xl border border-neutral-300 cursor-pointer" 
+                    />
+                    <input 
+                      type="time" 
+                      step="300"
+                      value={editingReservation.end_time.split('T')[1]?.substring(0, 5) || ''} 
+                      onChange={e => setEditingReservation({...editingReservation, end_time: `${editingReservation.end_time.split('T')[0]}T${e.target.value}`})} 
+                      className="w-2/5 px-4 py-2 rounded-xl border border-neutral-300 font-mono" 
+                    />
+                  </div>
                 </div>
               </div>
               <div>

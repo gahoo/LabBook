@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays, startOfToday, parseISO, addMinutes, isBefore, isAfter, startOfDay, endOfDay } from 'date-fns';
 import { Calendar as CalendarIcon, Clock, CheckCircle2, ChevronRight, Info, MapPin, Lock, DollarSign, AlertCircle, X, AlertTriangle } from 'lucide-react';
@@ -38,6 +38,7 @@ export default function Booking() {
   const location = useLocation();
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
+  const [endDate, setEndDate] = useState<Date>(startOfToday());
   const [availableRanges, setAvailableRanges] = useState<Slot[]>([]);
   const [existingReservations, setExistingReservations] = useState<Reservation[]>([]);
   const [maxDuration, setMaxDuration] = useState(60);
@@ -161,42 +162,62 @@ export default function Booking() {
     setStartTime(val);
     if (val) {
       const [h, m] = val.split(':').map(Number);
-      const start = new Date();
+      const start = new Date(selectedDate);
       start.setHours(h, m, 0, 0);
       const end = addMinutes(start, maxDuration);
+      setEndDate(end);
       setEndTime(format(end, 'HH:mm'));
       setSelectionStep(2);
     }
   };
 
   const handleTimeGridClick = (date: Date, time: string) => {
-    const isDifferentDate = format(date, 'yyyy-MM-dd') !== format(selectedDate, 'yyyy-MM-dd');
+    // Determine if we are starting a new selection
+    const isNewSelection = selectionStep === 0 || selectionStep === 2;
     
-    setSelectedDate(date);
-    
-    if (selectionStep === 0 || selectionStep === 2 || isDifferentDate) {
+    if (isNewSelection) {
+      setSelectedDate(date);
+      setEndDate(date);
       setStartTime(time);
       const [h, m] = time.split(':').map(Number);
-      const start = new Date();
+      const start = new Date(date);
       start.setHours(h, m, 0, 0);
       const end = addMinutes(start, 30);
+      
+      // If adding 30 mins crosses midnight
+      if (end.getDate() !== start.getDate()) {
+        setEndDate(end);
+      }
       setEndTime(format(end, 'HH:mm'));
       setSelectionStep(1);
     } else if (selectionStep === 1) {
       const [h1, m1] = startTime.split(':').map(Number);
       const [h2, m2] = time.split(':').map(Number);
-      const start = new Date();
+      
+      const start = new Date(selectedDate);
       start.setHours(h1, m1, 0, 0);
-      const clickedTime = new Date();
+      
+      const clickedTime = new Date(date);
       clickedTime.setHours(h2, m2, 0, 0);
       
-      if (clickedTime <= start) {
+      if (clickedTime <= start || clickedTime.getTime() - start.getTime() > 24 * 60 * 60 * 1000) {
+        // They clicked before start time, or more than 1 day later, so reset start time
+        setSelectedDate(date);
+        setEndDate(date);
         setStartTime(time);
         const end = addMinutes(clickedTime, 30);
+        if (end.getDate() !== clickedTime.getDate()) setEndDate(end);
         setEndTime(format(end, 'HH:mm'));
         setSelectionStep(1);
       } else {
+        // Valid end time
         const end = addMinutes(clickedTime, 30);
+        const durationMinutes = (end.getTime() - start.getTime()) / 60000;
+        if (durationMinutes > maxDuration) {
+          toast.error(`预约时长不能超过 ${maxDuration} 分钟`);
+          return;
+        }
+        setEndDate(end);
         setEndTime(format(end, 'HH:mm'));
         setSelectionStep(2);
       }
@@ -207,23 +228,19 @@ export default function Booking() {
     e.preventDefault();
     if (!startTime || !endTime) return toast.error('请选择预约时间');
 
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const start = new Date(`${dateStr}T${startTime}`);
-    const end = new Date(`${dateStr}T${endTime}`);
+    const startDateStr = format(selectedDate, 'yyyy-MM-dd');
+    const endDateStr = format(endDate, 'yyyy-MM-dd');
+    
+    const start = new Date(`${startDateStr}T${startTime}`);
+    const end = new Date(`${endDateStr}T${endTime}`);
 
-    if (isBefore(end, start)) return toast.error('结束时间必须晚于开始时间');
+    if (isBefore(end, start) || end.getTime() === start.getTime()) {
+      return toast.error('结束时间必须晚于开始时间');
+    }
     
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     if (durationMinutes > maxDuration) return toast.error(`预约时长不能超过 ${maxDuration} 分钟`);
     if (durationMinutes < minDuration) return toast.error(`预约时长不能少于 ${minDuration} 分钟`);
-
-    // Check if within available ranges
-    const inRange = availableRanges.some(range => {
-      const rStart = new Date(range.start);
-      const rEnd = new Date(range.end);
-      return (start >= rStart && end <= rEnd);
-    });
-    if (!inRange && !allowOutOfHours) return toast.error('所选时间不在仪器开放范围内');
 
     // Check conflicts
     const conflict = existingReservations.some(res => {
@@ -361,13 +378,60 @@ export default function Booking() {
     fetchAll();
   }, [id, equipment, advanceDays]);
 
-  // Transform allAvailability into a format for a multi-day heat-map grid
-  // X-axis: Time (08:00 to 22:00, 30min steps)
-  const timeSteps = Array.from({ length: (22 - 8) * 2 }).map((_, i) => {
-    const h = 8 + Math.floor(i / 2);
+  // Dynamically calculate grid boundaries based on equipment rules
+  const { minHour, maxHour } = useMemo(() => {
+    let minH = 24;
+    let maxH = 0;
+    
+    if (equipment && equipment.availability_json) {
+      try {
+        const avail = JSON.parse(equipment.availability_json);
+        if (avail.allowOutOfHours) {
+          return { minHour: 0, maxHour: 24 };
+        }
+        if (avail.rules && avail.rules.length > 0) {
+          avail.rules.forEach((r: any) => {
+            const sh = parseInt(r.start.split(':')[0]);
+            let eh = parseInt(r.end.split(':')[0]);
+            if (parseInt(r.end.split(':')[1]) > 0 || r.end.includes("23:59")) eh += 1;
+            if (eh === 0) eh = 24;
+            if (sh < minH) minH = sh;
+            if (eh > maxH) maxH = eh;
+          });
+        }
+      } catch(e) {}
+    }
+    
+    if (minH >= maxH) {
+      return { minHour: 8, maxHour: 22 };
+    }
+    return { minHour: minH, maxHour: maxH };
+  }, [equipment]);
+
+  // X-axis: Time (minHour to maxHour, 30min steps)
+  const timeSteps = useMemo(() => Array.from({ length: (maxHour - minHour) * 2 }).map((_, i) => {
+    const h = minHour + Math.floor(i / 2);
     const m = (i % 2) * 30;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  });
+  }), [minHour, maxHour]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current && !loadingAll && minHour < 8 && maxHour >= 18) {
+      // Auto scroll to 08:00
+      const scrollContainer = scrollRef.current;
+      const totalMinutes = (maxHour - minHour) * 60;
+      const targetMinutes = (8 - minHour) * 60;
+      const innerContainer = scrollContainer.firstChild as HTMLElement;
+      if (innerContainer) {
+        // Sticky offset is 96px (w-24)
+        const scrollWidth = innerContainer.offsetWidth - 96; 
+        const scrollLeft = (targetMinutes / totalMinutes) * scrollWidth;
+        scrollContainer.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+      }
+    }
+  }, [loadingAll, minHour, maxHour]);
 
   const gridData = allAvailability.map(dayData => {
     const dateStr = dayData.date;
@@ -378,11 +442,23 @@ export default function Booking() {
       date: dateStr,
       times: timeSteps.map(t => {
         const timeDate = new Date(`${dateStr}T${t}`);
-        const isAvailable = slots.some((s: any) => {
+        let isAvailable = slots.some((s: any) => {
           const start = new Date(s.start);
-          const end = new Date(s.end);
+          const endStr = s.end;
+          // handle 24:00 returned from earlier potentially
+          let end = new Date(endStr);
+          if (isNaN(end.getTime()) || endStr.includes('T24:00')) {
+             end = new Date(s.start);
+             end.setDate(end.getDate() + 1);
+             end.setHours(0, 0, 0, 0);
+          }
           return timeDate >= start && timeDate < end;
         });
+        
+        if (allowOutOfHours) {
+          isAvailable = true;
+        }
+
         const isBooked = resvs.some((r: any) => {
           const start = new Date(r.start_time);
           const end = new Date(r.end_time);
@@ -772,15 +848,20 @@ export default function Booking() {
             {loadingAll ? (
               <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div></div>
             ) : (
-              <div className="overflow-x-auto">
-                <div className="min-w-[800px]">
+              <div className="overflow-x-auto relative" ref={scrollRef}>
+                <div className="w-fit min-w-full pb-4">
                   {/* Time Header */}
                   <div className="flex border-b border-neutral-100 pb-2 mb-2">
-                    <div className="w-24 shrink-0"></div>
-                    <div className="flex-1 flex justify-between px-2 text-[10px] text-neutral-400 font-mono">
-                      {timeSteps.filter((_, i) => i % 2 === 0).map(t => (
-                        <span key={t}>{t}</span>
+                    <div className="w-24 shrink-0 sticky left-0 z-10 bg-white shadow-[1px_0_4px_rgba(0,0,0,0.05)]"></div>
+                    <div className="flex items-end px-[2px] text-[10px] text-neutral-400 font-mono">
+                      {timeSteps.map((t, i) => (
+                        <div key={t} className="w-[30px] shrink-0 text-left">
+                          {i % 2 === 0 ? <span className="-ml-3">{t}</span> : null}
+                        </div>
                       ))}
+                      <div className="w-[1px] shrink-0 text-left">
+                        <span className="-ml-3">{`${maxHour.toString().padStart(2, '0')}:00`}</span>
+                      </div>
                     </div>
                   </div>
                   
@@ -794,17 +875,20 @@ export default function Booking() {
                       return (
                         <div key={idx} className="flex items-center group">
                               <button 
-                                onClick={() => setSelectedDate(date)}
+                                onClick={() => {
+                                  setSelectedDate(date);
+                                  if (endDate < date) setEndDate(date);
+                                }}
                                 className={clsx(
-                                  "w-24 shrink-0 text-left px-2 py-1 rounded-lg transition-colors cursor-pointer",
-                                  isSelected ? "bg-red-600 text-white" : "hover:bg-neutral-50"
+                                  "w-24 shrink-0 text-left px-2 py-1 transition-colors cursor-pointer sticky left-0 z-10 border-r border-neutral-100",
+                                  isSelected ? "bg-red-600 text-white" : "bg-white hover:bg-neutral-50 group-hover:bg-neutral-50 shadow-[1px_0_4px_rgba(0,0,0,0.05)]"
                                 )}
                               >
                                 <p className="text-[10px] font-bold uppercase opacity-70">{daysMap[dayStr] || dayStr}</p>
                                 <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
                               </button>
                               
-                              <div className="flex-1 flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                              <div className="flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
                                 {row.times.map((t, i) => {
                                   const timeDate = new Date(`${row.date}T${t.time}`);
                                   const isPast = timeDate < new Date();
@@ -814,10 +898,10 @@ export default function Booking() {
                                   let isLastSelected = false;
                                   let isNextSelected = false;
 
-                                  if (isSelected && startTime && endTime) {
+                                  if (startTime && endTime) {
                                     const blockStart = new Date(`${row.date}T${t.time}`);
-                                    const selStart = new Date(`${row.date}T${startTime}`);
-                                    const selEnd = new Date(`${row.date}T${endTime}`);
+                                    const selStart = new Date(`${format(selectedDate, 'yyyy-MM-dd')}T${startTime}`);
+                                    const selEnd = new Date(`${format(endDate, 'yyyy-MM-dd')}T${endTime}`);
                                     
                                     if (blockStart >= selStart && blockStart < selEnd) {
                                       isSelectedBlock = true;
@@ -852,15 +936,15 @@ export default function Booking() {
                                       key={i}
                                       title={`${row.date} ${t.time}`}
                                       className={clsx(
-                                        "flex-1 aspect-square transition-all",
+                                        "w-[30px] shrink-0 h-[30px] transition-all",
                                         bgColor,
                                         !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
                                         showRightGap && "border-r border-neutral-50",
                                         isSelectedBlock && "relative",
-                                        isSelectedBlock && isFirstSelected && isLastSelected ? "shadow-[0_0_0_2px_#047857] rounded-sm" :
-                                        isSelectedBlock && isFirstSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm" :
-                                        isSelectedBlock && isLastSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm" :
-                                        isSelectedBlock ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857]" : ""
+                                        isSelectedBlock && isFirstSelected && isLastSelected ? "shadow-[0_0_0_2px_#047857] rounded-sm z-10" :
+                                        isSelectedBlock && isFirstSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm z-10" :
+                                        isSelectedBlock && isLastSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm z-10" :
+                                        isSelectedBlock ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857] z-10" : ""
                                       )}
                                       onClick={() => {
                                         if (!t.isBooked && !isPast && t.isAvailable) {
@@ -901,37 +985,53 @@ export default function Booking() {
                 <Clock className="w-5 h-5 text-red-600" />
                 设置预约时间
               </h3>
-              <input 
-                type="date" 
-                value={format(selectedDate, 'yyyy-MM-dd')}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setSelectedDate(parseISO(e.target.value));
-                  }
-                }}
-                className="px-3 py-1.5 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none text-sm font-medium cursor-pointer"
-              />
             </div>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">开始时间</label>
-                <input 
-                  type="time" 
-                  step="300"
-                  value={startTime} 
-                  onChange={e => handleStartTimeChange(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all font-mono text-lg"
-                />
+                <label className="block text-sm font-medium text-neutral-700 mb-2">开始日期与时间</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="date" 
+                    value={format(selectedDate, 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const newDate = parseISO(e.target.value);
+                        setSelectedDate(newDate);
+                        if (endDate < newDate) {
+                          setEndDate(newDate);
+                        }
+                      }
+                    }}
+                    className="w-3/5 px-3 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none transition-all cursor-pointer text-sm"
+                  />
+                  <input 
+                    type="time" 
+                    step="300"
+                    value={startTime} 
+                    onChange={e => handleStartTimeChange(e.target.value)}
+                    className="w-2/5 px-3 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none transition-all font-mono text-sm"
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">结束时间</label>
-                <input 
-                  type="time" 
-                  step="300"
-                  value={endTime} 
-                  onChange={e => setEndTime(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all font-mono text-lg"
-                />
+                <label className="block text-sm font-medium text-neutral-700 mb-2">结束日期与时间</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="date" 
+                    value={format(endDate, 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      if (e.target.value) setEndDate(parseISO(e.target.value));
+                    }}
+                    className="w-3/5 px-3 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none transition-all cursor-pointer text-sm"
+                  />
+                  <input 
+                    type="time" 
+                    step="300"
+                    value={endTime} 
+                    onChange={e => setEndTime(e.target.value)}
+                    className="w-2/5 px-3 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none transition-all font-mono text-sm"
+                  />
+                </div>
               </div>
             </div>
             <div className="mt-6 p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3">

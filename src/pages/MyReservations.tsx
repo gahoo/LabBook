@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Play, Square, XCircle, CheckCircle2, Clock, Calendar, ChevronDown, ChevronUp, Edit3, Save, X, Trash2 } from 'lucide-react';
 import { format, isBefore, addMinutes, parseISO } from 'date-fns';
@@ -38,9 +38,11 @@ export default function MyReservations() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState<any>(null);
+  const [targetEquipment, setTargetEquipment] = useState<any>(null);
   const [selectionStep, setSelectionStep] = useState<0 | 1 | 2>(0);
   const [availabilityData, setAvailabilityData] = useState<any[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -281,6 +283,7 @@ export default function MyReservations() {
       const eq = eqData.find((e: any) => e.id === resv.equipment_id);
       let advanceDays = 7;
       if (eq) {
+        setTargetEquipment(eq);
         try {
           const avail = JSON.parse(eq.availability_json);
           advanceDays = avail.advanceDays || 7;
@@ -305,40 +308,95 @@ export default function MyReservations() {
     }
   };
 
-  const timeSteps = Array.from({ length: (22 - 8) * 2 }).map((_, i) => {
-    const h = 8 + Math.floor(i / 2);
+  const { minHour, maxHour, allowOutOfHours } = useMemo(() => {
+    let minH = 24;
+    let maxH = 0;
+    let allowOOH = false;
+    
+    if (targetEquipment && targetEquipment.availability_json) {
+      try {
+        const avail = JSON.parse(targetEquipment.availability_json);
+        allowOOH = avail.allowOutOfHours || false;
+        if (avail.allowOutOfHours) {
+          return { minHour: 0, maxHour: 24, allowOutOfHours: true };
+        }
+        if (avail.rules && avail.rules.length > 0) {
+          avail.rules.forEach((r: any) => {
+            const sh = parseInt(r.start.split(':')[0]);
+            let eh = parseInt(r.end.split(':')[0]);
+            if (parseInt(r.end.split(':')[1]) > 0 || r.end.includes("23:59")) eh += 1;
+            if (eh === 0) eh = 24;
+            if (sh < minH) minH = sh;
+            if (eh > maxH) maxH = eh;
+          });
+        }
+      } catch(e) {}
+    }
+    
+    if (minH >= maxH) {
+      return { minHour: 8, maxHour: 22, allowOutOfHours: allowOOH };
+    }
+    return { minHour: minH, maxHour: maxH, allowOutOfHours: allowOOH };
+  }, [targetEquipment]);
+
+  const timeSteps = useMemo(() => Array.from({ length: (maxHour - minHour) * 2 }).map((_, i) => {
+    const h = minHour + Math.floor(i / 2);
     const m = (i % 2) * 30;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  });
+  }), [minHour, maxHour]);
+
+  useEffect(() => {
+    if (scrollRef.current && !loadingAvailability && minHour < 8 && maxHour >= 18) {
+      const scrollContainer = scrollRef.current;
+      const totalMinutes = (maxHour - minHour) * 60;
+      const targetMinutes = (8 - minHour) * 60;
+      const innerContainer = scrollContainer.firstChild as HTMLElement;
+      if (innerContainer) {
+        const scrollWidth = innerContainer.offsetWidth - 96; 
+        const scrollLeft = (targetMinutes / totalMinutes) * scrollWidth;
+        scrollContainer.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+      }
+    }
+  }, [loadingAvailability, minHour, maxHour]);
 
   const handleTimeGridClick = (dateStr: string, timeStr: string) => {
     const clickedDate = parseISO(dateStr);
-    const currentStartDate = editData?.start_time ? parseISO(editData.start_time.split('T')[0]) : null;
-    const isDifferentDate = currentStartDate ? format(clickedDate, 'yyyy-MM-dd') !== format(currentStartDate, 'yyyy-MM-dd') : true;
+    const start = editData?.start_time ? new Date(editData.start_time) : null;
+    const clickedTimeObj = new Date(`${dateStr}T${timeStr}`);
     
-    if (selectionStep === 0 || selectionStep === 2 || isDifferentDate) {
-      const start = new Date(`${dateStr}T${timeStr}`);
-      const end = addMinutes(start, 30);
+    if (selectionStep === 0 || selectionStep === 2 || !start) {
+      const end = addMinutes(clickedTimeObj, 30);
       setEditData({
         ...editData,
-        start_time: format(start, "yyyy-MM-dd'T'HH:mm"),
+        start_time: format(clickedTimeObj, "yyyy-MM-dd'T'HH:mm"),
         end_time: format(end, "yyyy-MM-dd'T'HH:mm")
       });
       setSelectionStep(1);
     } else if (selectionStep === 1) {
-      const start = new Date(editData.start_time);
-      const clickedTime = new Date(`${dateStr}T${timeStr}`);
-      
-      if (clickedTime <= start) {
-        const end = addMinutes(clickedTime, 30);
+      if (clickedTimeObj <= start || clickedTimeObj.getTime() - start.getTime() > 24 * 60 * 60 * 1000) {
+        const end = addMinutes(clickedTimeObj, 30);
         setEditData({
           ...editData,
-          start_time: format(clickedTime, "yyyy-MM-dd'T'HH:mm"),
+          start_time: format(clickedTimeObj, "yyyy-MM-dd'T'HH:mm"),
           end_time: format(end, "yyyy-MM-dd'T'HH:mm")
         });
         setSelectionStep(1);
       } else {
-        const end = addMinutes(clickedTime, 30);
+        const end = addMinutes(clickedTimeObj, 30);
+        
+        let maxDuration = 60;
+        if (targetEquipment?.availability_json) {
+          try {
+            maxDuration = JSON.parse(targetEquipment.availability_json).maxDurationMinutes || 60;
+          } catch(e){}
+        }
+        
+        const dur = (end.getTime() - start.getTime()) / 60000;
+        if (dur > maxDuration) {
+          toast.error(`预约时长不能超过 ${maxDuration} 分钟`);
+          return;
+        }
+
         setEditData({
           ...editData,
           end_time: format(end, "yyyy-MM-dd'T'HH:mm")
@@ -358,11 +416,21 @@ export default function MyReservations() {
       maxDurationMinutes: dayData.maxDurationMinutes,
       times: timeSteps.map(t => {
         const timeDate = new Date(`${dateStr}T${t}`);
-        const isAvailable = slots.some((s: any) => {
+        let isAvailable = slots.some((s: any) => {
           const start = new Date(s.start);
-          const end = new Date(s.end);
+          const endStr = s.end;
+          let end = new Date(endStr);
+          if (isNaN(end.getTime()) || endStr.includes('T24:00')) {
+             end = new Date(s.start);
+             end.setDate(end.getDate() + 1);
+             end.setHours(0, 0, 0, 0);
+          }
           return timeDate >= start && timeDate < end;
         });
+        
+        if (allowOutOfHours) {
+          isAvailable = true;
+        }
         let isCurrentReservation = false;
         const isBooked = resvs.some((r: any) => {
           const start = new Date(r.start_time);
@@ -517,14 +585,19 @@ export default function MyReservations() {
                           <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div></div>
                         ) : (
                           <>
-                            <div className="overflow-x-auto">
-                              <div className="min-w-[600px]">
+                            <div className="overflow-x-auto relative" ref={scrollRef}>
+                              <div className="w-fit min-w-full pb-4">
                                 <div className="flex border-b border-neutral-100 pb-2 mb-2">
-                                <div className="w-20 shrink-0"></div>
-                                <div className="flex-1 flex justify-between px-2 text-[10px] text-neutral-400 font-mono">
-                                  {timeSteps.filter((_, i) => i % 2 === 0).map(t => (
-                                    <span key={t}>{t}</span>
+                                <div className="w-20 shrink-0 sticky left-0 z-10 bg-white"></div>
+                                <div className="flex items-end px-[2px] text-[10px] text-neutral-400 font-mono">
+                                  {timeSteps.map((t, i) => (
+                                    <div key={t} className="w-[30px] shrink-0 text-left">
+                                      {i % 2 === 0 ? <span className="-ml-3">{t}</span> : null}
+                                    </div>
                                   ))}
+                                  <div className="w-[1px] shrink-0 text-left">
+                                    <span className="-ml-3">{`${maxHour.toString().padStart(2, '0')}:00`}</span>
+                                  </div>
                                 </div>
                               </div>
                               <div className="space-y-1">
@@ -533,11 +606,11 @@ export default function MyReservations() {
                                   const dayStr = format(date, 'EEE');
                                   return (
                                     <div key={idx} className="flex items-center group">
-                                      <div className="w-20 shrink-0 text-left px-2 py-1">
+                                      <div className="w-20 shrink-0 text-left px-2 py-1 sticky left-0 z-10 bg-white group-hover:bg-neutral-50 shadow-[1px_0_4px_rgba(0,0,0,0.05)] border-r border-neutral-100">
                                         <p className="text-[10px] font-bold uppercase opacity-70">{daysMap[dayStr] || dayStr}</p>
                                         <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
                                       </div>
-                                      <div className="flex-1 flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                                      <div className="flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
                                         {row.times.map((t, i) => {
                                           const timeDate = new Date(`${row.date}T${t.time}`);
                                           const isPast = timeDate < new Date();
@@ -591,7 +664,7 @@ export default function MyReservations() {
                                               key={i}
                                               title={`${row.date} ${t.time}`}
                                               className={clsx(
-                                                "flex-1 aspect-square transition-all",
+                                                "w-[30px] shrink-0 h-[30px] transition-all",
                                                 bgColor,
                                                 !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
                                                 showRightGap && "border-r border-neutral-50",
@@ -641,24 +714,50 @@ export default function MyReservations() {
                       <form onSubmit={handleUpdate} className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-bold text-neutral-400 mb-1">开始时间</label>
-                            <input 
-                              type="datetime-local" 
-                              step="300"
-                              value={editData.start_time} 
-                              onChange={e => setEditData({...editData, start_time: e.target.value})} 
-                              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
-                            />
+                            <label className="block text-xs font-bold text-neutral-400 mb-1">开始日期与时间</label>
+                            <div className="flex gap-2">
+                              <input 
+                                type="date" 
+                                value={editData.start_time.split('T')[0]} 
+                                onChange={e => {
+                                  if(e.target.value) {
+                                    const newDateStr = e.target.value;
+                                    setEditData({...editData, start_time: `${newDateStr}T${editData.start_time.split('T')[1] || '08:00'}`});
+                                  }
+                                }} 
+                                className="w-3/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm cursor-pointer" 
+                              />
+                              <input 
+                                type="time" 
+                                step="300"
+                                value={editData.start_time.split('T')[1]?.substring(0, 5) || ''} 
+                                onChange={e => setEditData({...editData, start_time: `${editData.start_time.split('T')[0]}T${e.target.value}`})} 
+                                className="w-2/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-mono" 
+                              />
+                            </div>
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-neutral-400 mb-1">结束时间</label>
-                            <input 
-                              type="datetime-local" 
-                              step="300"
-                              value={editData.end_time} 
-                              onChange={e => setEditData({...editData, end_time: e.target.value})} 
-                              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm" 
-                            />
+                            <label className="block text-xs font-bold text-neutral-400 mb-1">结束日期与时间</label>
+                            <div className="flex gap-2">
+                              <input 
+                                type="date" 
+                                value={editData.end_time.split('T')[0]} 
+                                onChange={e => {
+                                  if(e.target.value) {
+                                    const newDateStr = e.target.value;
+                                    setEditData({...editData, end_time: `${newDateStr}T${editData.end_time.split('T')[1] || '08:00'}`});
+                                  }
+                                }} 
+                                className="w-3/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm cursor-pointer" 
+                              />
+                              <input 
+                                type="time" 
+                                step="300"
+                                value={editData.end_time.split('T')[1]?.substring(0, 5) || ''} 
+                                onChange={e => setEditData({...editData, end_time: `${editData.end_time.split('T')[0]}T${e.target.value}`})} 
+                                className="w-2/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-mono" 
+                              />
+                            </div>
                           </div>
                         </div>
                         <div className="flex gap-2">
