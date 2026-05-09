@@ -214,7 +214,6 @@ export default function Booking() {
         const end = addMinutes(clickedTime, 30);
         const durationMinutes = (end.getTime() - start.getTime()) / 60000;
         if (durationMinutes > maxDuration) {
-          toast.error(`超过仪器最大可预约时长，已重新设置开始时间`);
           setSelectedDate(date);
           setEndDate(date);
           setStartTime(time);
