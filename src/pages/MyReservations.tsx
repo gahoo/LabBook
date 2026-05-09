@@ -1,9 +1,29 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Search, Play, Square, XCircle, CheckCircle2, Clock, Calendar, ChevronDown, ChevronUp, Edit3, Save, X, Trash2 } from 'lucide-react';
-import { format, isBefore, addMinutes, parseISO } from 'date-fns';
-import clsx from 'clsx';
-import toast from 'react-hot-toast';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Search,
+  Play,
+  Square,
+  XCircle,
+  CheckCircle2,
+  Clock,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Edit3,
+  Save,
+  X,
+  Trash2,
+} from "lucide-react";
+import { format, isBefore, addMinutes, parseISO } from "date-fns";
+import clsx from "clsx";
+import toast from "react-hot-toast";
 
 interface Reservation {
   id: number;
@@ -29,9 +49,9 @@ interface Reservation {
 
 export default function MyReservations() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [code, setCode] = useState(() => searchParams.get('code') || '');
+  const [code, setCode] = useState(() => searchParams.get("code") || "");
   const [reservation, setReservation] = useState<Reservation | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
   const [visibleCount, setVisibleCount] = useState(5);
@@ -48,15 +68,17 @@ export default function MyReservations() {
   const [settings, setSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => setSettings(data))
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => setSettings(data))
       .catch(console.error);
   }, []);
 
   const [hideExpired, setHideExpired] = useState(() => {
-    const cookie = document.cookie.split('; ').find(row => row.startsWith('lab_hide_expired='));
-    return cookie ? cookie.split('=')[1] === 'true' : true;
+    const cookie = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("lab_hide_expired="));
+    return cookie ? cookie.split("=")[1] === "true" : true;
   });
 
   const toggleHideExpired = () => {
@@ -68,87 +90,99 @@ export default function MyReservations() {
   const handleClearExpired = async () => {
     const now = new Date();
     const activeCodes = myReservations
-      .filter(resv => new Date(resv.end_time) >= now || ['active', 'pending', 'approved'].includes(resv.status))
-      .map(resv => resv.booking_code);
-    
-    document.cookie = `lab_booking_codes=${activeCodes.join(',')}; max-age=31536000; path=/`;
+      .filter(
+        (resv) =>
+          new Date(resv.end_time) >= now ||
+          ["active", "pending", "approved"].includes(resv.status),
+      )
+      .map((resv) => resv.booking_code);
+
+    document.cookie = `lab_booking_codes=${activeCodes.join(",")}; max-age=31536000; path=/`;
     fetchMyReservations();
-    toast.success('已清除过期记录');
+    toast.success("已清除过期记录");
   };
 
   const fetchMyReservations = useCallback(async () => {
-    const codesStr = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('lab_booking_codes='))
-      ?.split('=')[1] || '';
-    
+    const codesStr =
+      document.cookie
+        .split("; ")
+        .find((row) => row.startsWith("lab_booking_codes="))
+        ?.split("=")[1] || "";
+
     if (!codesStr) return;
-    const codes = codesStr.split(',').filter(Boolean);
-    
+    const codes = codesStr.split(",").filter(Boolean);
+
     try {
       const results = await Promise.all(
-        codes.map(c => fetch(`/api/reservations/${c}`).then(r => r.ok ? r.json() : null))
+        codes.map((c) =>
+          fetch(`/api/reservations/${c}`).then((r) => (r.ok ? r.json() : null)),
+        ),
       );
       const validResults = results.filter(Boolean);
-      
+
       // Sort: active, approved, pending, completed, cancelled, then closest to now
       const sorted = validResults.sort((a, b) => {
         const statusOrder: Record<string, number> = {
-          'active': 1,
-          'approved': 2,
-          'pending': 3,
-          'rejected': 4,
-          'completed': 5,
-          'cancelled': 6
+          active: 1,
+          approved: 2,
+          pending: 3,
+          rejected: 4,
+          completed: 5,
+          cancelled: 6,
         };
-        
+
         const orderA = statusOrder[a.status] || 99;
         const orderB = statusOrder[b.status] || 99;
-        
+
         if (orderA !== orderB) return orderA - orderB;
-        
+
         const now = Date.now();
         const diffA = Math.abs(new Date(a.start_time).getTime() - now);
         const diffB = Math.abs(new Date(b.start_time).getTime() - now);
-        
+
         return diffA - diffB;
       });
-      
+
       setMyReservations(sorted);
     } catch (err) {
-      console.error('Failed to fetch my reservations', err);
+      console.error("Failed to fetch my reservations", err);
     }
   }, []);
 
   const performSearch = async (searchCode: string) => {
     if (!searchCode.trim()) return;
-    
+
     setLoading(true);
-    setError('');
-    
+    setError("");
+
     try {
-      const res = await fetch(`/api/reservations/${searchCode.trim().toUpperCase()}`);
+      const res = await fetch(
+        `/api/reservations/${searchCode.trim().toUpperCase()}`,
+      );
       const data = await res.json();
-      
+
       if (res.ok) {
         setReservation(data);
         // Add to cookies if not already there
-        const codesStr = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('lab_booking_codes='))
-          ?.split('=')[1] || '';
-        const codes = codesStr.split(',').filter(Boolean);
+        const codesStr =
+          document.cookie
+            .split("; ")
+            .find((row) => row.startsWith("lab_booking_codes="))
+            ?.split("=")[1] || "";
+        const codes = codesStr.split(",").filter(Boolean);
         if (!codes.includes(data.booking_code)) {
-          const newCodes = codesStr ? `${codesStr},${data.booking_code}` : data.booking_code;
+          const newCodes = codesStr
+            ? `${codesStr},${data.booking_code}`
+            : data.booking_code;
           document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
           fetchMyReservations();
         }
       } else {
-        setError(data.error || '未找到该预约');
+        setError(data.error || "未找到该预约");
         setReservation(null);
       }
     } catch (err) {
-      setError('获取预约信息失败');
+      setError("获取预约信息失败");
     } finally {
       setLoading(false);
     }
@@ -156,12 +190,12 @@ export default function MyReservations() {
 
   useEffect(() => {
     fetchMyReservations();
-    
-    const urlCode = searchParams.get('code');
+
+    const urlCode = searchParams.get("code");
     if (urlCode) {
       setCode(urlCode.toUpperCase());
       performSearch(urlCode);
-      searchParams.delete('code');
+      searchParams.delete("code");
       setSearchParams(searchParams, { replace: true });
     }
   }, [fetchMyReservations, searchParams, setSearchParams]);
@@ -175,31 +209,35 @@ export default function MyReservations() {
   const [checkoutResv, setCheckoutResv] = useState<Reservation | null>(null);
   const [checkoutConsumableQty, setCheckoutConsumableQty] = useState<number>(0);
 
-  const handleAction = async (resv: Reservation, action: 'checkin' | 'checkout' | 'cancel', qty?: number) => {
+  const handleAction = async (
+    resv: Reservation,
+    action: "checkin" | "checkout" | "cancel",
+    qty?: number,
+  ) => {
     try {
       const body: any = { booking_code: resv.booking_code };
-      if (action === 'checkin' && resv.consumable_fee > 0) {
+      if (action === "checkin" && resv.consumable_fee > 0) {
         body.consumable_quantity = consumableQty;
       }
-      if (action === 'checkout' && qty !== undefined) {
+      if (action === "checkout" && qty !== undefined) {
         body.consumable_quantity = qty;
       }
 
       const res = await fetch(`/api/reservations/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
-      
+
       const data = await res.json();
-      
+
       if (res.ok) {
-        toast.success('操作成功');
+        toast.success("操作成功");
         fetchMyReservations();
         if (reservation?.booking_code === resv.booking_code) {
           handleSearch({ preventDefault: () => {} } as React.FormEvent);
         }
-        if (action === 'checkout') {
+        if (action === "checkout") {
           setCheckoutResv(null);
         }
       } else {
@@ -215,45 +253,53 @@ export default function MyReservations() {
     try {
       // Convert local time back to UTC for server safely
       const toUTC = (localStr: string) => {
-        const [datePart, timePart] = localStr.split('T');
-        const [y, m, d] = datePart.split('-').map(Number);
-        const [h, min] = timePart.split(':').map(Number);
+        const [datePart, timePart] = localStr.split("T");
+        const [y, m, d] = datePart.split("-").map(Number);
+        const [h, min] = timePart.split(":").map(Number);
         return new Date(y, m - 1, d, h, min).toISOString();
       };
-      
+
       const res = await fetch(`/api/reservations/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reservation_id: editingId,
-          booking_code: myReservations.find(r => r.id === editingId)?.booking_code,
+          booking_code: myReservations.find((r) => r.id === editingId)
+            ?.booking_code,
           start_time: toUTC(editData.start_time),
           end_time: toUTC(editData.end_time),
-          tz_offset: new Date().getTimezoneOffset()
-        })
+          tz_offset: new Date().getTimezoneOffset(),
+        }),
       });
-      
+
       let data;
       try {
         data = await res.json();
       } catch (e) {
-        throw new Error('服务器响应格式错误');
+        throw new Error("服务器响应格式错误");
       }
 
       if (res.ok) {
-        toast.success('修改成功');
+        toast.success("修改成功");
         setEditingId(null);
         fetchMyReservations();
       } else {
-        const r = myReservations.find(r => r.id === editingId);
-        if (res.status === 403 && data.error && data.error.includes('因触发') && r) {
-          toast.error(`${r.student_name}（学号：${r.student_id}）${data.error}`);
+        const r = myReservations.find((r) => r.id === editingId);
+        if (
+          res.status === 403 &&
+          data.error &&
+          data.error.includes("因触发") &&
+          r
+        ) {
+          toast.error(
+            `${r.student_name}（学号：${r.student_id}）${data.error}`,
+          );
         } else {
-          toast.error(data.error || '修改失败');
+          toast.error(data.error || "修改失败");
         }
       }
     } catch (err: any) {
-      toast.error(err.message || '修改失败');
+      toast.error(err.message || "修改失败");
     }
   };
 
@@ -263,13 +309,13 @@ export default function MyReservations() {
     const toLocalISO = (utcStr: string) => {
       const date = new Date(utcStr);
       const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      const h = String(date.getHours()).padStart(2, '0');
-      const min = String(date.getMinutes()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      const h = String(date.getHours()).padStart(2, "0");
+      const min = String(date.getMinutes()).padStart(2, "0");
       return `${y}-${m}-${d}T${h}:${min}`;
     };
-    
+
     setEditData({
       start_time: toLocalISO(resv.start_time),
       end_time: toLocalISO(resv.end_time),
@@ -294,15 +340,19 @@ export default function MyReservations() {
       const dates = Array.from({ length: advanceDays + 1 }).map((_, i) => {
         const d = new Date(today);
         d.setDate(d.getDate() + i);
-        return format(d, 'yyyy-MM-dd');
+        return format(d, "yyyy-MM-dd");
       });
 
       const results = await Promise.all(
-        dates.map(d => fetch(`/api/equipment/${resv.equipment_id}/availability?date=${d}`).then(r => r.json()))
+        dates.map((d) =>
+          fetch(
+            `/api/equipment/${resv.equipment_id}/availability?date=${d}`,
+          ).then((r) => r.json()),
+        ),
       );
       setAvailabilityData(results.map((r, i) => ({ date: dates[i], ...r })));
     } catch (err) {
-      console.error('Failed to fetch availability', err);
+      console.error("Failed to fetch availability", err);
     } finally {
       setLoadingAvailability(false);
     }
@@ -312,7 +362,7 @@ export default function MyReservations() {
     let minH = 24;
     let maxH = 0;
     let allowOOH = false;
-    
+
     if (targetEquipment && targetEquipment.availability_json) {
       try {
         const avail = JSON.parse(targetEquipment.availability_json);
@@ -322,39 +372,49 @@ export default function MyReservations() {
         }
         if (avail.rules && avail.rules.length > 0) {
           avail.rules.forEach((r: any) => {
-            const sh = parseInt(r.start.split(':')[0]);
-            let eh = parseInt(r.end.split(':')[0]);
-            if (parseInt(r.end.split(':')[1]) > 0 || r.end.includes("23:59")) eh += 1;
+            const sh = parseInt(r.start.split(":")[0]);
+            let eh = parseInt(r.end.split(":")[0]);
+            if (parseInt(r.end.split(":")[1]) > 0 || r.end.includes("23:59"))
+              eh += 1;
             if (eh === 0) eh = 24;
             if (sh < minH) minH = sh;
             if (eh > maxH) maxH = eh;
           });
         }
-      } catch(e) {}
+      } catch (e) {}
     }
-    
+
     if (minH >= maxH) {
       return { minHour: 8, maxHour: 22, allowOutOfHours: allowOOH };
     }
     return { minHour: minH, maxHour: maxH, allowOutOfHours: allowOOH };
   }, [targetEquipment]);
 
-  const timeSteps = useMemo(() => Array.from({ length: (maxHour - minHour) * 2 }).map((_, i) => {
-    const h = minHour + Math.floor(i / 2);
-    const m = (i % 2) * 30;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  }), [minHour, maxHour]);
+  const timeSteps = useMemo(
+    () =>
+      Array.from({ length: (maxHour - minHour) * 2 }).map((_, i) => {
+        const h = minHour + Math.floor(i / 2);
+        const m = (i % 2) * 30;
+        return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+      }),
+    [minHour, maxHour],
+  );
 
   useEffect(() => {
-    if (scrollRef.current && !loadingAvailability && minHour < 8 && maxHour >= 18) {
+    if (
+      scrollRef.current &&
+      !loadingAvailability &&
+      minHour < 8 &&
+      maxHour >= 18
+    ) {
       const scrollContainer = scrollRef.current;
       const totalMinutes = (maxHour - minHour) * 60;
       const targetMinutes = (8 - minHour) * 60;
       const innerContainer = scrollContainer.firstChild as HTMLElement;
       if (innerContainer) {
-        const scrollWidth = innerContainer.offsetWidth - 96; 
+        const scrollWidth = innerContainer.offsetWidth - 96;
         const scrollLeft = (targetMinutes / totalMinutes) * scrollWidth;
-        scrollContainer.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+        scrollContainer.scrollTo({ left: scrollLeft, behavior: "smooth" });
       }
     }
   }, [loadingAvailability, minHour, maxHour]);
@@ -363,40 +423,45 @@ export default function MyReservations() {
     const clickedDate = parseISO(dateStr);
     const start = editData?.start_time ? new Date(editData.start_time) : null;
     const clickedTimeObj = new Date(`${dateStr}T${timeStr}`);
-    
+
     if (selectionStep === 0 || selectionStep === 2 || !start) {
       const end = addMinutes(clickedTimeObj, 30);
       setEditData({
         ...editData,
         start_time: format(clickedTimeObj, "yyyy-MM-dd'T'HH:mm"),
-        end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+        end_time: format(end, "yyyy-MM-dd'T'HH:mm"),
       });
       setSelectionStep(1);
     } else if (selectionStep === 1) {
-      if (clickedTimeObj <= start || clickedTimeObj.getTime() - start.getTime() > 24 * 60 * 60 * 1000) {
+      if (
+        clickedTimeObj <= start ||
+        clickedTimeObj.getTime() - start.getTime() > 24 * 60 * 60 * 1000
+      ) {
         const end = addMinutes(clickedTimeObj, 30);
         setEditData({
           ...editData,
           start_time: format(clickedTimeObj, "yyyy-MM-dd'T'HH:mm"),
-          end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+          end_time: format(end, "yyyy-MM-dd'T'HH:mm"),
         });
         setSelectionStep(1);
       } else {
         const end = addMinutes(clickedTimeObj, 30);
-        
+
         let maxDuration = 60;
         if (targetEquipment?.availability_json) {
           try {
-            maxDuration = JSON.parse(targetEquipment.availability_json).maxDurationMinutes || 60;
-          } catch(e){}
+            maxDuration =
+              JSON.parse(targetEquipment.availability_json)
+                .maxDurationMinutes || 60;
+          } catch (e) {}
         }
-        
+
         const dur = (end.getTime() - start.getTime()) / 60000;
         if (dur > maxDuration) {
           setEditData({
             ...editData,
             start_time: format(clickedTimeObj, "yyyy-MM-dd'T'HH:mm"),
-            end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+            end_time: format(end, "yyyy-MM-dd'T'HH:mm"),
           });
           setSelectionStep(1);
           return;
@@ -404,35 +469,35 @@ export default function MyReservations() {
 
         setEditData({
           ...editData,
-          end_time: format(end, "yyyy-MM-dd'T'HH:mm")
+          end_time: format(end, "yyyy-MM-dd'T'HH:mm"),
         });
         setSelectionStep(2);
       }
     }
   };
 
-  const gridData = availabilityData.map(dayData => {
+  const gridData = availabilityData.map((dayData) => {
     const dateStr = dayData.date;
     const slots = dayData.availableSlots || [];
     const resvs = dayData.reservations || [];
-    
+
     return {
       date: dateStr,
       maxDurationMinutes: dayData.maxDurationMinutes,
-      times: timeSteps.map(t => {
+      times: timeSteps.map((t) => {
         const timeDate = new Date(`${dateStr}T${t}`);
         let isAvailable = slots.some((s: any) => {
           const start = new Date(s.start);
           const endStr = s.end;
           let end = new Date(endStr);
-          if (isNaN(end.getTime()) || endStr.includes('T24:00')) {
-             end = new Date(s.start);
-             end.setDate(end.getDate() + 1);
-             end.setHours(0, 0, 0, 0);
+          if (isNaN(end.getTime()) || endStr.includes("T24:00")) {
+            end = new Date(s.start);
+            end.setDate(end.getDate() + 1);
+            end.setHours(0, 0, 0, 0);
           }
           return timeDate >= start && timeDate < end;
         });
-        
+
         if (allowOutOfHours) {
           isAvailable = true;
         }
@@ -449,40 +514,53 @@ export default function MyReservations() {
           return overlaps;
         });
         return { time: t, isAvailable, isBooked, isCurrentReservation };
-      })
+      }),
     };
   });
 
   const daysMap: Record<string, string> = {
-    'Mon': '周一', 'Tue': '周二', 'Wed': '周三', 'Thu': '周四', 'Fri': '周五', 'Sat': '周六', 'Sun': '周日'
+    Mon: "周一",
+    Tue: "周二",
+    Wed: "周三",
+    Thu: "周四",
+    Fri: "周五",
+    Sat: "周六",
+    Sun: "周日",
   };
 
   const statusMap: Record<string, string> = {
-    pending: '待审批',
-    approved: '已通过',
-    active: '进行中',
-    completed: '已完成',
-    rejected: '已驳回',
-    cancelled: '已取消'
+    pending: "待审批",
+    approved: "已通过",
+    active: "进行中",
+    completed: "已完成",
+    rejected: "已驳回",
+    cancelled: "已取消",
   };
 
   const observer = useRef<IntersectionObserver | null>(null);
-  const lastElementRef = useCallback((node: HTMLDivElement) => {
-    if (loading) return;
-    if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && visibleCount < myReservations.length) {
-        setVisibleCount(prev => prev + 5);
-      }
-    });
-    if (node) observer.current.observe(node);
-  }, [loading, visibleCount, myReservations.length]);
+  const lastElementRef = useCallback(
+    (node: HTMLDivElement) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && visibleCount < myReservations.length) {
+          setVisibleCount((prev) => prev + 5);
+        }
+      });
+      if (node) observer.current.observe(node);
+    },
+    [loading, visibleCount, myReservations.length],
+  );
 
   return (
     <div className="max-w-3xl mx-auto space-y-12">
       <div className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">我的预约</h1>
-        <p className="text-neutral-500 mt-2">查看、管理您的预约申请与上机记录。</p>
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+          我的预约
+        </h1>
+        <p className="text-neutral-500 mt-2">
+          查看、管理您的预约申请与上机记录。
+        </p>
       </div>
 
       <div className="space-y-8">
@@ -501,17 +579,21 @@ export default function MyReservations() {
               disabled={loading || !code.trim()}
               className="absolute right-2 px-6 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
             >
-              {loading ? '查找中...' : '查找'}
+              {loading ? "查找中..." : "查找"}
             </button>
           </div>
-          {error && <p className="text-red-500 text-sm mt-3 text-center">{error}</p>}
+          {error && (
+            <p className="text-red-500 text-sm mt-3 text-center">{error}</p>
+          )}
         </form>
 
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-2 gap-4">
-            <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest">预约列表</h3>
+            <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest">
+              预约列表
+            </h3>
             <div className="flex items-center gap-4">
-              <button 
+              <button
                 onClick={() => setShowClearConfirm(true)}
                 className="px-3 py-1.5 bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 rounded-lg text-xs font-medium transition-colors"
               >
@@ -523,356 +605,585 @@ export default function MyReservations() {
                   <button
                     type="button"
                     onClick={toggleHideExpired}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideExpired ? 'bg-red-600' : 'bg-neutral-200'}`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hideExpired ? "bg-red-600" : "bg-neutral-200"}`}
                   >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideExpired ? 'translate-x-6' : 'translate-x-1'}`} />
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideExpired ? "translate-x-6" : "translate-x-1"}`}
+                    />
                   </button>
                 </div>
               </div>
             </div>
           </div>
-          {myReservations.filter(resv => {
-            if (!hideExpired) return true;
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            return new Date(resv.end_time) >= today;
-          }).slice(0, visibleCount).map((resv, idx) => (
-            <div 
-              key={resv.id} 
-              ref={idx === visibleCount - 1 ? lastElementRef : null}
-              className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden transition-all hover:shadow-md"
-            >
-              <div 
-                className="p-6 cursor-pointer flex items-center justify-between"
-                onClick={() => setExpandedId(expandedId === resv.id ? null : resv.id)}
+          {myReservations
+            .filter((resv) => {
+              if (!hideExpired) return true;
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              return new Date(resv.end_time) >= today;
+            })
+            .slice(0, visibleCount)
+            .map((resv, idx) => (
+              <div
+                key={resv.id}
+                ref={idx === visibleCount - 1 ? lastElementRef : null}
+                className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden transition-all hover:shadow-md"
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center
-                    ${resv.status === 'active' ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-400'}
-                  `}>
-                    {resv.status === 'active' ? <Play className="w-6 h-6" /> : <Calendar className="w-6 h-6" />}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-neutral-900">{resv.equipment_name}</h4>
-                    <p className="text-xs text-neutral-500 font-mono">{resv.booking_code}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-neutral-900">{format(new Date(resv.start_time), 'MM-dd')}</p>
-                    <p className="text-xs text-neutral-500">{format(new Date(resv.start_time), 'HH:mm')} - {format(new Date(resv.end_time), 'HH:mm')}</p>
-                    <p className={`text-xs font-medium mt-1 ${
-                      resv.status === 'approved' ? 'text-emerald-600' :
-                      resv.status === 'pending' ? 'text-amber-600' :
-                      resv.status === 'active' ? 'text-blue-600' :
-                      resv.status === 'completed' ? 'text-neutral-600' :
-                      resv.status === 'rejected' ? 'text-red-600' :
-                      'text-red-600'
-                    }`}>
-                      {statusMap[resv.status]}
-                    </p>
-                  </div>
-                  {expandedId === resv.id ? <ChevronUp className="w-5 h-5 text-neutral-400" /> : <ChevronDown className="w-5 h-5 text-neutral-400" />}
-                </div>
-              </div>
-
-              {expandedId === resv.id && (
-                <div className="px-6 pb-6 pt-2 border-t border-neutral-50 space-y-6">
-                  {editingId === resv.id ? (
-                    <div className="space-y-6">
-                      {/* Timeline */}
-                      <div className="bg-white p-4 rounded-xl border border-neutral-200">
-                        <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-red-600" />
-                          可用时间概览
-                        </h4>
-                        {loadingAvailability ? (
-                          <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div></div>
-                        ) : (
-                          <>
-                            <div className="overflow-x-auto relative" ref={scrollRef}>
-                              <div className="w-fit min-w-full pb-4">
-                                <div className="flex border-b border-neutral-100 pb-2 mb-2">
-                                <div className="w-20 shrink-0 sticky left-0 z-10 bg-white"></div>
-                                <div className="flex items-end px-[2px] text-[10px] text-neutral-400 font-mono">
-                                  {timeSteps.map((t, i) => (
-                                    <div key={t} className="w-[30px] shrink-0 text-left">
-                                      {i % 2 === 0 ? <span className="-ml-3">{t}</span> : null}
-                                    </div>
-                                  ))}
-                                  <div className="w-[1px] shrink-0 text-left">
-                                    <span className="-ml-3">{`${maxHour.toString().padStart(2, '0')}:00`}</span>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                {gridData.map((row, idx) => {
-                                  const date = parseISO(row.date);
-                                  const dayStr = format(date, 'EEE');
-                                  return (
-                                    <div key={idx} className="flex items-center group">
-                                      <div className="w-20 shrink-0 text-left px-2 py-1 sticky left-0 z-10 bg-white group-hover:bg-neutral-50 shadow-[1px_0_4px_rgba(0,0,0,0.05)] border-r border-neutral-100">
-                                        <p className="text-[10px] font-bold uppercase opacity-70">{daysMap[dayStr] || dayStr}</p>
-                                        <p className="text-xs font-bold">{format(date, 'MM-dd')}</p>
-                                      </div>
-                                      <div className="flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
-                                        {row.times.map((t, i) => {
-                                          const timeDate = new Date(`${row.date}T${t.time}`);
-                                          const isPast = timeDate < new Date();
-                                          
-                                          let isSelectedBlock = false;
-                                          let isFirstSelected = false;
-                                          let isLastSelected = false;
-                                          let isNextSelected = false;
-
-                                          if (editData?.start_time && editData?.end_time) {
-                                            const blockStart = new Date(`${row.date}T${t.time}`);
-                                            const selStart = new Date(editData.start_time);
-                                            const selEnd = new Date(editData.end_time);
-                                            
-                                            if (blockStart >= selStart && blockStart < selEnd) {
-                                              isSelectedBlock = true;
-                                              if (blockStart.getTime() === selStart.getTime()) {
-                                                isFirstSelected = true;
-                                              }
-                                              const blockEnd = addMinutes(blockStart, 30);
-                                              if (blockEnd.getTime() === selEnd.getTime()) {
-                                                isLastSelected = true;
-                                              }
-                                            }
-
-                                            if (i < row.times.length - 1) {
-                                              const nextBlockStart = new Date(`${row.date}T${row.times[i+1].time}`);
-                                              if (nextBlockStart >= selStart && nextBlockStart < selEnd) {
-                                                isNextSelected = true;
-                                              }
-                                            }
-                                          }
-
-                                          const showRightGap = i !== row.times.length - 1 && !isSelectedBlock && !isNextSelected;
-
-                                          let bgColor = "bg-neutral-200";
-                                          if (t.isBooked) {
-                                            bgColor = "bg-red-500";
-                                          } else if (t.isCurrentReservation) {
-                                            if (isPast) {
-                                              bgColor = "bg-orange-200";
-                                            } else {
-                                              bgColor = isSelectedBlock ? "bg-emerald-400" : "bg-orange-400";
-                                            }
-                                          } else if (t.isAvailable && !isPast) {
-                                            bgColor = isSelectedBlock ? "bg-emerald-400" : "bg-emerald-500";
-                                          }
-
-                                          return (
-                                            <div 
-                                              key={i}
-                                              title={`${row.date} ${t.time}`}
-                                              className={clsx(
-                                                "w-[30px] shrink-0 h-[30px] transition-all",
-                                                bgColor,
-                                                !t.isBooked && t.isAvailable && !isPast && "hover:opacity-80 cursor-pointer",
-                                                showRightGap && "border-r border-neutral-50",
-                                                isSelectedBlock && "z-10",
-                                                isSelectedBlock && isFirstSelected && isLastSelected ? "shadow-[0_0_0_2px_#047857] rounded-sm" :
-                                                isSelectedBlock && isFirstSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm" :
-                                                isSelectedBlock && isLastSelected ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm" :
-                                                isSelectedBlock ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857]" : ""
-                                              )}
-                                              onClick={() => {
-                                                if (t.isAvailable && !t.isBooked && !isPast) {
-                                                  handleTimeGridClick(row.date, t.time);
-                                                }
-                                              }}
-                                            />
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
-                              <span>可预约 (点击色块快速选择)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 bg-orange-400 rounded-sm"></div>
-                              <span>当前预约时间</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
-                              <span>已被预约</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 bg-neutral-200 rounded-sm"></div>
-                              <span>未开放</span>
-                            </div>
-                          </div>
-                          </>
-                        )}
-                      </div>
-
-                      <form onSubmit={handleUpdate} className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-400 mb-1">开始日期与时间</label>
-                            <div className="flex gap-2">
-                              <input 
-                                type="date" 
-                                value={editData.start_time.split('T')[0]} 
-                                onChange={e => {
-                                  if(e.target.value) {
-                                    const newDateStr = e.target.value;
-                                    setEditData({...editData, start_time: `${newDateStr}T${editData.start_time.split('T')[1] || '08:00'}`});
-                                  }
-                                }} 
-                                className="w-3/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm cursor-pointer" 
-                              />
-                              <input 
-                                type="time" 
-                                step="300"
-                                value={editData.start_time.split('T')[1]?.substring(0, 5) || ''} 
-                                onChange={e => setEditData({...editData, start_time: `${editData.start_time.split('T')[0]}T${e.target.value}`})} 
-                                className="w-2/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-mono" 
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-400 mb-1">结束日期与时间</label>
-                            <div className="flex gap-2">
-                              <input 
-                                type="date" 
-                                value={editData.end_time.split('T')[0]} 
-                                onChange={e => {
-                                  if(e.target.value) {
-                                    const newDateStr = e.target.value;
-                                    setEditData({...editData, end_time: `${newDateStr}T${editData.end_time.split('T')[1] || '08:00'}`});
-                                  }
-                                }} 
-                                className="w-3/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm cursor-pointer" 
-                              />
-                              <input 
-                                type="time" 
-                                step="300"
-                                value={editData.end_time.split('T')[1]?.substring(0, 5) || ''} 
-                                onChange={e => setEditData({...editData, end_time: `${editData.end_time.split('T')[0]}T${e.target.value}`})} 
-                                className="w-2/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-mono" 
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button type="submit" className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 保存</button>
-                          <button type="button" onClick={() => setEditingId(null)} className="flex-1 py-2 border border-neutral-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2"><X className="w-4 h-4" /> 取消</button>
-                        </div>
-                      </form>
+                <div
+                  className="p-6 cursor-pointer flex items-center justify-between"
+                  onClick={() =>
+                    setExpandedId(expandedId === resv.id ? null : resv.id)
+                  }
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center
+                    ${resv.status === "active" ? "bg-red-100 text-red-600" : "bg-neutral-100 text-neutral-400"}
+                  `}
+                    >
+                      {resv.status === "active" ? (
+                        <Play className="w-6 h-6" />
+                      ) : (
+                        <Calendar className="w-6 h-6" />
+                      )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">预约详情</p>
-                          <p className="text-sm font-medium text-neutral-900">{resv.student_name}</p>
-                          <p className="text-xs text-neutral-500">{resv.student_id} | {resv.supervisor}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">时间安排</p>
-                          <p className="text-sm text-neutral-700">{format(new Date(resv.start_time), 'yyyy-MM-dd HH:mm')} - {format(new Date(resv.end_time), 'HH:mm')}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">费用估算</p>
-                          <p className="text-sm font-medium text-neutral-900">¥{resv.price} / {resv.price_type === 'hour' ? '小时' : '次'}</p>
-                          {resv.consumable_fee > 0 && <p className="text-xs text-neutral-500">+ ¥{resv.consumable_fee}/个 耗材费</p>}
-                        </div>
-                        {resv.total_cost !== null && resv.total_cost !== undefined && (
-                          <div>
-                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">实际费用</p>
-                            <p className="text-lg font-bold text-red-600">¥{(resv.total_cost || 0).toFixed(2)}</p>
-                          </div>
-                        )}
-                      </div>
+                    <div>
+                      <h4 className="font-bold text-neutral-900">
+                        {resv.equipment_name}
+                      </h4>
+                      <p className="text-xs text-neutral-500 font-mono">
+                        {resv.booking_code}
+                      </p>
                     </div>
-                  )}
-
-                  {resv.status === 'approved' && !editingId && resv.consumable_fee > 0 && (
-                    <div className="pt-4 border-t border-neutral-50">
-                      <div className="flex items-center gap-3 bg-neutral-50/50 p-3 rounded-xl border border-neutral-100">
-                        <span className="text-sm font-medium text-neutral-700 whitespace-nowrap">预计耗材数量:</span>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          value={consumableQty} 
-                          onChange={e => setConsumableQty(Number(e.target.value))}
-                          className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
-                          placeholder="数量"
-                        />
-                        <span className="text-xs text-neutral-500">(¥{resv.consumable_fee}/个)</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
-                    {(resv.status === 'pending' || resv.status === 'approved') && !editingId && (() => {
-                      const maxLateMinutes = settings?.violation_no_show_grace_minutes ? Number(settings.violation_no_show_grace_minutes) : 30;
-                      const isPastGracePeriod = new Date().getTime() > new Date(resv.start_time).getTime() + maxLateMinutes * 60000;
-                      return (
-                        <>
-                          <button 
-                            onClick={() => startEdit(resv)} 
-                            disabled={resv.modified_count >= 1 || isPastGracePeriod}
-                            title={isPastGracePeriod ? `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许修改` : (resv.modified_count >= 1 ? '每个预约仅允许修改一次' : '修改预约时间')}
-                            className="flex-1 min-w-[120px] py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <Edit3 className="w-4 h-4" /> {resv.modified_count >= 1 ? '已修改过' : '修改信息'}
-                          </button>
-                          <button 
-                            onClick={() => handleAction(resv, 'cancel')} 
-                            disabled={isPastGracePeriod}
-                            title={isPastGracePeriod ? `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消` : '取消此预约'}
-                            className="flex-1 min-w-[120px] py-2.5 border border-red-100 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <XCircle className="w-4 h-4" /> 取消预约
-                          </button>
-                        </>
-                      );
-                    })()}
-                    {resv.status === 'approved' && !editingId && (() => {
-                      const maxLateMinutes = settings?.violation_no_show_grace_minutes ? Number(settings.violation_no_show_grace_minutes) : 30;
-                      const isPastGracePeriod = new Date().getTime() > new Date(resv.start_time).getTime() + maxLateMinutes * 60000;
-                      return (
-                        <button 
-                          onClick={() => handleAction(resv, 'checkin')} 
-                          disabled={isPastGracePeriod}
-                          title={isPastGracePeriod ? `已超过预约开始时间${maxLateMinutes}分钟，不允许上机` : '开始上机'}
-                          className="flex-1 min-w-[120px] py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Play className="w-4 h-4" /> 上机
-                        </button>
-                      );
-                    })()}
-                    {resv.status === 'active' && !editingId && (
-                      <button 
-                        onClick={() => {
-                          setCheckoutResv(resv);
-                          setCheckoutConsumableQty(resv.consumable_quantity || 0);
-                        }} 
-                        className="flex-1 min-w-[120px] py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 flex items-center justify-center gap-2"
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-neutral-900">
+                        {format(new Date(resv.start_time), "MM-dd")}
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        {format(new Date(resv.start_time), "HH:mm")} -{" "}
+                        {format(new Date(resv.end_time), "HH:mm")}
+                      </p>
+                      <p
+                        className={`text-xs font-medium mt-1 ${
+                          resv.status === "approved"
+                            ? "text-emerald-600"
+                            : resv.status === "pending"
+                              ? "text-amber-600"
+                              : resv.status === "active"
+                                ? "text-blue-600"
+                                : resv.status === "completed"
+                                  ? "text-neutral-600"
+                                  : resv.status === "rejected"
+                                    ? "text-red-600"
+                                    : "text-red-600"
+                        }`}
                       >
-                        <Square className="w-4 h-4" /> 下机
-                      </button>
+                        {statusMap[resv.status]}
+                      </p>
+                    </div>
+                    {expandedId === resv.id ? (
+                      <ChevronUp className="w-5 h-5 text-neutral-400" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-neutral-400" />
                     )}
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
-          {myReservations.filter(resv => {
+
+                {expandedId === resv.id && (
+                  <div className="px-6 pb-6 pt-2 border-t border-neutral-50 space-y-6">
+                    {editingId === resv.id ? (
+                      <div className="space-y-6">
+                        {/* Timeline */}
+                        <div className="bg-white p-4 rounded-xl border border-neutral-200">
+                          <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-red-600" />
+                            可用时间概览
+                          </h4>
+                          {loadingAvailability ? (
+                            <div className="flex justify-center py-6">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                            </div>
+                          ) : (
+                            <>
+                              <div
+                                className="overflow-x-auto relative"
+                                ref={scrollRef}
+                              >
+                                <div className="w-fit min-w-full pb-4">
+                                  <div className="flex border-b border-neutral-100 pb-2 mb-2">
+                                    <div className="w-20 shrink-0 sticky left-0 z-10 bg-white"></div>
+                                    <div className="flex items-end px-[2px] text-[10px] text-neutral-400 font-mono">
+                                      {timeSteps.map((t, i) => (
+                                        <div
+                                          key={t}
+                                          className="w-[30px] shrink-0 text-left"
+                                        >
+                                          {i % 2 === 0 ? (
+                                            <span className="-ml-3">{t}</span>
+                                          ) : null}
+                                        </div>
+                                      ))}
+                                      <div className="w-[1px] shrink-0 text-left">
+                                        <span className="-ml-3">{`${maxHour.toString().padStart(2, "0")}:00`}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {gridData.map((row, idx) => {
+                                      const date = parseISO(row.date);
+                                      const dayStr = format(date, "EEE");
+                                      return (
+                                        <div
+                                          key={idx}
+                                          className="flex items-center group"
+                                        >
+                                          <div className="w-20 shrink-0 text-left px-2 py-1 sticky left-0 z-10 bg-white group-hover:bg-neutral-50 shadow-[1px_0_4px_rgba(0,0,0,0.05)] border-r border-neutral-100">
+                                            <p className="text-[10px] font-bold uppercase opacity-70">
+                                              {daysMap[dayStr] || dayStr}
+                                            </p>
+                                            <p className="text-xs font-bold">
+                                              {format(date, "MM-dd")}
+                                            </p>
+                                          </div>
+                                          <div className="flex bg-neutral-50 rounded-md overflow-hidden p-0.5">
+                                            {row.times.map((t, i) => {
+                                              const timeDate = new Date(
+                                                `${row.date}T${t.time}`,
+                                              );
+                                              const isPast =
+                                                timeDate < new Date();
+
+                                              let isSelectedBlock = false;
+                                              let isFirstSelected = false;
+                                              let isLastSelected = false;
+                                              let isNextSelected = false;
+
+                                              if (
+                                                editData?.start_time &&
+                                                editData?.end_time
+                                              ) {
+                                                const blockStart = new Date(
+                                                  `${row.date}T${t.time}`,
+                                                );
+                                                const selStart = new Date(
+                                                  editData.start_time,
+                                                );
+                                                const selEnd = new Date(
+                                                  editData.end_time,
+                                                );
+
+                                                if (
+                                                  blockStart >= selStart &&
+                                                  blockStart < selEnd
+                                                ) {
+                                                  isSelectedBlock = true;
+                                                  if (
+                                                    blockStart.getTime() ===
+                                                    selStart.getTime()
+                                                  ) {
+                                                    isFirstSelected = true;
+                                                  }
+                                                  const blockEnd = addMinutes(
+                                                    blockStart,
+                                                    30,
+                                                  );
+                                                  if (
+                                                    blockEnd.getTime() ===
+                                                    selEnd.getTime()
+                                                  ) {
+                                                    isLastSelected = true;
+                                                  }
+                                                }
+
+                                                if (i < row.times.length - 1) {
+                                                  const nextBlockStart =
+                                                    new Date(
+                                                      `${row.date}T${row.times[i + 1].time}`,
+                                                    );
+                                                  if (
+                                                    nextBlockStart >=
+                                                      selStart &&
+                                                    nextBlockStart < selEnd
+                                                  ) {
+                                                    isNextSelected = true;
+                                                  }
+                                                }
+                                              }
+
+                                              const showRightGap =
+                                                i !== row.times.length - 1 &&
+                                                !isSelectedBlock &&
+                                                !isNextSelected;
+
+                                              let bgColor = "bg-neutral-200";
+                                              if (t.isBooked) {
+                                                bgColor = "bg-red-500";
+                                              } else if (
+                                                t.isCurrentReservation
+                                              ) {
+                                                if (isPast) {
+                                                  bgColor = "bg-orange-200";
+                                                } else {
+                                                  bgColor = isSelectedBlock
+                                                    ? "bg-emerald-400"
+                                                    : "bg-orange-400";
+                                                }
+                                              } else if (
+                                                t.isAvailable &&
+                                                !isPast
+                                              ) {
+                                                bgColor = isSelectedBlock
+                                                  ? "bg-emerald-400"
+                                                  : "bg-emerald-500";
+                                              }
+
+                                              return (
+                                                <div
+                                                  key={i}
+                                                  title={`${row.date} ${t.time}`}
+                                                  className={clsx(
+                                                    "w-[30px] shrink-0 h-[30px] transition-all",
+                                                    bgColor,
+                                                    !t.isBooked &&
+                                                      t.isAvailable &&
+                                                      !isPast &&
+                                                      "hover:opacity-80 cursor-pointer",
+                                                    showRightGap &&
+                                                      "border-r border-neutral-50",
+                                                    isSelectedBlock && "z-10",
+                                                    isSelectedBlock &&
+                                                      isFirstSelected &&
+                                                      isLastSelected
+                                                      ? "shadow-[0_0_0_2px_#047857] rounded-sm"
+                                                      : isSelectedBlock &&
+                                                          isFirstSelected
+                                                        ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm"
+                                                        : isSelectedBlock &&
+                                                            isLastSelected
+                                                          ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm"
+                                                          : isSelectedBlock
+                                                            ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857]"
+                                                            : "",
+                                                  )}
+                                                  onClick={() => {
+                                                    if (
+                                                      t.isAvailable &&
+                                                      !t.isBooked &&
+                                                      !isPast
+                                                    ) {
+                                                      handleTimeGridClick(
+                                                        row.date,
+                                                        t.time,
+                                                      );
+                                                    }
+                                                  }}
+                                                />
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
+                                  <span>可预约 (点击色块快速选择)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 bg-orange-400 rounded-sm"></div>
+                                  <span>当前预约时间</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
+                                  <span>已被预约</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 bg-neutral-200 rounded-sm"></div>
+                                  <span>未开放</span>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <form
+                          onSubmit={handleUpdate}
+                          className="space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100"
+                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-neutral-400 mb-1">
+                                开始日期与时间
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={editData.start_time.split("T")[0]}
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      const newDateStr = e.target.value;
+                                      setEditData({
+                                        ...editData,
+                                        start_time: `${newDateStr}T${editData.start_time.split("T")[1] || "08:00"}`,
+                                      });
+                                    }
+                                  }}
+                                  className="w-3/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm cursor-pointer"
+                                />
+                                <input
+                                  type="time"
+                                  step="300"
+                                  value={
+                                    editData.start_time
+                                      .split("T")[1]
+                                      ?.substring(0, 5) || ""
+                                  }
+                                  onChange={(e) =>
+                                    setEditData({
+                                      ...editData,
+                                      start_time: `${editData.start_time.split("T")[0]}T${e.target.value}`,
+                                    })
+                                  }
+                                  className="w-2/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-neutral-400 mb-1">
+                                结束日期与时间
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={editData.end_time.split("T")[0]}
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      const newDateStr = e.target.value;
+                                      setEditData({
+                                        ...editData,
+                                        end_time: `${newDateStr}T${editData.end_time.split("T")[1] || "08:00"}`,
+                                      });
+                                    }
+                                  }}
+                                  className="w-3/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm cursor-pointer"
+                                />
+                                <input
+                                  type="time"
+                                  step="300"
+                                  value={
+                                    editData.end_time
+                                      .split("T")[1]
+                                      ?.substring(0, 5) || ""
+                                  }
+                                  onChange={(e) =>
+                                    setEditData({
+                                      ...editData,
+                                      end_time: `${editData.end_time.split("T")[0]}T${e.target.value}`,
+                                    })
+                                  }
+                                  className="w-2/5 px-3 py-2 rounded-lg border border-neutral-200 text-sm font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                            >
+                              <Save className="w-4 h-4" /> 保存
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="flex-1 py-2 border border-neutral-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                            >
+                              <X className="w-4 h-4" /> 取消
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                              预约详情
+                            </p>
+                            <p className="text-sm font-medium text-neutral-900">
+                              {resv.student_name}
+                            </p>
+                            <p className="text-xs text-neutral-500">
+                              {resv.student_id} | {resv.supervisor}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                              时间安排
+                            </p>
+                            <p className="text-sm text-neutral-700">
+                              {format(
+                                new Date(resv.start_time),
+                                "yyyy-MM-dd HH:mm",
+                              )}{" "}
+                              - {format(new Date(resv.end_time), "HH:mm")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                              费用估算
+                            </p>
+                            <p className="text-sm font-medium text-neutral-900">
+                              ¥{resv.price} /{" "}
+                              {resv.price_type === "hour" ? "小时" : "次"}
+                            </p>
+                            {resv.consumable_fee > 0 && (
+                              <p className="text-xs text-neutral-500">
+                                + ¥{resv.consumable_fee}/个 耗材费
+                              </p>
+                            )}
+                          </div>
+                          {resv.total_cost !== null &&
+                            resv.total_cost !== undefined && (
+                              <div>
+                                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                                  实际费用
+                                </p>
+                                <p className="text-lg font-bold text-red-600">
+                                  ¥{(resv.total_cost || 0).toFixed(2)}
+                                </p>
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    )}
+
+                    {resv.status === "approved" &&
+                      !editingId &&
+                      resv.consumable_fee > 0 && (
+                        <div className="pt-4 border-t border-neutral-50">
+                          <div className="flex items-center gap-3 bg-neutral-50/50 p-3 rounded-xl border border-neutral-100">
+                            <span className="text-sm font-medium text-neutral-700 whitespace-nowrap">
+                              预计耗材数量:
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={consumableQty}
+                              onChange={(e) =>
+                                setConsumableQty(Number(e.target.value))
+                              }
+                              className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
+                              placeholder="数量"
+                            />
+                            <span className="text-xs text-neutral-500">
+                              (¥{resv.consumable_fee}/个)
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                    <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
+                      {(resv.status === "pending" ||
+                        resv.status === "approved") &&
+                        !editingId &&
+                        (() => {
+                          const maxLateMinutes =
+                            settings?.violation_no_show_grace_minutes
+                              ? Number(settings.violation_no_show_grace_minutes)
+                              : 30;
+                          const isPastGracePeriod =
+                            new Date().getTime() >
+                            new Date(resv.start_time).getTime() +
+                              maxLateMinutes * 60000;
+                          return (
+                            <>
+                              <button
+                                onClick={() => startEdit(resv)}
+                                disabled={
+                                  resv.modified_count >= 1 || isPastGracePeriod
+                                }
+                                title={
+                                  isPastGracePeriod
+                                    ? `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许修改`
+                                    : resv.modified_count >= 1
+                                      ? "每个预约仅允许修改一次"
+                                      : "修改预约时间"
+                                }
+                                className="flex-1 min-w-[120px] py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <Edit3 className="w-4 h-4" />{" "}
+                                {resv.modified_count >= 1
+                                  ? "已修改过"
+                                  : "修改信息"}
+                              </button>
+                              <button
+                                onClick={() => handleAction(resv, "cancel")}
+                                disabled={isPastGracePeriod}
+                                title={
+                                  isPastGracePeriod
+                                    ? `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消`
+                                    : "取消此预约"
+                                }
+                                className="flex-1 min-w-[120px] py-2.5 border border-red-100 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <XCircle className="w-4 h-4" /> 取消预约
+                              </button>
+                            </>
+                          );
+                        })()}
+                      {resv.status === "approved" &&
+                        !editingId &&
+                        (() => {
+                          const maxLateMinutes =
+                            settings?.violation_no_show_grace_minutes
+                              ? Number(settings.violation_no_show_grace_minutes)
+                              : 30;
+                          const isPastGracePeriod =
+                            new Date().getTime() >
+                            new Date(resv.start_time).getTime() +
+                              maxLateMinutes * 60000;
+                          return (
+                            <button
+                              onClick={() => handleAction(resv, "checkin")}
+                              disabled={isPastGracePeriod}
+                              title={
+                                isPastGracePeriod
+                                  ? `已超过预约开始时间${maxLateMinutes}分钟，不允许上机`
+                                  : "开始上机"
+                              }
+                              className="flex-1 min-w-[120px] py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Play className="w-4 h-4" /> 上机
+                            </button>
+                          );
+                        })()}
+                      {resv.status === "active" && !editingId && (
+                        <button
+                          onClick={() => {
+                            setCheckoutResv(resv);
+                            setCheckoutConsumableQty(
+                              resv.consumable_quantity || 0,
+                            );
+                          }}
+                          className="flex-1 min-w-[120px] py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 flex items-center justify-center gap-2"
+                        >
+                          <Square className="w-4 h-4" /> 下机
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          {myReservations.filter((resv) => {
             if (!hideExpired) return true;
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -881,15 +1192,23 @@ export default function MyReservations() {
             <div className="text-center py-20 bg-neutral-50 rounded-3xl border-2 border-dashed border-neutral-200">
               <Clock className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
               <p className="text-neutral-500">暂无预约记录</p>
-              <p className="text-xs text-neutral-400 mt-1">预约成功后，您的记录将出现在这里。</p>
+              <p className="text-xs text-neutral-400 mt-1">
+                预约成功后，您的记录将出现在这里。
+              </p>
             </div>
           )}
         </div>
       </div>
 
       {showClearConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowClearConfirm(false)}>
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowClearConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-center mb-4">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <Trash2 className="w-6 h-6 text-red-600" />
@@ -900,17 +1219,17 @@ export default function MyReservations() {
               确定要清除所有已过期的预约记录吗？这只会从您的本地记录中移除，不会删除系统数据。
             </p>
             <div className="flex gap-3">
-              <button 
-                onClick={() => setShowClearConfirm(false)} 
+              <button
+                onClick={() => setShowClearConfirm(false)}
                 className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
               >
                 取消
               </button>
-              <button 
+              <button
                 onClick={() => {
                   handleClearExpired();
                   setShowClearConfirm(false);
-                }} 
+                }}
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
               >
                 确认清除
@@ -921,8 +1240,14 @@ export default function MyReservations() {
       )}
 
       {checkoutResv && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setCheckoutResv(null)}>
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setCheckoutResv(null)}
+        >
+          <div
+            className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-center mb-4">
               <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
                 <Square className="w-6 h-6 text-amber-600" />
@@ -932,17 +1257,19 @@ export default function MyReservations() {
             <p className="text-sm text-neutral-500 text-center mb-6">
               您确定要结束当前预约并下机吗？
             </p>
-            
+
             {checkoutResv.consumable_fee > 0 && (
               <div className="mb-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   实际使用耗材数量 (¥{checkoutResv.consumable_fee}/个)
                 </label>
-                <input 
-                  type="number" 
-                  min="0" 
-                  value={checkoutConsumableQty} 
-                  onChange={e => setCheckoutConsumableQty(Number(e.target.value))}
+                <input
+                  type="number"
+                  min="0"
+                  value={checkoutConsumableQty}
+                  onChange={(e) =>
+                    setCheckoutConsumableQty(Number(e.target.value))
+                  }
                   className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-center text-lg font-bold"
                 />
                 <p className="text-xs text-neutral-400 mt-2 text-center">
@@ -952,14 +1279,16 @@ export default function MyReservations() {
             )}
 
             <div className="flex gap-3">
-              <button 
-                onClick={() => setCheckoutResv(null)} 
+              <button
+                onClick={() => setCheckoutResv(null)}
                 className="flex-1 py-2.5 border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 transition-colors"
               >
                 取消
               </button>
-              <button 
-                onClick={() => handleAction(checkoutResv, 'checkout', checkoutConsumableQty)} 
+              <button
+                onClick={() =>
+                  handleAction(checkoutResv, "checkout", checkoutConsumableQty)
+                }
                 className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 transition-colors"
               >
                 确认下机

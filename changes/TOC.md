@@ -17,3 +17,4 @@
 - [x] 惩罚UI界面优化 (penalty_ui_optimizations)
 - [x] 惩罚逻辑修复报告 (penalty-logic-fixes-report.md)
 - [x] 申诉附带详细驳回理由 (proposal-reject-with-detail)
+- [x] 跨天预约优化 (enhancement-cross-day-booking)
