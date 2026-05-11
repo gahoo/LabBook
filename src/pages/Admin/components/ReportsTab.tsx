@@ -487,7 +487,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                 <table className="w-full text-left text-sm whitespace-nowrap block md:table">
                   <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                     <tr>
-                      <th className="px-4 py-4 font-medium align-top">
+                      <th className="px-3 py-4 font-medium align-top">
                         <div className="mb-2">预约码</div>
                         <input 
                           type="text" 
@@ -497,7 +497,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                           className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
                         />
                       </th>
-                      <th className="px-4 py-4 font-medium align-top">
+                      <th className="px-3 py-4 font-medium align-top">
                         <div className="mb-2">用户/导师</div>
                         <input 
                           type="text" 
@@ -507,7 +507,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                           className="w-20 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
                         />
                       </th>
-                      <th className="px-4 py-4 font-medium align-top">
+                      <th className="px-3 py-4 font-medium align-top">
                         <div className="mb-2">仪器</div>
                         <input 
                           type="text" 
@@ -517,9 +517,9 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                           className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
                         />
                       </th>
-                      <th className="px-4 py-4 font-medium align-top">预约时间</th>
-                      <th className="px-4 py-4 font-medium align-top">实际上机</th>
-                      <th className="px-4 py-4 font-medium align-top">
+                      <th className="px-3 py-4 font-medium align-top">预约时间</th>
+                      <th className="px-3 py-4 font-medium align-top">实际上机</th>
+                      <th className="px-3 py-4 font-medium align-top">
                         <div className="mb-2">时长/费用</div>
                         <div className="relative" ref={reportTimeFilterPopupRef}>
                           <button 
@@ -574,7 +574,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                           )}
                         </div>
                       </th>
-                      <th className="px-4 py-4 font-medium align-top">
+                      <th className="px-3 py-4 font-medium align-top">
                         <div className="mb-2">状态/备注</div>
                         <div className="relative" ref={reportStatusFilterPopupRef}>
                           <button 
@@ -664,20 +664,20 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                           )}
                         </div>
                       </th>
-                      <th className="px-4 py-4 font-medium align-top">耗材</th>
-                      <th className="px-4 py-4 font-medium align-top">操作</th>
+                      <th className="px-3 py-4 font-medium align-top">耗材</th>
+                      <th className="px-3 py-4 font-medium align-top">操作</th>
                     </tr>
                   </thead>
                   <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                     {paginatedReportReservations.map((res: any) => (
                       <tr key={res.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">预约码</span>
                             <span className="font-mono text-xs text-neutral-500">{res.booking_code || '-'}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
                             <div className="text-right md:text-left">
@@ -686,13 +686,13 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
-                            <div className="text-neutral-900 max-w-[150px] whitespace-normal break-words">{res.equipment_name}</div>
+                            <div className="text-neutral-900 max-w-[200px] whitespace-normal break-words">{res.equipment_name}</div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">预约时间</span>
                             <div className="text-right md:text-left text-xs text-neutral-500">
@@ -701,7 +701,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">实际上机</span>
                             <div className="text-right md:text-left text-xs text-neutral-500">
@@ -716,7 +716,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">时长/费用</span>
                             <div className="text-right md:text-left">
@@ -730,7 +730,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">状态</span>
                             <div className="relative inline-flex flex-wrap gap-1">
@@ -753,14 +753,14 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">耗材</span>
                             <span className="text-neutral-900">{res.consumable_quantity || 0}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 md:py-4 block md:table-cell">
-                          <div className="flex justify-end md:justify-start gap-2">
+                        <td className="px-3 py-3 md:py-4 block md:table-cell">
+                          <div className="flex justify-end md:justify-start gap-1">
                             <button 
                               onClick={() => {
                                 const toLocal = (utcStr: string) => {
@@ -777,14 +777,14 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                                 fetchManualViolations(res.id);
                                 setIsDrawerOpen(true);
                               }}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="编辑记录"
                             >
                               <Edit3 className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => setDeleteConfirmId(res.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="删除记录"
                             >
                               <Trash2 className="w-4 h-4" />
