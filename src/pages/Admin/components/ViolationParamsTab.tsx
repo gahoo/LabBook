@@ -9,7 +9,7 @@ interface ViolationParamsTabProps {
 export default function ViolationParamsTab({ token }: ViolationParamsTabProps) {
   const [lateGraceMinutes, setLateGraceMinutes] = useState(15);
   const [overtimeGraceMinutes, setOvertimeGraceMinutes] = useState(15);
-  const [lateCancelHours, setLateCancelHours] = useState(2);
+  const [lateCancelMinutes, setLateCancelMinutes] = useState(120);
   const [noShowGraceMinutes, setNoShowGraceMinutes] = useState(30);
   const [cronIntervalMinutes, setCronIntervalMinutes] = useState(15);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,7 +24,7 @@ export default function ViolationParamsTab({ token }: ViolationParamsTabProps) {
       const data = await res.json();
       if (data.violation_late_grace_minutes) setLateGraceMinutes(Number(data.violation_late_grace_minutes));
       if (data.violation_overtime_grace_minutes) setOvertimeGraceMinutes(Number(data.violation_overtime_grace_minutes));
-      if (data.violation_late_cancel_hours) setLateCancelHours(Number(data.violation_late_cancel_hours));
+      if (data.violation_late_cancel_minutes) setLateCancelMinutes(Number(data.violation_late_cancel_minutes));
       if (data.violation_no_show_grace_minutes) setNoShowGraceMinutes(Number(data.violation_no_show_grace_minutes));
       if (data.cron_no_show_scan_interval_minutes) setCronIntervalMinutes(Number(data.cron_no_show_scan_interval_minutes));
     } catch (err) {
@@ -53,7 +53,7 @@ export default function ViolationParamsTab({ token }: ViolationParamsTabProps) {
         body: JSON.stringify({
           violation_late_grace_minutes: lateGraceMinutes,
           violation_overtime_grace_minutes: overtimeGraceMinutes,
-          violation_late_cancel_hours: lateCancelHours,
+          violation_late_cancel_minutes: lateCancelMinutes,
           violation_no_show_grace_minutes: noShowGraceMinutes,
           cron_no_show_scan_interval_minutes: cronIntervalMinutes
         })
@@ -126,16 +126,16 @@ export default function ViolationParamsTab({ token }: ViolationParamsTabProps) {
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              临期取消阈值 (小时)
+              临期取消阈值 (分钟)
             </label>
             <input
               type="number"
               min="0"
-              value={lateCancelHours}
-              onChange={(e) => setLateCancelHours(Number(e.target.value))}
+              value={lateCancelMinutes}
+              onChange={(e) => setLateCancelMinutes(Number(e.target.value))}
               className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
             />
-            <p className="text-xs text-neutral-500 mt-1">距离预约开始时间不足多少小时取消记为临期取消。</p>
+            <p className="text-xs text-neutral-500 mt-1">距离预约开始时间不足多少分钟取消记为临期取消。</p>
           </div>
 
           <div>

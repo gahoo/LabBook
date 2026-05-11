@@ -55,6 +55,7 @@ export default function EquipmentForm({
         advanceDays: avail.advanceDays || 7,
         maxDurationMinutes: avail.maxDurationMinutes || 60,
         minDurationMinutes: avail.minDurationMinutes || 30,
+        lateCancellationMinutes: avail.lateCancellationMinutes !== undefined && avail.lateCancellationMinutes !== null ? avail.lateCancellationMinutes : '',
         rules: avail.rules || []
       };
     }
@@ -75,6 +76,7 @@ export default function EquipmentForm({
       advanceDays: 7,
       maxDurationMinutes: 60,
       minDurationMinutes: 30,
+      lateCancellationMinutes: '',
       rules: [] as any[]
     };
   });
@@ -134,6 +136,7 @@ export default function EquipmentForm({
       advanceDays: formData.advanceDays,
       maxDurationMinutes: formData.maxDurationMinutes,
       minDurationMinutes: formData.minDurationMinutes,
+      lateCancellationMinutes: formData.lateCancellationMinutes === '' ? undefined : Number(formData.lateCancellationMinutes),
       allowOutOfHours: formData.allow_out_of_hours
     });
 
@@ -224,18 +227,27 @@ export default function EquipmentForm({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-xs text-neutral-500 mb-1">可提前预约天数</label>
+                  <label className="block text-xs text-neutral-500 mb-1">提前预约天数</label>
                   <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-neutral-500 mb-1">单次最小预约时长 (分钟)</label>
+                  <label className="block text-xs text-neutral-500 mb-1">单次最小时长 (分)</label>
                   <input type="number" min="1" value={formData.minDurationMinutes} onChange={e => setFormData({...formData, minDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-neutral-500 mb-1">单次最大预约时长 (分钟)</label>
+                  <label className="block text-xs text-neutral-500 mb-1">单次最大时长 (分)</label>
                   <input type="number" min="1" value={formData.maxDurationMinutes} onChange={e => setFormData({...formData, maxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+                </div>
+                <div className="relative group">
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                    临期取消阈值 (分)
+                    <div className="hidden group-hover:block absolute z-10 w-48 p-2 bg-neutral-800 text-white text-xs rounded-lg shadow-lg -top-10 left-0">
+                      留空则使用全局默认设置
+                    </div>
+                  </label>
+                  <input type="number" min="0" value={formData.lateCancellationMinutes} onChange={e => setFormData({...formData, lateCancellationMinutes: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" placeholder="默认" />
                 </div>
               </div>
 

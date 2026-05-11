@@ -210,12 +210,23 @@ try {
   insertSetting.run('app_logo', '');
   insertSetting.run('violation_late_grace_minutes', '15');
   insertSetting.run('violation_overtime_grace_minutes', '15');
-  insertSetting.run('violation_late_cancel_hours', '2');
+  insertSetting.run('violation_late_cancel_minutes', '120');
   insertSetting.run('violation_no_show_grace_minutes', '30');
   insertSetting.run('cron_no_show_scan_interval_minutes', '15');
   insertSetting.run('auto_backup_enabled', 'false');
   insertSetting.run('auto_backup_cron', '0 3 * * *');
   insertSetting.run('auto_backup_retention', '7');
+} catch (e) {}
+
+try {
+  const lateHoursRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_late_cancel_hours'").get() as any;
+  if (lateHoursRow) {
+    const hours = parseInt(lateHoursRow.value, 10);
+    if (!isNaN(hours)) {
+      db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('violation_late_cancel_minutes', ?)").run((hours * 60).toString());
+    }
+    db.prepare("DELETE FROM settings WHERE key = 'violation_late_cancel_hours'").run();
+  }
 } catch (e) {}
 
 try {
@@ -1072,6 +1083,14 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
           avail.maxDurationMinutes = updateData.maxDurationMinutes;
           availChanged = true;
         }
+        if (updateData.lateCancellationMinutes !== undefined) {
+          if (updateData.lateCancellationMinutes === null) {
+            delete avail.lateCancellationMinutes;
+          } else {
+            avail.lateCancellationMinutes = updateData.lateCancellationMinutes;
+          }
+          availChanged = true;
+        }
         if (updateData.rules !== undefined) {
           avail.rules = updateData.rules;
           availChanged = true;
@@ -1631,11 +1650,24 @@ app.post('/api/reservations/cancel', (req, res) => {
       const nowStr = new Date(now).toISOString();
       db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ? WHERE booking_code = ?").run(nowStr, booking_code);
       
-      const lateCancelRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_late_cancel_hours'").get() as any;
-      const lateCancelHours = lateCancelRow ? parseInt(lateCancelRow.value, 10) : 2;
+      let lateCancelMinutes = 120;
+      let eqAvail = null;
+      try {
+        const equipment = db.prepare('SELECT availability_json FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
+        if (equipment && equipment.availability_json) {
+          eqAvail = JSON.parse(equipment.availability_json);
+        }
+      } catch (e) {}
+      
+      if (eqAvail && eqAvail.lateCancellationMinutes !== undefined && eqAvail.lateCancellationMinutes !== '') {
+        lateCancelMinutes = parseInt(eqAvail.lateCancellationMinutes, 10);
+      } else {
+        const lateCancelRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_late_cancel_minutes'").get() as any;
+        lateCancelMinutes = lateCancelRow ? parseInt(lateCancelRow.value, 10) : 120;
+      }
       
       let isLateCancel = false;
-      if (now >= startTime - lateCancelHours * 60 * 60 * 1000) {
+      if (now >= startTime - lateCancelMinutes * 60 * 1000) {
         isLateCancel = true;
         db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time) VALUES (?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'late_cancel', nowStr);
       }
@@ -2763,9 +2795,9 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   }
 
   // Fetch settings for grace periods
-  const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_hours', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
+  const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_minutes', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
   const settingsMap = settingsRows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
-  const lateCancelHours = settingsMap['violation_late_cancel_hours'] ? parseInt(settingsMap['violation_late_cancel_hours'], 10) : 2;
+  const lateCancelMinutesGlobal = settingsMap['violation_late_cancel_minutes'] ? parseInt(settingsMap['violation_late_cancel_minutes'], 10) : 120;
   const noShowGraceMinutes = settingsMap['violation_no_show_grace_minutes'] ? parseInt(settingsMap['violation_no_show_grace_minutes'], 10) : 30;
   const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
   const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
@@ -2774,10 +2806,20 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   const calculateStatus = (res: any, prevRes: any) => {
     if (res.status === 'cancelled') {
       if (res.actual_end_time) {
+        let lateCancelMinutes = lateCancelMinutesGlobal;
+        if (res.equipment_availability_json) {
+          try {
+            const eqAvail = JSON.parse(res.equipment_availability_json);
+            if (eqAvail.lateCancellationMinutes !== undefined && eqAvail.lateCancellationMinutes !== '') {
+              lateCancelMinutes = parseInt(eqAvail.lateCancellationMinutes, 10);
+            }
+          } catch(e){}
+        }
+
         const cancelTime = new Date(res.actual_end_time).getTime();
         const startTime = new Date(res.start_time).getTime();
         
-        const lateCancelThreshold = startTime - (lateCancelHours * 60 * 60 * 1000);
+        const lateCancelThreshold = startTime - (lateCancelMinutes * 60 * 1000);
         const noShowThreshold = startTime + (noShowGraceMinutes * 60 * 1000);
 
         if (cancelTime >= noShowThreshold) {
@@ -2829,7 +2871,7 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   };
 
   const allReservationsRaw = db.prepare(`
-    SELECT r.*, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee
+    SELECT r.*, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee, e.availability_json as equipment_availability_json
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     ${whereClause}

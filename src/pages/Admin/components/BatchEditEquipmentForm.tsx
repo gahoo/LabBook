@@ -32,6 +32,9 @@ export default function BatchEditEquipmentForm({
   const [minDurationMinutes, setMinDurationMinutes] = useState<number>(30);
   const [maxDurationMinutes, setMaxDurationMinutes] = useState<number>(60);
 
+  const [modifyLateCancel, setModifyLateCancel] = useState(false);
+  const [lateCancelMinutes, setLateCancelMinutes] = useState<string>('');
+
   const [modifyRules, setModifyRules] = useState(false);
   const [rules, setRules] = useState<any[]>([]);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
@@ -65,6 +68,9 @@ export default function BatchEditEquipmentForm({
     if (modifyDuration) {
       updates.minDurationMinutes = minDurationMinutes;
       updates.maxDurationMinutes = maxDurationMinutes;
+    }
+    if (modifyLateCancel) {
+      updates.lateCancellationMinutes = lateCancelMinutes === '' ? null : Number(lateCancelMinutes);
     }
     if (modifyRules) updates.rules = rules;
     if (modifyWhitelist) {
@@ -174,6 +180,30 @@ export default function BatchEditEquipmentForm({
                         value={maxDurationMinutes} 
                         onChange={e => setMaxDurationMinutes(Number(e.target.value))} 
                         className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-start justify-between flex-col sm:flex-row sm:items-center gap-4">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyLateCancel} onChange={e => setModifyLateCancel(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    修改临期取消阈值
+                  </label>
+                </div>
+                {modifyLateCancel && (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex-1 sm:w-32 relative group">
+                      <label className="block text-[10px] text-neutral-500 mb-1">阈值 (分钟)</label>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        value={lateCancelMinutes} 
+                        onChange={e => setLateCancelMinutes(e.target.value)} 
+                        className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
+                        placeholder="留空即复原"
                       />
                     </div>
                   </div>
