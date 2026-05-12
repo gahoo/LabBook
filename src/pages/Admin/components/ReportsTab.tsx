@@ -1548,7 +1548,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                         <option value="equipment">按仪器</option>
                       </select>
                     </div>
-                    {chartDimension === 'time' && (
+                    {(chartDimension === 'time' || reportChartType === 'line') && (
                       <div className="flex items-center gap-2">
                         <label className="text-xs font-medium text-neutral-500">时间维度</label>
                         <select 
@@ -1567,6 +1567,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                     <div className="flex items-center gap-2" title="启用后，统计数据将根据下方的详细记录筛选条件实时重新计算">
                       <label className="text-xs font-medium text-neutral-500 cursor-help border-b border-dashed border-neutral-400">联动</label>
                       <button
+                        title="启用后，统计数据将根据下方的详细记录筛选条件实时重新计算"
                         onClick={() => setSyncWithFilters(!syncWithFilters)}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
                           syncWithFilters ? 'bg-red-600' : 'bg-neutral-300'
