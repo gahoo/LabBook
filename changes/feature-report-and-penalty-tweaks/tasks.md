@@ -1,14 +1,14 @@
 # 任务清单：报表与惩罚功能优化
 
-- [ ] **任务 1：报表详细记录表仪器列折行**
+- [x] **任务 1：报表详细记录表仪器列折行**
   - 所属文件：`src/pages/Admin/components/ReportsTab.tsx`
   - 操作说明：找到“详细预约记录表”，给“仪器”列对应的显示元素添加 `max-w-[150px] whitespace-normal break-words` 样式。
 
-- [ ] **任务 2：设置参数调整 (小时改分钟)**
+- [x] **任务 2：设置参数调整 (小时改分钟)**
   - 所属文件：`src/pages/Admin/components/ViolationParamsTab.tsx`
   - 操作说明：修改“临期取消阈值”为“分钟”显示；加载和保存参数时改用新的配置键 `violation_late_cancel_minutes`。
 
-- [ ] **任务 3：服务端：设置结构迁移及取消逻辑修改**
+- [x] **任务 3：服务端：设置结构迁移及取消逻辑修改**
   - 所属文件：`server.ts`
   - 操作说明：
     - 数据库初始化及启动时，检查并执行 `violation_late_cancel_hours` 到 `violation_late_cancel_minutes` 的平滑迁移。
@@ -16,7 +16,7 @@
     - 取消预约判断时，先获取 `equipment.availability_json` 的 `lateCancellationMinutes`，如无则使用全局 `violation_late_cancel_minutes`。
     - 服务端返回和保存设置时处理 `violation_late_cancel_minutes` 项。
 
-- [ ] **任务 4：仪器单独配置临期取消阈值**
+- [x] **任务 4：仪器单独配置临期取消阈值**
   - 所属文件：`src/pages/Admin/components/EquipmentForm.tsx`, `src/pages/Admin/components/BatchEditEquipmentForm.tsx`
   - 操作说明：
     - `EquipmentForm.tsx` 增加 `lateCancellationMinutes` 属性的设置（留空默认使用全局）。

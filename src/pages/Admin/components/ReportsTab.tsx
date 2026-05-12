@@ -914,7 +914,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                         <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
                             <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
-                            <div className="text-neutral-900 max-w-[200px] whitespace-normal break-words">{res.equipment_name}</div>
+                            <div className="text-neutral-900 max-w-[2000px] whitespace-normal break-words">{res.equipment_name}</div>
                           </div>
                         </td>
                         <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
