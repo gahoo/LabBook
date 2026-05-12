@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -26,6 +26,8 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
   const [reportFilterDurationMax, setReportFilterDurationMax] = useState('');
   const [reportFilterCostMin, setReportFilterCostMin] = useState('');
   const [reportFilterCostMax, setReportFilterCostMax] = useState('');
+  const [reportFilterUtilizationMin, setReportFilterUtilizationMin] = useState('');
+  const [reportFilterUtilizationMax, setReportFilterUtilizationMax] = useState('');
   const [reportFilterStatus, setReportFilterStatus] = useState<string[]>([]);
   const [reportFilterNotes, setReportFilterNotes] = useState('');
   const [reportFilterCode, setReportFilterCode] = useState(initialBookingCode || '');
@@ -33,9 +35,11 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
   const reportPageSize = 20;
   
   const [showReportTimeFilterPopup, setShowReportTimeFilterPopup] = useState(false);
+  const [showReportCostFilterPopup, setShowReportCostFilterPopup] = useState(false);
   const [showReportStatusFilterPopup, setShowReportStatusFilterPopup] = useState(false);
   const [showReportMobileFilters, setShowReportMobileFilters] = useState(false);
   const reportTimeFilterPopupRef = useRef<HTMLDivElement>(null);
+  const reportCostFilterPopupRef = useRef<HTMLDivElement>(null);
   const reportStatusFilterPopupRef = useRef<HTMLDivElement>(null);
   
   const [editingReportRecord, setEditingReportRecord] = useState<any>(null);
@@ -45,11 +49,17 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
 
   const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts'>('detailed');
   const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
-  const [statsType, setStatsType] = useState<'user' | 'supervisor'>('user');
+  const [chartDimension, setChartDimension] = useState<'time' | 'user' | 'supervisor' | 'equipment'>('time');
+  const [statsType, setStatsType] = useState<'user' | 'supervisor' | 'equipment'>('user');
   const [statsFilterUser, setStatsFilterUser] = useState('');
   const [statsFilterSupervisor, setStatsFilterSupervisor] = useState('');
+  const [statsFilterEquipment, setStatsFilterEquipment] = useState('');
   const [statsFilterDurationMin, setStatsFilterDurationMin] = useState('');
   const [statsFilterDurationMax, setStatsFilterDurationMax] = useState('');
+  const [statsFilterBookedMin, setStatsFilterBookedMin] = useState('');
+  const [statsFilterBookedMax, setStatsFilterBookedMax] = useState('');
+  const [statsFilterUtilMin, setStatsFilterUtilMin] = useState('');
+  const [statsFilterUtilMax, setStatsFilterUtilMax] = useState('');
   const [statsFilterCostMin, setStatsFilterCostMin] = useState('');
   const [statsFilterCostMax, setStatsFilterCostMax] = useState('');
 
@@ -139,25 +149,52 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
           return false;
         }
       }
-      if (statsFilterDurationMin && u.total_hours < Number(statsFilterDurationMin)) return false;
-      if (statsFilterDurationMax && u.total_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterDurationMin && u.machine_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && u.machine_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterBookedMin && u.booked_hours < Number(statsFilterBookedMin)) return false;
+      if (statsFilterBookedMax && u.booked_hours > Number(statsFilterBookedMax)) return false;
+      const util = u.booked_hours > 0 ? (u.machine_hours / u.booked_hours) * 100 : 0;
+      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
+      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
       if (statsFilterCostMin && u.total_revenue < Number(statsFilterCostMin)) return false;
       if (statsFilterCostMax && u.total_revenue > Number(statsFilterCostMax)) return false;
       return true;
     });
-  }, [reports?.usageByPerson, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterCostMin, statsFilterCostMax]);
+  }, [reports?.usageByPerson, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
 
   const filteredUsageBySupervisor = useMemo(() => {
     if (!reports?.usageBySupervisor) return [];
     return reports.usageBySupervisor.filter((s: any) => {
       if (statsFilterSupervisor && !s.supervisor.toLowerCase().includes(statsFilterSupervisor.toLowerCase())) return false;
-      if (statsFilterDurationMin && s.total_hours < Number(statsFilterDurationMin)) return false;
-      if (statsFilterDurationMax && s.total_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterDurationMin && s.machine_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && s.machine_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterBookedMin && s.booked_hours < Number(statsFilterBookedMin)) return false;
+      if (statsFilterBookedMax && s.booked_hours > Number(statsFilterBookedMax)) return false;
+      const util = s.booked_hours > 0 ? (s.machine_hours / s.booked_hours) * 100 : 0;
+      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
+      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
       if (statsFilterCostMin && s.total_revenue < Number(statsFilterCostMin)) return false;
       if (statsFilterCostMax && s.total_revenue > Number(statsFilterCostMax)) return false;
       return true;
     });
-  }, [reports?.usageBySupervisor, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterCostMin, statsFilterCostMax]);
+  }, [reports?.usageBySupervisor, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
+
+  const filteredUsageByEquipment = useMemo(() => {
+    if (!reports?.usageByEquipment) return [];
+    return reports.usageByEquipment.filter((e: any) => {
+      if (statsFilterEquipment && !e.equipment_name.toLowerCase().includes(statsFilterEquipment.toLowerCase())) return false;
+      if (statsFilterDurationMin && e.machine_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && e.machine_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterBookedMin && e.booked_hours < Number(statsFilterBookedMin)) return false;
+      if (statsFilterBookedMax && e.booked_hours > Number(statsFilterBookedMax)) return false;
+      const util = e.booked_hours > 0 ? (e.machine_hours / e.booked_hours) * 100 : 0;
+      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
+      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
+      if (statsFilterCostMin && e.total_revenue < Number(statsFilterCostMin)) return false;
+      if (statsFilterCostMax && e.total_revenue > Number(statsFilterCostMax)) return false;
+      return true;
+    });
+  }, [reports?.usageByEquipment, statsFilterEquipment, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
 
   const filteredReportReservations = useMemo(() => {
     return (reports?.allReservations || []).filter((res: any) => {
@@ -175,12 +212,21 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       const duration = res.actual_start_time && res.actual_end_time 
         ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
         : 0;
+
+      const bookedDuration = res.start_time && res.end_time 
+        ? (new Date(res.end_time).getTime() - new Date(res.start_time).getTime()) / (1000 * 60 * 60)
+        : 0;
+
+      const utilization = bookedDuration > 0 ? (duration / bookedDuration) * 100 : 0;
       
       if (reportFilterDurationMin && duration < Number(reportFilterDurationMin)) return false;
       if (reportFilterDurationMax && duration > Number(reportFilterDurationMax)) return false;
       
       if (reportFilterCostMin && (res.total_cost || 0) < Number(reportFilterCostMin)) return false;
       if (reportFilterCostMax && (res.total_cost || 0) > Number(reportFilterCostMax)) return false;
+
+      if (reportFilterUtilizationMin && utilization < Number(reportFilterUtilizationMin)) return false;
+      if (reportFilterUtilizationMax && utilization > Number(reportFilterUtilizationMax)) return false;
       
       if (reportFilterStatus.length > 0) {
         const statuses = res.reportStatus.split(', ');
@@ -197,7 +243,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       
       return true;
     });
-  }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterStatus, reportFilterNotes]);
+  }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterUtilizationMin, reportFilterUtilizationMax, reportFilterStatus, reportFilterNotes]);
 
   const syncedUsageByTime = useMemo(() => {
     if (!syncWithFilters) return reports?.usageByTime || [];
@@ -231,6 +277,52 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
 
     return Array.from(timeMap.values()).sort((a: any, b: any) => a.period.localeCompare(b.period));
   }, [syncWithFilters, reports?.usageByTime, filteredReportReservations, reportPeriod]);
+
+  const { multiLineData, multiLineKeys } = useMemo(() => {
+    if (chartDimension === 'time') return { multiLineData: [], multiLineKeys: [] };
+    
+    const baseReservations = syncWithFilters ? filteredReportReservations : (reports?.allReservations || []);
+    const statsReservations = baseReservations.filter((r: any) => 
+      (r.actual_start_time && r.status === 'completed') || r.reportStatus?.includes('爽约')
+    );
+
+    const timeMap = new Map();
+    const keysSet = new Set<string>();
+
+    statsReservations.forEach((r: any) => {
+      let hours = 0;
+      if (r.actual_start_time && r.actual_end_time) {
+        hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+      }
+      const revenue = r.total_cost || 0;
+
+      const dateToUse = r.actual_start_time ? new Date(r.actual_start_time) : new Date(r.start_time);
+      let pStr = format(dateToUse, 'yyyy-MM-dd');
+      if (reportPeriod === 'week') pStr = format(dateToUse, "yyyy-'W'II");
+      if (reportPeriod === 'month') pStr = format(dateToUse, 'yyyy-MM');
+      if (reportPeriod === 'quarter') pStr = format(dateToUse, "yyyy-'Q'Q");
+      if (reportPeriod === 'year') pStr = format(dateToUse, 'yyyy');
+      
+      let key = '';
+      if (chartDimension === 'user') key = `${r.student_name}`;
+      else if (chartDimension === 'supervisor') key = r.supervisor;
+      else if (chartDimension === 'equipment') key = r.equipment_name || '未知仪器';
+
+      if (key) keysSet.add(key);
+
+      if (!timeMap.has(pStr)) {
+        timeMap.set(pStr, { period: pStr });
+      }
+      const t = timeMap.get(pStr);
+      t[`${key}_duration`] = (t[`${key}_duration`] || 0) + hours;
+      t[`${key}_revenue`] = (t[`${key}_revenue`] || 0) + revenue;
+    });
+
+    return { 
+      multiLineData: Array.from(timeMap.values()).sort((a: any, b: any) => a.period.localeCompare(b.period)),
+      multiLineKeys: Array.from(keysSet)
+    };
+  }, [chartDimension, syncWithFilters, reports?.allReservations, filteredReportReservations, reportPeriod]);
 
   const reportTotalPages = Math.ceil(filteredReportReservations.length / reportPageSize);
   const paginatedReportReservations = filteredReportReservations.slice(
@@ -282,21 +374,30 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
   const exportStats = () => {
     if (statsType === 'user') {
       if (!filteredUsageByPerson || filteredUsageByPerson.length === 0) return;
-      const headers = ['用户', '学号', '导师', '总时长(小时)', '总费用(¥)'];
+      const headers = ['用户', '学号', '导师', '上机时长(小时)', '预约时长(小时)', '时长利用率(%)', '总费用(¥)'];
       exportToCSV(
         filteredUsageByPerson,
         `user_stats_${reportStartDate}_${reportEndDate}`,
         headers,
-        (u: any) => [u.student_name, u.student_id, u.supervisor, (u.total_hours || 0).toFixed(2), (u.total_revenue || 0).toFixed(2)]
+        (u: any) => [u.student_name, u.student_id, u.supervisor, (u.machine_hours || 0).toFixed(2), (u.booked_hours || 0).toFixed(2), (u.booked_hours > 0 ? (u.machine_hours / u.booked_hours * 100) : 0).toFixed(1) + '%', (u.total_revenue || 0).toFixed(2)]
       );
-    } else {
+    } else if (statsType === 'supervisor') {
       if (!filteredUsageBySupervisor || filteredUsageBySupervisor.length === 0) return;
-      const headers = ['导师', '总时长(小时)', '总费用(¥)'];
+      const headers = ['导师', '上机时长(小时)', '预约时长(小时)', '时长利用率(%)', '总费用(¥)'];
       exportToCSV(
         filteredUsageBySupervisor,
         `supervisor_stats_${reportStartDate}_${reportEndDate}`,
         headers,
-        (s: any) => [s.supervisor, (s.total_hours || 0).toFixed(2), (s.total_revenue || 0).toFixed(2)]
+        (s: any) => [s.supervisor, (s.machine_hours || 0).toFixed(2), (s.booked_hours || 0).toFixed(2), (s.booked_hours > 0 ? (s.machine_hours / s.booked_hours * 100) : 0).toFixed(1) + '%', (s.total_revenue || 0).toFixed(2)]
+      );
+    } else if (statsType === 'equipment') {
+      if (!filteredUsageByEquipment || filteredUsageByEquipment.length === 0) return;
+      const headers = ['仪器名称', '上机时长(小时)', '预约时长(小时)', '时长利用率(%)', '总费用(¥)'];
+      exportToCSV(
+        filteredUsageByEquipment,
+        `equipment_stats_${reportStartDate}_${reportEndDate}`,
+        headers,
+        (e: any) => [e.equipment_name, (e.machine_hours || 0).toFixed(2), (e.booked_hours || 0).toFixed(2), (e.booked_hours > 0 ? (e.machine_hours / e.booked_hours * 100) : 0).toFixed(1) + '%', (e.total_revenue || 0).toFixed(2)]
       );
     }
   };
@@ -453,17 +554,22 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                     <input type="text" value={reportFilterEquipment} onChange={e => setReportFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" placeholder="搜索仪器..." />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-neutral-500 mb-2">时长/费用</label>
+                    <label className="block text-xs font-medium text-neutral-500 mb-2">时长/利用率/费用</label>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <input type="number" placeholder="Min h" value={reportFilterDurationMin} onChange={e => setReportFilterDurationMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        <input type="number" placeholder="时间Min(h)" value={reportFilterDurationMin} onChange={e => setReportFilterDurationMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
                         <span className="text-neutral-400">-</span>
-                        <input type="number" placeholder="Max h" value={reportFilterDurationMax} onChange={e => setReportFilterDurationMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        <input type="number" placeholder="时间Max(h)" value={reportFilterDurationMax} onChange={e => setReportFilterDurationMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
                       </div>
                       <div className="flex items-center gap-2">
-                        <input type="number" placeholder="Min ¥" value={reportFilterCostMin} onChange={e => setReportFilterCostMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        <input type="number" placeholder="利用率Min(%)" value={reportFilterUtilizationMin} onChange={e => setReportFilterUtilizationMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
                         <span className="text-neutral-400">-</span>
-                        <input type="number" placeholder="Max ¥" value={reportFilterCostMax} onChange={e => setReportFilterCostMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        <input type="number" placeholder="利用率Max(%)" value={reportFilterUtilizationMax} onChange={e => setReportFilterUtilizationMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="number" placeholder="费用Min(¥)" value={reportFilterCostMin} onChange={e => setReportFilterCostMin(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
+                        <span className="text-neutral-400">-</span>
+                        <input type="number" placeholder="费用Max(¥)" value={reportFilterCostMax} onChange={e => setReportFilterCostMax(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" />
                       </div>
                     </div>
                   </div>
@@ -520,19 +626,19 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       <th className="px-3 py-4 font-medium align-top">预约时间</th>
                       <th className="px-3 py-4 font-medium align-top">实际上机</th>
                       <th className="px-3 py-4 font-medium align-top">
-                        <div className="mb-2">时长/费用</div>
+                        <div className="mb-2">时长</div>
                         <div className="relative" ref={reportTimeFilterPopupRef}>
                           <button 
                             onClick={() => setShowReportTimeFilterPopup(!showReportTimeFilterPopup)}
                             className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex items-center justify-between"
                           >
                             <span className="text-neutral-500 truncate">
-                              {reportFilterDurationMin || reportFilterDurationMax || reportFilterCostMin || reportFilterCostMax ? '已筛选' : '筛选时长/费用'}
+                              {reportFilterDurationMin || reportFilterDurationMax || reportFilterUtilizationMin || reportFilterUtilizationMax ? '已筛选' : '时长'}
                             </span>
                             <Filter className="w-3 h-3 text-neutral-400" />
                           </button>
                           {showReportTimeFilterPopup && (
-                            <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                            <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
                               <div className="space-y-3">
                                 <div>
                                   <label className="block text-xs text-neutral-500 mb-1">时长 (小时)</label>
@@ -542,6 +648,53 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                                     <input type="number" placeholder="Max" value={reportFilterDurationMax} onChange={e => setReportFilterDurationMax(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
                                   </div>
                                 </div>
+                                <div>
+                                  <label className="block text-xs text-neutral-500 mb-1">时长利用率 (%)</label>
+                                  <div className="flex items-center gap-1">
+                                    <input type="number" placeholder="Min" value={reportFilterUtilizationMin} onChange={e => setReportFilterUtilizationMin(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                    <span className="text-neutral-400">-</span>
+                                    <input type="number" placeholder="Max" value={reportFilterUtilizationMax} onChange={e => setReportFilterUtilizationMax(e.target.value)} className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none" />
+                                  </div>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                                  <button 
+                                    onClick={() => {
+                                      setReportFilterDurationMin('');
+                                      setReportFilterDurationMax('');
+                                      setReportFilterUtilizationMin('');
+                                      setReportFilterUtilizationMax('');
+                                    }}
+                                    className="text-xs text-neutral-500 hover:text-neutral-700"
+                                  >
+                                    清空
+                                  </button>
+                                  <button 
+                                    onClick={() => setShowReportTimeFilterPopup(false)}
+                                    className="text-xs text-red-600 font-medium"
+                                  >
+                                    确定
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </th>
+                      <th className="px-3 py-4 font-medium align-top">
+                        <div className="mb-2">费用</div>
+                        <div className="relative" ref={reportCostFilterPopupRef}>
+                          <button 
+                            onClick={() => setShowReportCostFilterPopup(!showReportCostFilterPopup)}
+                            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 bg-white text-left min-h-[26px] flex items-center justify-between"
+                          >
+                            <span className="text-neutral-500 truncate">
+                              {reportFilterCostMin || reportFilterCostMax ? '已筛选' : '费用'}
+                            </span>
+                            <Filter className="w-3 h-3 text-neutral-400" />
+                          </button>
+                          {showReportCostFilterPopup && (
+                            <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                              <div className="space-y-3">
                                 <div>
                                   <label className="block text-xs text-neutral-500 mb-1">费用 (¥)</label>
                                   <div className="flex items-center gap-1">
@@ -553,8 +706,6 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                                 <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
                                   <button 
                                     onClick={() => {
-                                      setReportFilterDurationMin('');
-                                      setReportFilterDurationMax('');
                                       setReportFilterCostMin('');
                                       setReportFilterCostMax('');
                                     }}
@@ -563,7 +714,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                                     清空
                                   </button>
                                   <button 
-                                    onClick={() => setShowReportTimeFilterPopup(false)}
+                                    onClick={() => setShowReportCostFilterPopup(false)}
                                     className="text-xs text-red-600 font-medium"
                                   >
                                     确定
@@ -669,7 +820,15 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                     </tr>
                   </thead>
                   <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
-                    {paginatedReportReservations.map((res: any) => (
+                    {paginatedReportReservations.map((res: any) => {
+                      const mDuration = res.actual_start_time && res.actual_end_time 
+                        ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
+                        : 0;
+                      const bDuration = res.start_time && res.end_time 
+                        ? (new Date(res.end_time).getTime() - new Date(res.start_time).getTime()) / (1000 * 60 * 60)
+                        : 0;
+                      const utilization = bDuration > 0 ? (mDuration / bDuration * 100) : 0;
+                      return (
                       <tr key={res.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
                         <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
@@ -718,15 +877,24 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                         </td>
                         <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                           <div className="flex justify-between items-center md:block">
-                            <span className="md:hidden font-medium text-neutral-500 text-xs">时长/费用</span>
+                            <span className="md:hidden font-medium text-neutral-500 text-xs">时长</span>
                             <div className="text-right md:text-left">
                               <p className="text-neutral-900">
-                                {(res.actual_start_time && res.actual_end_time 
-                                  ? (new Date(res.actual_end_time).getTime() - new Date(res.actual_start_time).getTime()) / (1000 * 60 * 60)
-                                  : 0
-                                ).toFixed(2)}h
+                                {mDuration.toFixed(2)}h
                               </p>
-                              <p className="text-xs font-medium text-amber-600">¥{(res.total_cost || 0).toFixed(2)}</p>
+                              {bDuration > 0 && (
+                                <p className="text-xs font-medium text-blue-600">
+                                  {utilization.toFixed(1)}%
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                          <div className="flex justify-between items-center md:block">
+                            <span className="md:hidden font-medium text-neutral-500 text-xs">费用</span>
+                            <div className="text-right md:text-left">
+                              <p className="text-neutral-900 font-medium">¥{(res.total_cost || 0).toFixed(2)}</p>
                             </div>
                           </div>
                         </td>
@@ -792,10 +960,11 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {paginatedReportReservations.length === 0 && (
                       <tr className="block md:table-row">
-                        <td colSpan={9} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">没有找到符合条件的记录</td>
+                        <td colSpan={10} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">没有找到符合条件的记录</td>
                       </tr>
                     )}
                   </tbody>
@@ -1009,12 +1178,20 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       >
                         按导师
                       </button>
+                      <button
+                        onClick={() => setStatsType('equipment')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          statsType === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按仪器
+                      </button>
                     </div>
                   </div>
                   <button 
                     onClick={exportStats}
                     className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors self-end sm:self-auto"
-                    title={`导出${statsType === 'user' ? '用户' : '导师'}统计`}
+                    title={`导出${statsType === 'user' ? '用户' : statsType === 'supervisor' ? '导师' : '仪器'}统计`}
                   >
                     <Download className="w-4 h-4" />
                   </button>
@@ -1024,7 +1201,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                     <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
                       <tr>
                         <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">{statsType === 'user' ? '用户/导师' : '导师'}</div>
+                          <div className="mb-2">{statsType === 'user' ? '用户/导师' : statsType === 'supervisor' ? '导师' : '仪器'}</div>
                           {statsType === 'user' ? (
                             <input 
                               type="text" 
@@ -1033,7 +1210,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                               onChange={e => setStatsFilterUser(e.target.value)}
                               className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                             />
-                          ) : (
+                          ) : statsType === 'supervisor' ? (
                             <input 
                               type="text" 
                               placeholder="搜索导师..." 
@@ -1041,10 +1218,18 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                               onChange={e => setStatsFilterSupervisor(e.target.value)}
                               className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                             />
+                          ) : (
+                            <input 
+                              type="text" 
+                              placeholder="搜索仪器..." 
+                              value={statsFilterEquipment}
+                              onChange={e => setStatsFilterEquipment(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
                           )}
                         </th>
                         <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">总时长</div>
+                          <div className="mb-2">上机时长</div>
                           <div className="flex items-center gap-1">
                             <input 
                               type="number" 
@@ -1059,6 +1244,46 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                               placeholder="Max" 
                               value={statsFilterDurationMax}
                               onChange={e => setStatsFilterDurationMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">预约时长</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min" 
+                              value={statsFilterBookedMin}
+                              onChange={e => setStatsFilterBookedMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max" 
+                              value={statsFilterBookedMax}
+                              onChange={e => setStatsFilterBookedMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">时长利用率</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min%" 
+                              value={statsFilterUtilMin}
+                              onChange={e => setStatsFilterUtilMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max%" 
+                              value={statsFilterUtilMax}
+                              onChange={e => setStatsFilterUtilMax(e.target.value)}
                               className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
                             />
                           </div>
@@ -1087,59 +1312,128 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                     </thead>
                     <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
                       {statsType === 'user' ? (
-                        filteredUsageByPerson.map((u: any, i: number) => (
-                          <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                              <div className="flex justify-between items-center md:block">
-                                <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
-                                <div className="text-right md:text-left">
-                                  <p className="font-medium text-neutral-900">{u.student_name}</p>
-                                  <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
+                        filteredUsageByPerson.map((u: any, i: number) => {
+                          const utilization = u.booked_hours > 0 ? (u.machine_hours / u.booked_hours) * 100 : 0;
+                          return (
+                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
+                                  <div className="text-right md:text-left">
+                                    <p className="font-medium text-neutral-900">{u.student_name}</p>
+                                    <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                              <div className="flex justify-between items-center md:block">
-                                <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
-                                <span className="text-neutral-900">{u.total_hours.toFixed(1)}h</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 md:py-4 block md:table-cell">
-                              <div className="flex justify-between items-center md:block">
-                                <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                                <span className="font-bold text-neutral-900">¥{u.total_revenue.toFixed(2)}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
+                                  <span className="text-neutral-900">{(u.machine_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
+                                  <span className="text-neutral-900">{(u.booked_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长利用率</span>
+                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                  <span className="font-bold text-neutral-900">¥{(u.total_revenue || 0).toFixed(2)}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : statsType === 'supervisor' ? (
+                        filteredUsageBySupervisor.map((s: any, i: number) => {
+                          const utilization = s.booked_hours > 0 ? (s.machine_hours / s.booked_hours) * 100 : 0;
+                          return (
+                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
+                                  <span className="font-medium text-neutral-900">{s.supervisor}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
+                                  <span className="text-neutral-900">{(s.machine_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
+                                  <span className="text-neutral-900">{(s.booked_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长利用率</span>
+                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                  <span className="font-bold text-neutral-900">¥{(s.total_revenue || 0).toFixed(2)}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       ) : (
-                        filteredUsageBySupervisor.map((s: any, i: number) => (
-                          <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                              <div className="flex justify-between items-center md:block">
-                                <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
-                                <span className="font-medium text-neutral-900">{s.supervisor}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                              <div className="flex justify-between items-center md:block">
-                                <span className="md:hidden font-medium text-neutral-500 text-xs">总时长</span>
-                                <span className="text-neutral-900">{s.total_hours.toFixed(1)}h</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 md:py-4 block md:table-cell">
-                              <div className="flex justify-between items-center md:block">
-                                <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                                <span className="font-bold text-neutral-900">¥{s.total_revenue.toFixed(2)}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                        filteredUsageByEquipment.map((e: any, i: number) => {
+                          const utilization = e.booked_hours > 0 ? (e.machine_hours / e.booked_hours) * 100 : 0;
+                          return (
+                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
+                                  <p className="font-medium text-neutral-900">{e.equipment_name}</p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
+                                  <span className="text-neutral-900">{(e.machine_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
+                                  <span className="text-neutral-900">{(e.booked_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长利用率</span>
+                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                  <span className="font-bold text-neutral-900">¥{(e.total_revenue || 0).toFixed(2)}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                       {((statsType === 'user' && filteredUsageByPerson.length === 0) || 
-                        (statsType === 'supervisor' && filteredUsageBySupervisor.length === 0)) && (
+                        (statsType === 'supervisor' && filteredUsageBySupervisor.length === 0) ||
+                        (statsType === 'equipment' && filteredUsageByEquipment.length === 0)) && (
                         <tr className="block md:table-row">
-                          <td colSpan={3} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
+                          <td colSpan={5} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
                         </tr>
                       )}
                     </tbody>
@@ -1177,6 +1471,35 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2">
+                       <label className="text-xs font-medium text-neutral-500">维度</label>
+                       <select 
+                        value={chartDimension} 
+                        onChange={e => setChartDimension(e.target.value as any)}
+                        className="px-3 py-1.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
+                      >
+                        <option value="time">按时间</option>
+                        <option value="user">按用户</option>
+                        <option value="supervisor">按导师</option>
+                        <option value="equipment">按仪器</option>
+                      </select>
+                    </div>
+                    {chartDimension === 'time' && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-medium text-neutral-500">时间维度</label>
+                        <select 
+                          value={reportPeriod} 
+                          onChange={e => setReportPeriod(e.target.value)}
+                          className="px-3 py-1.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
+                        >
+                          <option value="day">按天</option>
+                          <option value="week">按周</option>
+                          <option value="month">按月</option>
+                          <option value="quarter">按季度</option>
+                          <option value="year">按年</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
                       <label className="text-xs font-medium text-neutral-500">与详细记录筛选联动</label>
                       <button
                         onClick={() => setSyncWithFilters(!syncWithFilters)}
@@ -1192,20 +1515,6 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <label className="text-xs font-medium text-neutral-500">时间维度</label>
-                      <select 
-                        value={reportPeriod} 
-                        onChange={e => setReportPeriod(e.target.value)}
-                        className="px-3 py-1.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
-                      >
-                        <option value="day">按天</option>
-                        <option value="week">按周</option>
-                        <option value="month">按月</option>
-                        <option value="quarter">按季度</option>
-                        <option value="year">按年</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
                       <label className="text-xs font-medium text-neutral-500">图表类型</label>
                       <div className="flex bg-neutral-100 p-1 rounded-xl">
                         <button onClick={() => setReportChartType('bar')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportChartType === 'bar' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-500'}`}>柱状图</button>
@@ -1217,36 +1526,60 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                 <div className="p-6">
                   <div className="h-96">
                     <ResponsiveContainer width="100%" height="100%">
-                      {reportChartType === 'bar' ? (
-                        <BarChart data={syncedUsageByTime} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                          <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
-                          <YAxis dataKey="period" type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                          <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
-                          <Bar 
-                            dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
-                            name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
-                            fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
-                            radius={[0, 4, 4, 0]} 
-                          />
-                        </BarChart>
-                      ) : (
-                        <LineChart data={syncedUsageByTime}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                          <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                          <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
-                          <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
-                          <Line 
-                            type="monotone" 
-                            dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
-                            name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
-                            stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
-                            strokeWidth={2} 
-                            dot={{r: 4}} 
-                            activeDot={{r: 6}} 
-                          />
-                        </LineChart>
-                      )}
+                      {(() => {
+                        const chartData = chartDimension === 'time' ? syncedUsageByTime : chartDimension === 'user' ? filteredUsageByPerson : chartDimension === 'supervisor' ? filteredUsageBySupervisor : filteredUsageByEquipment;
+                        const keyAxis = chartDimension === 'time' ? 'period' : chartDimension === 'user' ? 'student_name' : chartDimension === 'supervisor' ? 'supervisor' : 'equipment_name';
+                        
+                        return reportChartType === 'bar' ? (
+                          <BarChart data={chartData} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
+                            <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
+                            <YAxis dataKey={keyAxis} type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
+                            <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
+                            <Bar 
+                              dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
+                              name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
+                              fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
+                              radius={[0, 4, 4, 0]} 
+                            />
+                          </BarChart>
+                        ) : (
+                          <LineChart data={chartDimension === 'time' ? chartData : multiLineData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+                            <XAxis dataKey={chartDimension === 'time' ? keyAxis : 'period'} axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
+                            <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
+                            {chartDimension !== 'time' && <Legend wrapperStyle={{ fontSize: '12px' }} />}
+                            {chartDimension === 'time' ? (
+                              <Line 
+                                type="monotone" 
+                                dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
+                                name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
+                                stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
+                                strokeWidth={2} 
+                                dot={{r: 4}} 
+                                activeDot={{r: 6}} 
+                              />
+                            ) : (
+                              multiLineKeys.map((k, i) => {
+                                const colors = ['#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#4f46e5', '#ea580c', '#16a34a'];
+                                return (
+                                  <Line
+                                    key={k}
+                                    type="monotone"
+                                    dataKey={`${k}_${chartMetric}`}
+                                    name={k}
+                                    stroke={colors[i % colors.length]}
+                                    strokeWidth={2}
+                                    dot={{r: 4}}
+                                    activeDot={{r: 6}}
+                                  />
+                                );
+                              })
+                            )}
+                          </LineChart>
+                        );
+                      })()}
                     </ResponsiveContainer>
                   </div>
                 </div>

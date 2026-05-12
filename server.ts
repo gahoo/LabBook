@@ -2905,15 +2905,22 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
   // Grouping by time
   const timeMap = new Map();
   
-  // Grouping by person and supervisor manually to ensure correct sorting and filtering
+  // Grouping by person, supervisor, and equipment manually to ensure correct sorting and filtering
   const personMap = new Map();
   const supervisorMap = new Map();
+  const equipmentMap = new Map();
 
   statsReservations.forEach(r => {
-    let hours = 0;
+    let machine_hours = 0;
     if (r.actual_start_time && r.actual_end_time) {
-      hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+      machine_hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
     }
+    
+    let booked_hours = 0;
+    if (r.start_time && r.end_time) {
+      booked_hours = (new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / (1000 * 60 * 60);
+    }
+    
     const revenue = r.total_cost || 0;
 
     // Time grouping
@@ -2925,35 +2932,52 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
     if (period === 'year') pStr = format(dateToUse, 'yyyy');
 
     if (!timeMap.has(pStr)) {
-      timeMap.set(pStr, { period: pStr, total_hours: 0, total_revenue: 0 });
+      timeMap.set(pStr, { period: pStr, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
     }
     const t = timeMap.get(pStr);
-    t.total_hours += hours;
+    t.total_hours += machine_hours; // Keeping total_hours for legacy compatibility
+    t.machine_hours += machine_hours;
+    t.booked_hours += booked_hours;
     t.total_revenue += revenue;
 
     // Person grouping
     const personKey = `${r.student_id}_${r.student_name}`;
     if (!personMap.has(personKey)) {
-      personMap.set(personKey, { student_name: r.student_name, student_id: r.student_id, supervisor: r.supervisor, total_hours: 0, total_revenue: 0 });
+      personMap.set(personKey, { student_name: r.student_name, student_id: r.student_id, supervisor: r.supervisor, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
     }
     const p = personMap.get(personKey);
-    p.total_hours += hours;
+    p.total_hours += machine_hours;
+    p.machine_hours += machine_hours;
+    p.booked_hours += booked_hours;
     p.total_revenue += revenue;
 
     // Supervisor grouping
     if (!supervisorMap.has(r.supervisor)) {
-      supervisorMap.set(r.supervisor, { supervisor: r.supervisor, total_hours: 0, total_revenue: 0 });
+      supervisorMap.set(r.supervisor, { supervisor: r.supervisor, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
     }
     const s = supervisorMap.get(r.supervisor);
-    s.total_hours += hours;
+    s.total_hours += machine_hours;
+    s.machine_hours += machine_hours;
+    s.booked_hours += booked_hours;
     s.total_revenue += revenue;
+
+    // Equipment grouping
+    if (!equipmentMap.has(r.equipment_id)) {
+      equipmentMap.set(r.equipment_id, { equipment_id: r.equipment_id, equipment_name: r.equipment_name, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
+    }
+    const e = equipmentMap.get(r.equipment_id);
+    e.total_hours += machine_hours;
+    e.machine_hours += machine_hours;
+    e.booked_hours += booked_hours;
+    e.total_revenue += revenue;
   });
 
   const usageByTime = Array.from(timeMap.values()).sort((a, b) => a.period.localeCompare(b.period));
   const usageByPerson = Array.from(personMap.values()).sort((a, b) => b.total_hours - a.total_hours);
   const usageBySupervisor = Array.from(supervisorMap.values()).sort((a, b) => b.total_hours - a.total_hours);
+  const usageByEquipment = Array.from(equipmentMap.values()).sort((a, b) => b.total_hours - a.total_hours);
 
-  res.json({ usageByTime, usageByPerson, usageBySupervisor, allReservations });
+  res.json({ usageByTime, usageByPerson, usageBySupervisor, usageByEquipment, allReservations });
 });
 
 app.get('/api/admin/audit-logs', adminAuth, (req, res) => {

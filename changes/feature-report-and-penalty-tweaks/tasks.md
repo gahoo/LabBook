@@ -22,20 +22,20 @@
     - `EquipmentForm.tsx` 增加 `lateCancellationMinutes` 属性的设置（留空默认使用全局）。
     - `BatchEditEquipmentForm.tsx` 增加该字段的批量编辑选项和逻辑。
 
-- [ ] **任务 5：服务端聚合和输出“按仪器统计”及新增指标**
+- [x] **任务 5：服务端聚合和输出“按仪器统计”及新增指标**
   - 所属文件：`server.ts`
   - 操作说明：在 `/api/admin/reports/stats` 中：
     - 除了 `personMap` 和 `supervisorMap` 外，新增按 `equipmentMap`进行时长的聚合汇总。
     - 计算 `machine_hours`（实际上机）与 `booked_hours`（预约时长），并按要求返回 `usageByEquipment`。
 
-- [ ] **任务 6：前端报表：详细预约记录拆分列与筛选器**
+- [x] **任务 6：前端报表：详细预约记录拆分列与筛选器**
   - 所属文件：`src/pages/Admin/components/ReportsTab.tsx`
   - 操作说明：
     - 将“时长/费用”列拆分为单独的两列“时长”和“费用”。
     - 在“时长”单元格区域，展示上机时长，并在旁边算出该单的“利用率”（实际上机/预约）。
     - 增加独立过滤字段控制：`实际上机时长`、`费用` 和新的 `时长利用率` 的最大最小值筛选，并将它们应用在前端的数据过滤器中。
 
-- [ ] **任务 7：前端报表：图表、表格扩充“按仪器”及利用率**
+- [x] **任务 7：前端报表：图表、表格扩充“按仪器”及利用率**
   - 所属文件：`src/pages/Admin/components/ReportsTab.tsx`
   - 操作说明：
     - 将统计图表和数据统计表的维度选择器增加“按仪器”选项（配合用户和导师）。
