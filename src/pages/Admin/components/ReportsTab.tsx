@@ -138,64 +138,6 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
     }
   }, [reportPeriod, reportStartDate, reportEndDate, token]);
 
-  const filteredUsageByPerson = useMemo(() => {
-    if (!reports?.usageByPerson) return [];
-    return reports.usageByPerson.filter((u: any) => {
-      if (statsFilterUser) {
-        const search = statsFilterUser.toLowerCase();
-        if (!u.student_name.toLowerCase().includes(search) && 
-            !u.student_id.toLowerCase().includes(search) && 
-            !u.supervisor.toLowerCase().includes(search)) {
-          return false;
-        }
-      }
-      if (statsFilterDurationMin && u.machine_hours < Number(statsFilterDurationMin)) return false;
-      if (statsFilterDurationMax && u.machine_hours > Number(statsFilterDurationMax)) return false;
-      if (statsFilterBookedMin && u.booked_hours < Number(statsFilterBookedMin)) return false;
-      if (statsFilterBookedMax && u.booked_hours > Number(statsFilterBookedMax)) return false;
-      const util = u.booked_hours > 0 ? (u.machine_hours / u.booked_hours) * 100 : 0;
-      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
-      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
-      if (statsFilterCostMin && u.total_revenue < Number(statsFilterCostMin)) return false;
-      if (statsFilterCostMax && u.total_revenue > Number(statsFilterCostMax)) return false;
-      return true;
-    });
-  }, [reports?.usageByPerson, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
-
-  const filteredUsageBySupervisor = useMemo(() => {
-    if (!reports?.usageBySupervisor) return [];
-    return reports.usageBySupervisor.filter((s: any) => {
-      if (statsFilterSupervisor && !s.supervisor.toLowerCase().includes(statsFilterSupervisor.toLowerCase())) return false;
-      if (statsFilterDurationMin && s.machine_hours < Number(statsFilterDurationMin)) return false;
-      if (statsFilterDurationMax && s.machine_hours > Number(statsFilterDurationMax)) return false;
-      if (statsFilterBookedMin && s.booked_hours < Number(statsFilterBookedMin)) return false;
-      if (statsFilterBookedMax && s.booked_hours > Number(statsFilterBookedMax)) return false;
-      const util = s.booked_hours > 0 ? (s.machine_hours / s.booked_hours) * 100 : 0;
-      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
-      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
-      if (statsFilterCostMin && s.total_revenue < Number(statsFilterCostMin)) return false;
-      if (statsFilterCostMax && s.total_revenue > Number(statsFilterCostMax)) return false;
-      return true;
-    });
-  }, [reports?.usageBySupervisor, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
-
-  const filteredUsageByEquipment = useMemo(() => {
-    if (!reports?.usageByEquipment) return [];
-    return reports.usageByEquipment.filter((e: any) => {
-      if (statsFilterEquipment && !e.equipment_name.toLowerCase().includes(statsFilterEquipment.toLowerCase())) return false;
-      if (statsFilterDurationMin && e.machine_hours < Number(statsFilterDurationMin)) return false;
-      if (statsFilterDurationMax && e.machine_hours > Number(statsFilterDurationMax)) return false;
-      if (statsFilterBookedMin && e.booked_hours < Number(statsFilterBookedMin)) return false;
-      if (statsFilterBookedMax && e.booked_hours > Number(statsFilterBookedMax)) return false;
-      const util = e.booked_hours > 0 ? (e.machine_hours / e.booked_hours) * 100 : 0;
-      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
-      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
-      if (statsFilterCostMin && e.total_revenue < Number(statsFilterCostMin)) return false;
-      if (statsFilterCostMax && e.total_revenue > Number(statsFilterCostMax)) return false;
-      return true;
-    });
-  }, [reports?.usageByEquipment, statsFilterEquipment, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
-
   const filteredReportReservations = useMemo(() => {
     return (reports?.allReservations || []).filter((res: any) => {
       if (reportFilterCode && !res.booking_code.toLowerCase().includes(reportFilterCode.toLowerCase())) return false;
@@ -244,6 +186,129 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       return true;
     });
   }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterUtilizationMin, reportFilterUtilizationMax, reportFilterStatus, reportFilterNotes]);
+
+  const { basePersonData, baseSupervisorData, baseEquipmentData } = useMemo(() => {
+    if (!syncWithFilters) {
+      return { 
+        basePersonData: reports?.usageByPerson || [], 
+        baseSupervisorData: reports?.usageBySupervisor || [], 
+        baseEquipmentData: reports?.usageByEquipment || [] 
+      };
+    }
+    
+    const personMap = new Map();
+    const supervisorMap = new Map();
+    const equipmentMap = new Map();
+
+    const statsReservations = filteredReportReservations.filter((r: any) => 
+      (r.actual_start_time && r.status === 'completed') || r.reportStatus?.includes('爽约')
+    );
+
+    statsReservations.forEach((r: any) => {
+      let machine_hours = 0;
+      if (r.actual_start_time && r.actual_end_time) {
+        machine_hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
+      }
+      
+      let booked_hours = 0;
+      if (r.start_time && r.end_time) {
+        booked_hours = (new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / (1000 * 60 * 60);
+      }
+      
+      const revenue = r.total_cost || 0;
+
+      const personKey = `${r.student_id}_${r.student_name}`;
+      if (!personMap.has(personKey)) {
+        personMap.set(personKey, { student_name: r.student_name, student_id: r.student_id, supervisor: r.supervisor, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
+      }
+      const pu = personMap.get(personKey);
+      pu.total_hours += machine_hours;
+      pu.machine_hours += machine_hours;
+      pu.booked_hours += booked_hours;
+      pu.total_revenue += revenue;
+
+      const supKey = r.supervisor;
+      if (!supervisorMap.has(supKey)) {
+        supervisorMap.set(supKey, { supervisor: r.supervisor, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
+      }
+      const su = supervisorMap.get(supKey);
+      su.total_hours += machine_hours;
+      su.machine_hours += machine_hours;
+      su.booked_hours += booked_hours;
+      su.total_revenue += revenue;
+
+      const eqKey = r.equipment_id;
+      if (!equipmentMap.has(eqKey)) {
+        equipmentMap.set(eqKey, { equipment_id: r.equipment_id, equipment_name: r.equipment_name || '未知仪器', total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
+      }
+      const eq = equipmentMap.get(eqKey);
+      eq.total_hours += machine_hours;
+      eq.machine_hours += machine_hours;
+      eq.booked_hours += booked_hours;
+      eq.total_revenue += revenue;
+    });
+
+    return {
+      basePersonData: Array.from(personMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
+      baseSupervisorData: Array.from(supervisorMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
+      baseEquipmentData: Array.from(equipmentMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours)
+    };
+  }, [syncWithFilters, reports, filteredReportReservations]);
+
+  const filteredUsageByPerson = useMemo(() => {
+    return basePersonData.filter((u: any) => {
+      if (statsFilterUser) {
+        const search = statsFilterUser.toLowerCase();
+        if (!u.student_name.toLowerCase().includes(search) && 
+            !u.student_id.toLowerCase().includes(search) && 
+            !u.supervisor.toLowerCase().includes(search)) {
+          return false;
+        }
+      }
+      if (statsFilterDurationMin && u.machine_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && u.machine_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterBookedMin && u.booked_hours < Number(statsFilterBookedMin)) return false;
+      if (statsFilterBookedMax && u.booked_hours > Number(statsFilterBookedMax)) return false;
+      const util = u.booked_hours > 0 ? (u.machine_hours / u.booked_hours) * 100 : 0;
+      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
+      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
+      if (statsFilterCostMin && u.total_revenue < Number(statsFilterCostMin)) return false;
+      if (statsFilterCostMax && u.total_revenue > Number(statsFilterCostMax)) return false;
+      return true;
+    });
+  }, [basePersonData, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
+
+  const filteredUsageBySupervisor = useMemo(() => {
+    return baseSupervisorData.filter((s: any) => {
+      if (statsFilterSupervisor && !s.supervisor.toLowerCase().includes(statsFilterSupervisor.toLowerCase())) return false;
+      if (statsFilterDurationMin && s.machine_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && s.machine_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterBookedMin && s.booked_hours < Number(statsFilterBookedMin)) return false;
+      if (statsFilterBookedMax && s.booked_hours > Number(statsFilterBookedMax)) return false;
+      const util = s.booked_hours > 0 ? (s.machine_hours / s.booked_hours) * 100 : 0;
+      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
+      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
+      if (statsFilterCostMin && s.total_revenue < Number(statsFilterCostMin)) return false;
+      if (statsFilterCostMax && s.total_revenue > Number(statsFilterCostMax)) return false;
+      return true;
+    });
+  }, [baseSupervisorData, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
+
+  const filteredUsageByEquipment = useMemo(() => {
+    return baseEquipmentData.filter((e: any) => {
+      if (statsFilterEquipment && !e.equipment_name.toLowerCase().includes(statsFilterEquipment.toLowerCase())) return false;
+      if (statsFilterDurationMin && e.machine_hours < Number(statsFilterDurationMin)) return false;
+      if (statsFilterDurationMax && e.machine_hours > Number(statsFilterDurationMax)) return false;
+      if (statsFilterBookedMin && e.booked_hours < Number(statsFilterBookedMin)) return false;
+      if (statsFilterBookedMax && e.booked_hours > Number(statsFilterBookedMax)) return false;
+      const util = e.booked_hours > 0 ? (e.machine_hours / e.booked_hours) * 100 : 0;
+      if (statsFilterUtilMin && util < Number(statsFilterUtilMin)) return false;
+      if (statsFilterUtilMax && util > Number(statsFilterUtilMax)) return false;
+      if (statsFilterCostMin && e.total_revenue < Number(statsFilterCostMin)) return false;
+      if (statsFilterCostMax && e.total_revenue > Number(statsFilterCostMax)) return false;
+      return true;
+    });
+  }, [baseEquipmentData, statsFilterEquipment, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
 
   const syncedUsageByTime = useMemo(() => {
     if (!syncWithFilters) return reports?.usageByTime || [];
@@ -1499,8 +1564,8 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                         </select>
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs font-medium text-neutral-500">与详细记录筛选联动</label>
+                    <div className="flex items-center gap-2" title="启用后，统计数据将根据下方的详细记录筛选条件实时重新计算">
+                      <label className="text-xs font-medium text-neutral-500 cursor-help border-b border-dashed border-neutral-400">联动</label>
                       <button
                         onClick={() => setSyncWithFilters(!syncWithFilters)}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${

@@ -27,7 +27,7 @@ export default function EquipmentForm({
 }: EquipmentFormProps) {
   const [formData, setFormData] = useState(() => {
     if (editingEquipment) {
-      let avail = { advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, rules: [] as any[], allowOutOfHours: false };
+      let avail = { advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, lateCancellationMinutes: '' as number | string, rules: [] as any[], allowOutOfHours: false };
       try {
         if (editingEquipment.availability_json) {
           const parsed = JSON.parse(editingEquipment.availability_json);
