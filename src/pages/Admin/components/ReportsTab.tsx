@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar } from 'lucide-react';
+import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -18,6 +18,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
   const [reportPeriod, setReportPeriod] = useState(initialDate ? 'day' : 'day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
   const [syncWithFilters, setSyncWithFilters] = useState(false);
+  const [showSyncTooltip, setShowSyncTooltip] = useState(false);
   const [reportStartDate, setReportStartDate] = useState(initialDate || format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(initialDate || format(startOfToday(), 'yyyy-MM-dd'));
   const [reportFilterUser, setReportFilterUser] = useState('');
@@ -1564,11 +1565,29 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                         </select>
                       </div>
                     )}
-                    <div className="flex items-center gap-2" title="启用后，统计数据将根据下方的详细记录筛选条件实时重新计算">
-                      <label className="text-xs font-medium text-neutral-500 cursor-help border-b border-dashed border-neutral-400">联动</label>
+                    <div className="flex items-center gap-2 relative"
+                         onMouseEnter={() => setShowSyncTooltip(true)}
+                         onMouseLeave={() => setShowSyncTooltip(false)}
+                         onClick={() => setShowSyncTooltip(!showSyncTooltip)}
+                    >
+                      <div className="flex items-center gap-1 cursor-pointer">
+                        <label className="text-xs font-medium text-neutral-500 cursor-pointer">联动</label>
+                        <Info className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600 transition-colors" />
+                      </div>
+                      
+                      {showSyncTooltip && (
+                        <div className="absolute z-50 top-full mt-2 left-0 md:left-1/2 md:-translate-x-1/2 w-56 sm:w-64 p-3 bg-white text-neutral-600 border border-neutral-200 text-xs rounded-xl shadow-lg ring-1 ring-black/5"
+                             onClick={(e) => e.stopPropagation()}
+                        >
+                          与详细预约记录表的筛选条件联动
+                        </div>
+                      )}
+
                       <button
-                        title="启用后，统计数据将根据下方的详细记录筛选条件实时重新计算"
-                        onClick={() => setSyncWithFilters(!syncWithFilters)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSyncWithFilters(!syncWithFilters);
+                        }}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
                           syncWithFilters ? 'bg-red-600' : 'bg-neutral-300'
                         }`}
