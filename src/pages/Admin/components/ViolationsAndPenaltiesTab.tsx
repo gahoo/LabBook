@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, ShieldAlert, CheckCircle, RefreshCw, Info, ArrowRight } from 'lucide-react';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -411,11 +411,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
               <div className="mb-2">仪器</div>
               {showFilters && !penaltyContext && (
                 <input 
+                  list="violations-equipment-list"
                   type="text" 
                   placeholder="仪器名称" 
                   value={recordsFilterEquipment}
                   onChange={e => setRecordsFilterEquipment(e.target.value)}
-                  className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                  className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal text-left"
                 />
               )}
             </th>
@@ -814,8 +815,17 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
     return true;
   });
 
+  const uniqueEquipments = useMemo(() => {
+    return Array.from(new Set(records.map(v => v.equipment_name).filter(Boolean)));
+  }, [records]);
+
   return (
     <div className="space-y-6">
+      <datalist id="violations-equipment-list">
+        {uniqueEquipments.map((eq: any) => (
+          <option key={eq} value={eq} />
+        ))}
+      </datalist>
       {/* Sub Tabs */}
       <div className="flex gap-2 border-b border-neutral-200 overflow-x-auto whitespace-nowrap">
         <button
@@ -900,11 +910,12 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
               <div>
                 <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
                 <input 
+                  list="violations-equipment-list"
                   type="text" 
                   placeholder="仪器名称" 
                   value={recordsFilterEquipment}
                   onChange={e => setRecordsFilterEquipment(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm"
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm text-left"
                 />
               </div>
               <div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { format, startOfToday } from 'date-fns';
 import { Calendar, Clock, Edit3, Trash2, CheckCircle, XCircle, AlertCircle, Filter, ChevronDown, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -158,8 +158,17 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
     return true;
   });
 
+  const uniqueEquipments = useMemo(() => {
+    return Array.from(new Set(reservations.map(r => r.equipment_name).filter(Boolean)));
+  }, [reservations]);
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+      <datalist id="reservations-equipment-list">
+        {uniqueEquipments.map((eq: any) => (
+          <option key={eq} value={eq} />
+        ))}
+      </datalist>
       <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
         <button
           type="button"
@@ -188,7 +197,7 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
-            <input type="text" placeholder="搜索仪器..." value={resFilterEquipment} onChange={e => setResFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm" />
+            <input list="reservations-equipment-list" type="text" placeholder="搜索仪器..." value={resFilterEquipment} onChange={e => setResFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm text-left" />
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">用户</label>
@@ -246,11 +255,12 @@ export default function ReservationsTab({ token, onLogout, statusMap }: Reservat
               <th className="px-4 py-4 font-medium align-top">
                 <div className="mb-2">仪器</div>
                 <input 
+                  list="reservations-equipment-list"
                   type="text" 
                   placeholder="搜索仪器..." 
                   value={resFilterEquipment}
                   onChange={e => setResFilterEquipment(e.target.value)}
-                  className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                  className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none text-left"
                 />
               </th>
               <th className="px-4 py-4 font-medium align-top">

@@ -19,3 +19,5 @@
 - [x] 申诉附带详细驳回理由 (proposal-reject-with-detail)
 - [x] 跨天预约优化 (enhancement-cross-day-booking)
 - [x] 报表与惩罚功能优化 (feature-report-and-penalty-tweaks)
+- [x] 为筛选器提供仪器自动补全 (feature-equipment-datalist)
+- [x] 导出包含耗材数量 (feature-export-consumable-quantity)

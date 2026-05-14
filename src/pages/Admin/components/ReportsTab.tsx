@@ -188,6 +188,10 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
     });
   }, [reports, reportFilterCode, reportFilterUser, reportFilterEquipment, reportFilterDurationMin, reportFilterDurationMax, reportFilterCostMin, reportFilterCostMax, reportFilterUtilizationMin, reportFilterUtilizationMax, reportFilterStatus, reportFilterNotes]);
 
+  const uniqueEquipments = useMemo(() => {
+    return Array.from(new Set((reports?.allReservations || []).map((r: any) => r.equipment_name).filter(Boolean)));
+  }, [reports?.allReservations]);
+
   const { basePersonData, baseSupervisorData, baseEquipmentData } = useMemo(() => {
     if (!syncWithFilters) {
       return { 
@@ -411,7 +415,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
 
   const exportDetailedReport = () => {
     if (!reports?.allReservations) return;
-    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约时间', '实际时间', '时长(小时)', '费用(¥)', '状态', '迟到时长(小时)', '超时时长(小时)', '备注'];
+    const headers = ['预约码', '仪器', '用户', '学号', '导师', '预约时间', '实际时间', '时长(小时)', '耗材数量', '费用(¥)', '状态', '迟到时长(小时)', '超时时长(小时)', '备注'];
     exportToCSV(
       reports.allReservations,
       `detailed_report_${reportStartDate}_${reportEndDate}`,
@@ -428,6 +432,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
           ? (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60)
           : 0
         ).toFixed(2),
+        r.consumable_quantity || 0,
         (r.total_cost || 0).toFixed(2),
         r.reportStatus,
         r.late_mins ? Number((r.late_mins / 60).toFixed(1)) : 0,
@@ -527,6 +532,11 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
 
   return (
     <>
+      <datalist id="reports-equipment-list">
+        {uniqueEquipments.map((eq: any) => (
+          <option key={eq} value={eq} />
+        ))}
+      </datalist>
       <div className="space-y-1">
         <div className="flex justify-end">
           <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-neutral-200 shadow-sm w-fit">
@@ -617,7 +627,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-neutral-500 mb-1">仪器</label>
-                    <input type="text" value={reportFilterEquipment} onChange={e => setReportFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm" placeholder="搜索仪器..." />
+                    <input list="reports-equipment-list" type="text" value={reportFilterEquipment} onChange={e => setReportFilterEquipment(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm text-left" placeholder="搜索仪器..." />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-neutral-500 mb-2">时长/利用率/费用</label>
@@ -682,11 +692,12 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       <th className="px-3 py-4 font-medium align-top">
                         <div className="mb-2">仪器</div>
                         <input 
+                          list="reports-equipment-list"
                           type="text" 
                           placeholder="搜索仪器..." 
                           value={reportFilterEquipment}
                           onChange={e => setReportFilterEquipment(e.target.value)}
-                          className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal"
+                          className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none font-normal text-left"
                         />
                       </th>
                       <th className="px-3 py-4 font-medium align-top">预约时间</th>
@@ -1286,11 +1297,12 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                             />
                           ) : (
                             <input 
+                              list="reports-equipment-list"
                               type="text" 
                               placeholder="搜索仪器..." 
                               value={statsFilterEquipment}
                               onChange={e => setStatsFilterEquipment(e.target.value)}
-                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none text-left"
                             />
                           )}
                         </th>
