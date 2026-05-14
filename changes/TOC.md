@@ -21,3 +21,4 @@
 - [x] 报表与惩罚功能优化 (feature-report-and-penalty-tweaks)
 - [x] 为筛选器提供仪器自动补全 (feature-equipment-datalist)
 - [x] 导出包含耗材数量 (feature-export-consumable-quantity)
+- [x] 报表图表与统计表解耦控制 (feature-reports-sync-logic)

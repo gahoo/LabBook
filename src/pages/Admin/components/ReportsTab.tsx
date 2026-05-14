@@ -17,8 +17,10 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
   const [loadingReports, setLoadingReports] = useState(false);
   const [reportPeriod, setReportPeriod] = useState(initialDate ? 'day' : 'day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
-  const [syncWithFilters, setSyncWithFilters] = useState(false);
-  const [showSyncTooltip, setShowSyncTooltip] = useState(false);
+  const [syncChartWithFilters, setSyncChartWithFilters] = useState(false);
+  const [syncStatsWithFilters, setSyncStatsWithFilters] = useState(false);
+  const [showSyncChartTooltip, setShowSyncChartTooltip] = useState(false);
+  const [showSyncStatsTooltip, setShowSyncStatsTooltip] = useState(false);
   const [reportStartDate, setReportStartDate] = useState(initialDate || format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(initialDate || format(startOfToday(), 'yyyy-MM-dd'));
   const [reportFilterUser, setReportFilterUser] = useState('');
@@ -192,18 +194,11 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
     return Array.from(new Set((reports?.allReservations || []).map((r: any) => r.equipment_name).filter(Boolean)));
   }, [reports?.allReservations]);
 
-  const { basePersonData, baseSupervisorData, baseEquipmentData } = useMemo(() => {
-    if (!syncWithFilters) {
-      return { 
-        basePersonData: reports?.usageByPerson || [], 
-        baseSupervisorData: reports?.usageBySupervisor || [], 
-        baseEquipmentData: reports?.usageByEquipment || [] 
-      };
-    }
-    
+  const aggregatedFilteredBase = useMemo(() => {
     const personMap = new Map();
     const supervisorMap = new Map();
     const equipmentMap = new Map();
+    const timeMap = new Map();
 
     const statsReservations = filteredReportReservations.filter((r: any) => 
       (r.actual_start_time && r.status === 'completed') || r.reportStatus?.includes('爽约')
@@ -251,17 +246,64 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       eq.machine_hours += machine_hours;
       eq.booked_hours += booked_hours;
       eq.total_revenue += revenue;
+
+      const dateToUse = r.actual_start_time ? new Date(r.actual_start_time) : new Date(r.start_time);
+      let pStr = format(dateToUse, 'yyyy-MM-dd');
+      if (reportPeriod === 'week') pStr = format(dateToUse, "yyyy-'W'II");
+      if (reportPeriod === 'month') pStr = format(dateToUse, 'yyyy-MM');
+      if (reportPeriod === 'quarter') pStr = format(dateToUse, "yyyy-'Q'Q");
+      if (reportPeriod === 'year') pStr = format(dateToUse, 'yyyy');
+
+      if (!timeMap.has(pStr)) {
+        timeMap.set(pStr, { period: pStr, total_hours: 0, total_revenue: 0 });
+      }
+      const t = timeMap.get(pStr);
+      t.total_hours += machine_hours;
+      t.total_revenue += revenue;
     });
 
     return {
-      basePersonData: Array.from(personMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
-      baseSupervisorData: Array.from(supervisorMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
-      baseEquipmentData: Array.from(equipmentMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours)
+      personData: Array.from(personMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
+      supervisorData: Array.from(supervisorMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
+      equipmentData: Array.from(equipmentMap.values()).sort((a: any, b: any) => b.total_hours - a.total_hours),
+      timeData: Array.from(timeMap.values()).sort((a: any, b: any) => a.period.localeCompare(b.period))
     };
-  }, [syncWithFilters, reports, filteredReportReservations]);
+  }, [filteredReportReservations, reportPeriod]);
+
+  const { statsBasePersonData, statsBaseSupervisorData, statsBaseEquipmentData } = useMemo(() => {
+    if (!syncStatsWithFilters) {
+      return { 
+        statsBasePersonData: reports?.usageByPerson || [], 
+        statsBaseSupervisorData: reports?.usageBySupervisor || [], 
+        statsBaseEquipmentData: reports?.usageByEquipment || [] 
+      };
+    }
+    return {
+      statsBasePersonData: aggregatedFilteredBase.personData,
+      statsBaseSupervisorData: aggregatedFilteredBase.supervisorData,
+      statsBaseEquipmentData: aggregatedFilteredBase.equipmentData
+    };
+  }, [syncStatsWithFilters, reports, aggregatedFilteredBase]);
+
+  const { chartBasePersonData, chartBaseSupervisorData, chartBaseEquipmentData, chartUsageByTime } = useMemo(() => {
+    if (!syncChartWithFilters) {
+      return { 
+        chartBasePersonData: reports?.usageByPerson || [], 
+        chartBaseSupervisorData: reports?.usageBySupervisor || [], 
+        chartBaseEquipmentData: reports?.usageByEquipment || [],
+        chartUsageByTime: reports?.usageByTime || []
+      };
+    }
+    return {
+      chartBasePersonData: aggregatedFilteredBase.personData,
+      chartBaseSupervisorData: aggregatedFilteredBase.supervisorData,
+      chartBaseEquipmentData: aggregatedFilteredBase.equipmentData,
+      chartUsageByTime: aggregatedFilteredBase.timeData
+    };
+  }, [syncChartWithFilters, reports, aggregatedFilteredBase]);
 
   const filteredUsageByPerson = useMemo(() => {
-    return basePersonData.filter((u: any) => {
+    return statsBasePersonData.filter((u: any) => {
       if (statsFilterUser) {
         const search = statsFilterUser.toLowerCase();
         if (!u.student_name.toLowerCase().includes(search) && 
@@ -281,10 +323,10 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       if (statsFilterCostMax && u.total_revenue > Number(statsFilterCostMax)) return false;
       return true;
     });
-  }, [basePersonData, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
+  }, [statsBasePersonData, statsFilterUser, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
 
   const filteredUsageBySupervisor = useMemo(() => {
-    return baseSupervisorData.filter((s: any) => {
+    return statsBaseSupervisorData.filter((s: any) => {
       if (statsFilterSupervisor && !s.supervisor.toLowerCase().includes(statsFilterSupervisor.toLowerCase())) return false;
       if (statsFilterDurationMin && s.machine_hours < Number(statsFilterDurationMin)) return false;
       if (statsFilterDurationMax && s.machine_hours > Number(statsFilterDurationMax)) return false;
@@ -297,10 +339,10 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       if (statsFilterCostMax && s.total_revenue > Number(statsFilterCostMax)) return false;
       return true;
     });
-  }, [baseSupervisorData, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
+  }, [statsBaseSupervisorData, statsFilterSupervisor, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
 
   const filteredUsageByEquipment = useMemo(() => {
-    return baseEquipmentData.filter((e: any) => {
+    return statsBaseEquipmentData.filter((e: any) => {
       if (statsFilterEquipment && !e.equipment_name.toLowerCase().includes(statsFilterEquipment.toLowerCase())) return false;
       if (statsFilterDurationMin && e.machine_hours < Number(statsFilterDurationMin)) return false;
       if (statsFilterDurationMax && e.machine_hours > Number(statsFilterDurationMax)) return false;
@@ -313,45 +355,12 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       if (statsFilterCostMax && e.total_revenue > Number(statsFilterCostMax)) return false;
       return true;
     });
-  }, [baseEquipmentData, statsFilterEquipment, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
-
-  const syncedUsageByTime = useMemo(() => {
-    if (!syncWithFilters) return reports?.usageByTime || [];
-    
-    const timeMap = new Map();
-    const statsReservations = filteredReportReservations.filter((r: any) => 
-      (r.actual_start_time && r.status === 'completed') || r.reportStatus?.includes('爽约')
-    );
-
-    statsReservations.forEach((r: any) => {
-      let hours = 0;
-      if (r.actual_start_time && r.actual_end_time) {
-        hours = (new Date(r.actual_end_time).getTime() - new Date(r.actual_start_time).getTime()) / (1000 * 60 * 60);
-      }
-      const revenue = r.total_cost || 0;
-
-      const dateToUse = r.actual_start_time ? new Date(r.actual_start_time) : new Date(r.start_time);
-      let pStr = format(dateToUse, 'yyyy-MM-dd');
-      if (reportPeriod === 'week') pStr = format(dateToUse, "yyyy-'W'II");
-      if (reportPeriod === 'month') pStr = format(dateToUse, 'yyyy-MM');
-      if (reportPeriod === 'quarter') pStr = format(dateToUse, "yyyy-'Q'Q");
-      if (reportPeriod === 'year') pStr = format(dateToUse, 'yyyy');
-
-      if (!timeMap.has(pStr)) {
-        timeMap.set(pStr, { period: pStr, total_hours: 0, total_revenue: 0 });
-      }
-      const t = timeMap.get(pStr);
-      t.total_hours += hours;
-      t.total_revenue += revenue;
-    });
-
-    return Array.from(timeMap.values()).sort((a: any, b: any) => a.period.localeCompare(b.period));
-  }, [syncWithFilters, reports?.usageByTime, filteredReportReservations, reportPeriod]);
+  }, [statsBaseEquipmentData, statsFilterEquipment, statsFilterDurationMin, statsFilterDurationMax, statsFilterBookedMin, statsFilterBookedMax, statsFilterUtilMin, statsFilterUtilMax, statsFilterCostMin, statsFilterCostMax]);
 
   const { multiLineData, multiLineKeys } = useMemo(() => {
     if (chartDimension === 'time') return { multiLineData: [], multiLineKeys: [] };
     
-    const baseReservations = syncWithFilters ? filteredReportReservations : (reports?.allReservations || []);
+    const baseReservations = syncChartWithFilters ? filteredReportReservations : (reports?.allReservations || []);
     const statsReservations = baseReservations.filter((r: any) => 
       (r.actual_start_time && r.status === 'completed') || r.reportStatus?.includes('爽约')
     );
@@ -392,7 +401,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
       multiLineData: Array.from(timeMap.values()).sort((a: any, b: any) => a.period.localeCompare(b.period)),
       multiLineKeys: Array.from(keysSet)
     };
-  }, [chartDimension, syncWithFilters, reports?.allReservations, filteredReportReservations, reportPeriod]);
+  }, [chartDimension, syncChartWithFilters, reports?.allReservations, filteredReportReservations, reportPeriod]);
 
   const reportTotalPages = Math.ceil(filteredReportReservations.length / reportPageSize);
   const paginatedReportReservations = filteredReportReservations.slice(
@@ -1265,13 +1274,51 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       </button>
                     </div>
                   </div>
-                  <button 
-                    onClick={exportStats}
-                    className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors self-end sm:self-auto"
-                    title={`导出${statsType === 'user' ? '用户' : statsType === 'supervisor' ? '导师' : '仪器'}统计`}
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
+                  
+                  <div className="flex items-center gap-4 self-end sm:self-auto">
+                    <div className="flex items-center gap-2 relative"
+                         onMouseEnter={() => setShowSyncStatsTooltip(true)}
+                         onMouseLeave={() => setShowSyncStatsTooltip(false)}
+                         onClick={() => setShowSyncStatsTooltip(!showSyncStatsTooltip)}
+                    >
+                      <div className="flex items-center gap-1 cursor-pointer">
+                        <label className="text-xs font-medium text-neutral-500 cursor-pointer">联动</label>
+                        <Info className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600 transition-colors" />
+                      </div>
+                      
+                      {showSyncStatsTooltip && (
+                        <div className="absolute z-50 top-full mt-2 right-0 md:left-1/2 md:-translate-x-1/2 w-48 sm:w-max sm:whitespace-nowrap p-3 bg-white text-neutral-600 border border-neutral-200 text-xs rounded-xl shadow-lg ring-1 ring-black/5"
+                             onClick={(e) => e.stopPropagation()}
+                        >
+                          与详细预约记录表的筛选条件联动
+                        </div>
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSyncStatsWithFilters(!syncStatsWithFilters);
+                        }}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
+                          syncStatsWithFilters ? 'bg-red-600' : 'bg-neutral-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            syncStatsWithFilters ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <button 
+                      onClick={exportStats}
+                      className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      title={`导出${statsType === 'user' ? '用户' : statsType === 'supervisor' ? '导师' : '仪器'}统计`}
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm block md:table">
@@ -1578,17 +1625,17 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       </div>
                     )}
                     <div className="flex items-center gap-2 relative"
-                         onMouseEnter={() => setShowSyncTooltip(true)}
-                         onMouseLeave={() => setShowSyncTooltip(false)}
-                         onClick={() => setShowSyncTooltip(!showSyncTooltip)}
+                         onMouseEnter={() => setShowSyncChartTooltip(true)}
+                         onMouseLeave={() => setShowSyncChartTooltip(false)}
+                         onClick={() => setShowSyncChartTooltip(!showSyncChartTooltip)}
                     >
                       <div className="flex items-center gap-1 cursor-pointer">
                         <label className="text-xs font-medium text-neutral-500 cursor-pointer">联动</label>
                         <Info className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600 transition-colors" />
                       </div>
                       
-                      {showSyncTooltip && (
-                        <div className="absolute z-50 top-full mt-2 left-0 md:left-1/2 md:-translate-x-1/2 w-56 sm:w-64 p-3 bg-white text-neutral-600 border border-neutral-200 text-xs rounded-xl shadow-lg ring-1 ring-black/5"
+                      {showSyncChartTooltip && (
+                        <div className="absolute z-50 top-full mt-2 left-0 md:left-1/2 md:-translate-x-1/2 w-48 sm:w-max sm:whitespace-nowrap p-3 bg-white text-neutral-600 border border-neutral-200 text-xs rounded-xl shadow-lg ring-1 ring-black/5"
                              onClick={(e) => e.stopPropagation()}
                         >
                           与详细预约记录表的筛选条件联动
@@ -1598,15 +1645,15 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSyncWithFilters(!syncWithFilters);
+                          setSyncChartWithFilters(!syncChartWithFilters);
                         }}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
-                          syncWithFilters ? 'bg-red-600' : 'bg-neutral-300'
+                          syncChartWithFilters ? 'bg-red-600' : 'bg-neutral-300'
                         }`}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            syncWithFilters ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                            syncChartWithFilters ? 'translate-x-[18px]' : 'translate-x-[2px]'
                           }`}
                         />
                       </button>
@@ -1624,7 +1671,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                   <div className="h-96">
                     <ResponsiveContainer width="100%" height="100%">
                       {(() => {
-                        const chartData = chartDimension === 'time' ? syncedUsageByTime : chartDimension === 'user' ? filteredUsageByPerson : chartDimension === 'supervisor' ? filteredUsageBySupervisor : filteredUsageByEquipment;
+                        const chartData = chartDimension === 'time' ? chartUsageByTime : chartDimension === 'user' ? chartBasePersonData : chartDimension === 'supervisor' ? chartBaseSupervisorData : chartBaseEquipmentData;
                         const keyAxis = chartDimension === 'time' ? 'period' : chartDimension === 'user' ? 'student_name' : chartDimension === 'supervisor' ? 'supervisor' : 'equipment_name';
                         
                         return reportChartType === 'bar' ? (
