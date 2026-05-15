@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Plus, Edit2, Trash2, AlertCircle, X, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, X, Search, History, Info, CheckSquare } from 'lucide-react';
+import { format, subDays } from 'date-fns';
+import ViolationsPreviewDrawer from './ViolationsPreviewDrawer';
 
 interface TriggerConfig {
   metric: 'count' | 'duration';
@@ -161,6 +163,13 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
     is_active: 1
   });
 
+  const [scanStartDate, setScanStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
+  const [scanEndDate, setScanEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [showPreviewDrawer, setShowPreviewDrawer] = useState(false);
+  const [selectedRetroReservations, setSelectedRetroReservations] = useState<any[]>([]);
+  const [retroScanLoading, setRetroScanLoading] = useState(false);
+  const [previewReservations, setPreviewReservations] = useState<any[]>([]);
+
   useEffect(() => {
     fetchRules();
     fetchEquipments();
@@ -232,6 +241,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
   const handleCloseDrawer = () => {
     setIsDrawerOpen(false);
     setEditingRule(null);
+    setSelectedRetroReservations([]);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -262,7 +272,38 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
       });
 
       if (res.ok) {
+        const result = await res.json();
+        const ruleId = editingRule ? editingRule.id : result.id;
+
         toast.success(editingRule ? '规则更新成功' : '规则创建成功');
+
+        // Invoke the simulate penalty batch API
+        if (selectedRetroReservations.length > 0 && formData.action.duration_type !== 'dynamic') {
+          try {
+            const batchRes = await fetch('/api/admin/penalties/batch', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                rule_id: ruleId,
+                student_ids: selectedRetroReservations.map(r => r.student_id)
+              })
+            });
+            
+            if (batchRes.ok) {
+              const batchResult = await batchRes.json();
+              toast.success(`已成功自动追溯下发 ${batchResult.count} 人的违规惩罚！`);
+            } else {
+              toast.error('追溯惩罚执行失败，但规则已保存');
+            }
+          } catch (batchErr) {
+            toast.error('发起追溯惩罚请求失败');
+          }
+        }
+        
+        setSelectedRetroReservations([]);
         handleCloseDrawer();
         fetchRules();
       } else {
@@ -726,6 +767,54 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                   )}
                 </div>
               </form>
+
+              <div className="mt-8 pt-6 border-t border-neutral-200">
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium text-red-900 flex items-center gap-2">
+                        <History className="w-4 h-4" />
+                        历史数据追溯扫描 (可选)
+                      </h4>
+                      <p className="text-xs text-red-700 mt-1">自动扫描并挑选出过去符合当前触发条件的违规预约，保存规则时一并执行处罚。</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex-1 w-full">
+                      <input 
+                        type="date"
+                        value={scanStartDate}
+                        onChange={e => setScanStartDate(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-red-200 focus:ring-2 focus:ring-red-500 outline-none bg-white"
+                      />
+                    </div>
+                    <span className="text-red-300 hidden sm:inline">至</span>
+                    <div className="flex-1 w-full">
+                      <input 
+                        type="date"
+                        value={scanEndDate}
+                        onChange={e => setScanEndDate(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-red-200 focus:ring-2 focus:ring-red-500 outline-none bg-white"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-red-800">
+                      {selectedRetroReservations.length > 0 ? `已选中 ${selectedRetroReservations.length} 条记录执行惩罚` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviewDrawer(true)}
+                      className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                    >
+                      <Search className="w-4 h-4" />
+                      扫描并选择历史记录
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
@@ -776,6 +865,20 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
           </div>
         </div>
       )}
+
+      <ViolationsPreviewDrawer 
+        isOpen={showPreviewDrawer} 
+        onClose={() => setShowPreviewDrawer(false)} 
+        startDate={scanStartDate} 
+        endDate={scanEndDate} 
+        token={token} 
+        formData={formData} 
+        selectedIds={selectedRetroReservations} 
+        onConfirmSelection={(ids) => {
+          setSelectedRetroReservations(ids);
+          setShowPreviewDrawer(false);
+        }} 
+      />
     </div>
   );
 }

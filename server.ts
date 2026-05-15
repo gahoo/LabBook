@@ -940,6 +940,27 @@ app.get('/api/settings', (req, res) => {
   res.json(settingsMap);
 });
 
+app.get('/api/admin/settings/violation-params', adminAuth, (req, res) => {
+  const keys = ['violation_late_grace_minutes', 'violation_overtime_grace_minutes', 'violation_late_cancel_minutes', 'violation_no_show_grace_minutes'];
+  const settingsRows = db.prepare(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => '?').join(',')})`).all(...keys) as any[];
+  
+  const map = {
+    violation_late_grace_minutes: 15,
+    violation_overtime_grace_minutes: 15,
+    violation_late_cancel_minutes: 120,
+    violation_no_show_grace_minutes: 30
+  };
+  
+  for (const row of settingsRows) {
+    const parsed = parseInt(row.value, 10);
+    if (!isNaN(parsed)) {
+      (map as any)[row.key] = parsed;
+    }
+  }
+  
+  res.json(map);
+});
+
 // Update settings (Admin)
 app.post('/api/admin/settings', adminAuth, (req, res) => {
   const bodyKeys = Object.keys(req.body);
@@ -2328,6 +2349,102 @@ app.get('/api/admin/violation-records', adminAuth, (req, res) => {
   res.json(records);
 });
 
+app.post('/api/admin/penalty-rules/simulate', adminAuth, (req, res) => {
+  const { trigger, action, start_date, end_date } = req.body;
+  
+  if (!trigger || !start_date || !end_date) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+
+  const violationTypes = trigger.violation_types || [trigger.violation_type];
+  if (!violationTypes || violationTypes.length === 0) {
+     return res.json([]);
+  }
+  
+  const typePlaceholders = violationTypes.map(() => '?').join(',');
+  
+  let scopeCondition = '';
+  // Append T23:59:59.999Z to end_date to include the whole day if it's a date string like '2023-10-15'
+  const finalEndDate = end_date.includes('T') ? end_date : end_date + 'T23:59:59.999Z';
+  let queryParams: any[] = [...violationTypes, start_date, finalEndDate];
+
+  if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+    const placeholders = trigger.scope.map(() => '?').join(',');
+    scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
+    queryParams.push(...trigger.scope);
+  }
+
+  try {
+    // Get all active violations in the time range matching types and scope
+    const violationsQuery = `
+      SELECT id, student_id, reservation_id, violation_type, duration_minutes, violation_time 
+      FROM violation_records 
+      WHERE status = 'active' 
+        AND violation_type IN (${typePlaceholders}) 
+        AND violation_time >= ? 
+        AND violation_time <= ?
+        ${scopeCondition}
+    `;
+    const allViolations = db.prepare(violationsQuery).all(...queryParams) as any[];
+
+    // Group by student_id
+    const studentViolations = new Map<string, any[]>();
+    for (const v of allViolations) {
+       if (!studentViolations.has(v.student_id)) {
+         studentViolations.set(v.student_id, []);
+       }
+       studentViolations.get(v.student_id)!.push(v);
+    }
+
+    const results = [];
+    
+    for (const [student_id, violations] of studentViolations.entries()) {
+      let metricValue = 0;
+      let contributingIds: number[] = [];
+      
+      if (trigger.metric === 'count') {
+        if (trigger.count_strategy === 'by_reservation') {
+          const uniqueReservations = new Map<number, number>(); // res_id -> violation_id
+          for (const v of violations) {
+            if (!uniqueReservations.has(v.reservation_id) || v.id < uniqueReservations.get(v.reservation_id)!) {
+              uniqueReservations.set(v.reservation_id, v.id);
+            }
+          }
+          metricValue = uniqueReservations.size;
+          contributingIds = Array.from(uniqueReservations.values());
+        } else {
+          metricValue = violations.length;
+          contributingIds = violations.map(v => v.id);
+        }
+      } else if (trigger.metric === 'duration') {
+        metricValue = violations.reduce((sum, v) => sum + (v.duration_minutes || 0), 0);
+        contributingIds = violations.map(v => v.id);
+      }
+      
+      if (metricValue >= trigger.threshold) {
+         // Lookup student name for UI
+         const latestRes = db.prepare('SELECT student_name FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(student_id) as any;
+         
+         results.push({
+           student_id,
+           student_name: latestRes ? latestRes.student_name : student_id,
+           metric_value: metricValue,
+           contributing_ids: contributingIds,
+           violations: violations.filter(v => contributingIds.includes(v.id)).map(v => ({
+             ...v,
+             equipment_name: db.prepare('SELECT e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(v.reservation_id)?.equipment_name
+           }))
+         });
+      }
+    }
+
+    res.json(results);
+  } catch (error: any) {
+    console.error('Simulation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
@@ -2465,6 +2582,89 @@ app.post('/api/admin/violation-records/:id/reject-appeal', adminAuth, (req, res)
   }
 
   res.json({ success: true });
+});
+
+app.post('/api/admin/penalties/batch', adminAuth, (req, res) => {
+  const { rule_id, student_ids } = req.body;
+  
+  if (!rule_id || !student_ids || !Array.isArray(student_ids)) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+
+  const rule = db.prepare('SELECT * FROM penalty_rules WHERE id = ?').get(rule_id) as any;
+  if (!rule) {
+    return res.status(404).json({ error: 'Rule not found' });
+  }
+  
+  const trigger = JSON.parse(rule.trigger_config);
+  const action = JSON.parse(rule.action_config);
+  
+  if (action.duration_type === 'dynamic') {
+    return res.status(400).json({ error: 'Cannot batch insert for dynamic duration rules' });
+  }
+
+  const durationDays = action.duration_days || 0;
+  const penaltyMethod = action.type;
+  
+  const now = new Date();
+  const nowStr = now.toISOString();
+
+  const insertTx = db.transaction((students: string[]) => {
+    let count = 0;
+    for (const student_id of students) {
+      // Check if there is already an active penalty for this rule and student
+      const existingPenalty = db.prepare(`
+        SELECT id FROM user_penalties 
+        WHERE student_id = ? AND rule_id = ? AND end_time > ? AND status = 'active'
+      `).get(student_id, rule_id, nowStr);
+
+      if (!existingPenalty) {
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + durationDays);
+
+        const restrictionsData: any = {};
+        if (action.params && action.params.cancel_future_reservations) {
+          restrictionsData.cancel_future_reservations = true;
+        }
+        if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+          restrictionsData.restricted_equipment_ids = trigger.scope;
+        }
+
+        db.prepare(`
+          INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(student_id, rule_id, penaltyMethod, JSON.stringify(restrictionsData), nowStr, endDate.toISOString());
+        
+        count++;
+
+        // Cancel future reservations if configured
+        if (action.params && action.params.cancel_future_reservations) {
+          const futureReservations = db.prepare(`
+            SELECT id, equipment_id FROM reservations 
+            WHERE student_id = ? AND status = 'approved' AND start_time > ?
+          `).all(student_id, nowStr) as any[];
+          
+          for (const rev of futureReservations) {
+            if (trigger.scope && trigger.scope.length > 0) {
+              if (!trigger.scope.includes(String(rev.equipment_id)) && !trigger.scope.includes(Number(rev.equipment_id))) {
+                continue;
+              }
+            }
+            db.prepare("UPDATE reservations SET status = 'cancelled' WHERE id = ?").run(rev.id);
+          }
+        }
+      }
+    }
+    return count;
+  });
+
+  try {
+    const count = insertTx(student_ids);
+    res.json({ success: true, count });
+  } catch (err) {
+    console.error('Batch insert penalties failed:', err);
+    res.status(500).json({ error: 'Failed to batch insert penalties' });
+  }
 });
 
 app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
