@@ -1380,6 +1380,21 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
 app.post('/api/reservations', (req, res) => {
   const { equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time } = req.body;
   
+  // Retrieve setting and check email suffix
+  const emailSuffixesSettingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('allowed_email_suffixes') as any;
+  if (emailSuffixesSettingRow && emailSuffixesSettingRow.value) {
+    const allowedSuffixes = emailSuffixesSettingRow.value.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    if (allowedSuffixes.length > 0) {
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: `邮箱格式不正确，目前仅允许以下后缀: ${allowedSuffixes.join(', ')}` });
+      }
+      const domain = email.split('@').pop()?.toLowerCase() || '';
+      if (!allowedSuffixes.includes(domain)) {
+        return res.status(400).json({ error: `暂不支持该邮箱，目前仅允许以下邮箱后缀: ${allowedSuffixes.join(', ')}` });
+      }
+    }
+  }
+
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
   

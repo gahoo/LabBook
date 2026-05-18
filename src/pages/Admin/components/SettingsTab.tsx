@@ -14,6 +14,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
   const [appName, setAppName] = useState('LabBook');
   const [defaultRoute, setDefaultRoute] = useState('/');
   const [appLogo, setAppLogo] = useState('');
+  const [allowedEmailSuffixes, setAllowedEmailSuffixes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -28,6 +29,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
       if (data.app_name) setAppName(data.app_name);
       if (data.default_route) setDefaultRoute(data.default_route);
       if (data.app_logo) setAppLogo(data.app_logo);
+      if (data.allowed_email_suffixes) setAllowedEmailSuffixes(data.allowed_email_suffixes);
     } catch (err) {
       console.error('Failed to fetch settings', err);
     } finally {
@@ -61,7 +63,8 @@ export default function SettingsTab({ token }: SettingsTabProps) {
         body: JSON.stringify({
           app_name: appName,
           default_route: defaultRoute,
-          app_logo: appLogo
+          app_logo: appLogo,
+          allowed_email_suffixes: allowedEmailSuffixes
         })
       });
 
@@ -194,6 +197,22 @@ export default function SettingsTab({ token }: SettingsTabProps) {
               />
               <p className="text-xs text-neutral-500 mt-2">
                 应用的根路径（如：/ 或 /labbook）。修改后所有页面路径都会加上此作为前缀。
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                允许的邮箱后缀
+              </label>
+              <input
+                type="text"
+                value={allowedEmailSuffixes}
+                onChange={(e) => setAllowedEmailSuffixes(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+                placeholder="例如：pku.edu.cn, tsinghua.edu.cn"
+              />
+              <p className="text-xs text-neutral-500 mt-2">
+                支持配置多个后缀，以逗号分隔，留空表示不限制。例如：pku.edu.cn, tsinghua.edu.cn。
               </p>
             </div>
 

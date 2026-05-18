@@ -100,6 +100,8 @@ export default function Booking() {
   const [structuredPenalty, setStructuredPenalty] = useState<any>(null);
   const [appealingId, setAppealingId] = useState<number | null>(null);
   const [appealReason, setAppealReason] = useState("");
+  const [allowedEmailSuffixes, setAllowedEmailSuffixes] = useState<string[]>([]);
+  const [emailError, setEmailError] = useState("");
 
   const filteredRules = useMemo(() => {
     if (!structuredPenalty || !structuredPenalty.triggered_rules) return [];
@@ -165,6 +167,12 @@ export default function Booking() {
     if (timeParam) {
       handleStartTimeChange(timeParam);
     }
+
+    fetch('/api/settings').then(r => r.json()).then(data => {
+      if (data.allowed_email_suffixes) {
+        setAllowedEmailSuffixes(data.allowed_email_suffixes.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean));
+      }
+    }).catch(() => {});
   }, [id, location.search]);
 
   useEffect(() => {
@@ -185,6 +193,9 @@ export default function Booking() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (e.target.name === 'email' && emailError) {
+      setEmailError("");
+    }
   };
 
   const handleStartTimeChange = (val: string) => {
@@ -263,7 +274,22 @@ export default function Booking() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailError("");
     if (!startTime || !endTime) return toast.error("请选择预约时间");
+
+    if (allowedEmailSuffixes.length > 0) {
+      if (!formData.email || !formData.email.includes('@')) {
+        const err = `邮箱格式不正确，目前仅允许以下后缀: ${allowedEmailSuffixes.join(', ')}`;
+        setEmailError(err);
+        return toast.error(err);
+      }
+      const domain = formData.email.split('@').pop()?.toLowerCase() || '';
+      if (!allowedEmailSuffixes.includes(domain)) {
+        const err = `暂不支持该邮箱，目前仅允许以下邮箱后缀: ${allowedEmailSuffixes.join(', ')}`;
+        setEmailError(err);
+        return toast.error(err);
+      }
+    }
 
     const startDateStr = format(selectedDate, "yyyy-MM-dd");
     const endDateStr = format(endDate, "yyyy-MM-dd");
@@ -1428,9 +1454,14 @@ export default function Booking() {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+                className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all ${emailError ? 'border-red-500' : 'border-neutral-300'}`}
                 placeholder="zhangsan@university.edu"
               />
+              {emailError && (
+                <p className="mt-1.5 text-sm text-red-600 font-medium">
+                  {emailError}
+                </p>
+              )}
             </div>
 
             <div className="pt-6">
