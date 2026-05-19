@@ -25,5 +25,6 @@
 
 - [ ] **任务 5：基于通知队列实现上机前提醒 (Upcoming Reminder)**
   - 在 `server.ts` 中的 `node-cron` 定时任务块区域，补充一条间隔 5 min 触发的高频轮询。
+  - 定时任务入口处，首先检查系统设置中 `email.events.booking_upcoming.enabled` 或 `webhook.events.booking_upcoming.enabled` 是否有任一开启，若均未开启则直接 return 跳过。
   - 检索 `start_time` 满足接近阈值，且 **`status = 'approved'`** （必须为审核通过）的预约记录。
   - 比对 `notifications` 队列表中无对应 `reference_code` 且 `event = 'booking_upcoming'` 的数据，才触发新消息体下沉排队。
