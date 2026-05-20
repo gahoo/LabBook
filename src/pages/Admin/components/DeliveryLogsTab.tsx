@@ -34,6 +34,8 @@ export default function DeliveryLogsTab({ token }: DeliveryLogsTabProps) {
     appeal_resolved: '申诉结果通知',
     whitelist_resolved: '白名单审批结果',
     penalty_triggered: '处罚触发',
+    booking_upcoming: '上机前提醒',
+    calendar_subscription: '日历订阅链接',
   };
 
   const EVENT_OPTIONS = Object.entries(EVENT_MAP).map(([id, name]) => ({ id, name }));
