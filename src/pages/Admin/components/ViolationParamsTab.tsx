@@ -20,7 +20,9 @@ export default function ViolationParamsTab({ token }: ViolationParamsTabProps) {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch('/api/admin/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await res.json();
       if (data.violation_late_grace_minutes) setLateGraceMinutes(Number(data.violation_late_grace_minutes));
       if (data.violation_overtime_grace_minutes) setOvertimeGraceMinutes(Number(data.violation_overtime_grace_minutes));

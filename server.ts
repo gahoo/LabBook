@@ -375,6 +375,77 @@ export function reloadBackupCron() {
 
 reloadBackupCron();
 
+let upcomingReminderTask: cron.ScheduledTask | null = null;
+
+function upcomingReminderScan() {
+  try {
+
+    const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
+    const advanceMins = parseInt(advanceRow?.value || '30', 10);
+    
+    const now = new Date();
+    const thresholdTime = new Date(now.getTime() + advanceMins * 60000 + 5 * 60000); // add 5 mins buffer
+    const maxLookingBack = new Date(now.getTime() - 24 * 60 * 60 * 1000); 
+
+    const upcomingReservations = db.prepare(`
+      SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee 
+      FROM reservations r
+      JOIN equipment e ON r.equipment_id = e.id
+      WHERE r.status = 'approved'
+        AND r.start_time > ?
+        AND r.start_time <= ?
+    `).all(maxLookingBack.toISOString(), thresholdTime.toISOString()) as any[];
+
+    for (const resv of upcomingReservations) {
+      const startTime = new Date(resv.start_time);
+      const diffMins = (startTime.getTime() - now.getTime()) / 60000;
+      
+      if (diffMins > 0 && diffMins <= advanceMins) {
+        const existing = db.prepare(`
+          SELECT 1 FROM notifications 
+          WHERE event = 'booking_upcoming' AND reference_code = ?
+        `).get(resv.booking_code);
+        
+        if (!existing) {
+          notifyEvent(db, 'booking_upcoming', {
+            ...resv,
+            student_id: resv.student_id,
+            student_name: resv.student_name,
+            equipment_name: resv.equipment_name,
+            booking_code: resv.booking_code,
+            start_time: resv.start_time,
+            end_time: resv.end_time
+          }, resv.email);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error scanning for upcoming reminders:", err);
+  }
+}
+
+export function startUpcomingReminderCron() {
+  if (upcomingReminderTask) {
+    upcomingReminderTask.stop();
+    upcomingReminderTask = null;
+  }
+
+  const emailRow = db.prepare("SELECT value FROM settings WHERE key = 'email.events.booking_upcoming.enabled'").get() as any;
+  const webhookRow = db.prepare("SELECT value FROM settings WHERE key = 'webhook.events.booking_upcoming.enabled'").get() as any;
+
+  if (emailRow?.value === 'true' || webhookRow?.value === 'true') {
+    upcomingReminderTask = cron.schedule('*/5 * * * *', upcomingReminderScan);
+    console.log('Upcoming reminder cron scheduled every 5 minutes.');
+    // Run immediately when started
+    upcomingReminderScan();
+  } else {
+    console.log('Upcoming reminder cron is disabled.');
+  }
+}
+
+startUpcomingReminderCron();
+
+
 // Start the notification processor
 processNotificationQueue(db).catch(console.error);
 
@@ -1027,7 +1098,7 @@ app.post('/api/calendar/user/mail', (req, res) => {
     
     if (!reservation.email) return res.status(400).json({ error: 'No email associated with this booking' });
 
-    notifyEvent('calendar_subscription', reservation.student_id, undefined, {
+    notifyEvent(db, 'calendar_subscription', {
       student_id: reservation.student_id,
       calendar_url: url
     }, reservation.email);
@@ -1109,6 +1180,15 @@ app.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
   }
 });
 
+app.get('/api/admin/settings', adminAuth, (req, res) => {
+  const settings = db.prepare('SELECT * FROM settings').all();
+  const settingsMap = settings.reduce((acc: any, curr: any) => {
+    acc[curr.key] = curr.value;
+    return acc;
+  }, {});
+  res.json(settingsMap);
+});
+
 app.get('/api/admin/settings/violation-params', adminAuth, (req, res) => {
   const keys = ['violation_late_grace_minutes', 'violation_overtime_grace_minutes', 'violation_late_cancel_minutes', 'violation_no_show_grace_minutes'];
   const settingsRows = db.prepare(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => '?').join(',')})`).all(...keys) as any[];
@@ -1188,6 +1268,13 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   
   if (backupSettingsChanged) {
     reloadBackupCron();
+  }
+
+  if (
+    req.body['email.events.booking_upcoming.enabled'] !== undefined ||
+    req.body['webhook.events.booking_upcoming.enabled'] !== undefined
+  ) {
+    startUpcomingReminderCron();
   }
   
   res.json({ success: true });

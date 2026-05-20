@@ -100,6 +100,14 @@ const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string
   penalty_triggered: {
     subject: '[警告] 处罚生效',
     template: '## 处罚触发通知\n\n由于累计多次违规，您已触发系统限制。\n\n- 限制方式：{{ penalty_method }}\n- 原因：{{ reason }}'
+  },
+  booking_upcoming: {
+    subject: '[通知] 上机前提醒：{{ equipment_name }}',
+    template: '## 预约提醒\n\n您好，您对 **{{ equipment_name }}** 的预约即将开始。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n请您按时前往上机。'
+  },
+  calendar_subscription: {
+    subject: '[通知] 个人日历订阅链接',
+    template: '## 个人日历订阅\n\n您好，这是您的个人专属日历订阅链接：\n\n**[订阅日历]({{ calendar_url }})**\n\n如果您无法点击以上链接，请直接复制并使用支持 webcal 的日历软件打开：\n{{ calendar_url }}\n\n> 请注意保密，不要将此链接泄露给他人。'
   }
 };
 

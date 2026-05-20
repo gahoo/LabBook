@@ -18,7 +18,9 @@ export default function BackupTab({ token }: BackupTabProps) {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch('/api/admin/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await res.json();
       
       if (data.auto_backup_enabled) setAutoBackupEnabled(data.auto_backup_enabled === 'true');

@@ -103,7 +103,9 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch('/api/admin/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (!res.ok) throw new Error('获取设置失败');
       const data = await res.json();
       

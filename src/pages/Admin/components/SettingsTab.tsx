@@ -24,7 +24,9 @@ export default function SettingsTab({ token }: SettingsTabProps) {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch('/api/admin/settings', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
+      });
       const data = await res.json();
       if (data.app_name) setAppName(data.app_name);
       if (data.default_route) setDefaultRoute(data.default_route);
