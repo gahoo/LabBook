@@ -758,11 +758,11 @@ export default function EquipmentManagementTab({
                     </div>
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell">
-                    <div className="flex justify-end md:justify-end items-center space-x-1">
+                    <div className="flex justify-end md:justify-end items-center gap-1">
                       <button onClick={async () => {
                         const loadingId = toast.loading("获取链接中...");
                         try {
-                          const res = await fetch(`/api/admin/equipment/${eq.id}/calendar-url`, { headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } });
+                          const res = await fetch(`/api/calendar/equipment/${eq.id}/url`, { headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } });
                           const data = await res.json();
                           if (res.ok && data.url) {
                             toast.dismiss(loadingId);
@@ -772,22 +772,28 @@ export default function EquipmentManagementTab({
                             } catch(e) {
                               toast.success("请复制链接: " + data.url, { duration: 5000 });
                             }
+                            const a = document.createElement("a");
+                            a.href = data.url;
+                            a.target = "_self";
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
                           } else {
                             toast.error(data.error || "获取日历失败", { id: loadingId });
                           }
                         } catch (e) {
                           toast.error("网络请求异常", { id: loadingId });
                         }
-                      }} title="获取日历链接" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                      }} title="获取日历链接" className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Calendar className="w-4 h-4" />
                       </button>
                       <button onClick={() => {
                         setEditingEquipment(eq);
                         setIsDrawerOpen(true);
-                      }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      }} className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Settings2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => setDeleteEquipmentConfirmId(eq.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => setDeleteEquipmentConfirmId(eq.id)} className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>

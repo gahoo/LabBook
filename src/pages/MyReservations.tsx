@@ -609,7 +609,12 @@ export default function MyReservations() {
             toast.success("已获取链接，正在尝试调起日历..."); 
           }
           setTimeout(() => {
-            window.location.href = data.url;
+            const a = document.createElement("a");
+            a.href = data.url;
+            a.target = "_self";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
           }, 500);
         } else {
           toast.error(data.error || "获取日历失败", { id: loadingId });

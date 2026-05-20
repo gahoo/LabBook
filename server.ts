@@ -1094,7 +1094,7 @@ app.get('/api/calendar/equipment/:token.ics', (req, res) => {
   }
 });
 
-app.get('/api/admin/equipment/:id/calendar-url', adminAuth, (req, res) => {
+app.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
   try {
     const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
     if (!secret) return res.status(500).json({ error: 'Secret not configured' });
