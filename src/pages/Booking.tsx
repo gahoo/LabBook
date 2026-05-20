@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
+import { generateICS, ICSReservation } from "../lib/ics";
 import { ViolationRecord, MyViolationsResponse } from "../types";
 import { getViolationTypeLabel } from "../utils";
 
@@ -576,6 +577,36 @@ export default function Booking() {
     const deliverEmail = bookingCodeDelivery?.email === "true";
     const deliverWebhook = bookingCodeDelivery?.webhook === "true";
 
+    const handleSingleDownloadICS = () => {
+      if (!equipment) return;
+      const fmt: ICSReservation = {
+        id: 0,
+        equipment_id: equipment.id,
+        equipment_name: equipment.name,
+        location: equipment.location,
+        student_name: formData.student_name,
+        student_id: formData.student_id,
+        supervisor: formData.supervisor,
+        phone: formData.phone,
+        email: formData.email,
+        start_time: `${format(selectedDate, "yyyy-MM-dd")} ${startTime}:00`,
+        end_time: `${format(endDate, "yyyy-MM-dd")} ${endTime}:00`,
+        status: isApproved ? 'approved' : 'pending',
+        booking_code: bookingCode
+      };
+
+      
+      const ics = generateICS([fmt], "user", 30);
+      const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `booking_${bookingCode}.ics`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("已下载日历文件");
+    };
+
     return (
       <div className="max-w-md mx-auto mt-12 bg-white p-8 rounded-2xl shadow-sm border border-neutral-200 text-center">
         <div
@@ -661,6 +692,14 @@ export default function Booking() {
         >
           前往我的预约
         </button>
+        {isApproved && (
+          <button
+            onClick={handleSingleDownloadICS}
+            className="w-full py-3 mt-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+          >
+            <CalendarIcon className="w-5 h-5" /> 导出日程到本地日历
+          </button>
+        )}
       </div>
     );
   }

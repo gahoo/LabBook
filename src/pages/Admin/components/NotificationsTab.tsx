@@ -33,10 +33,12 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     { id: 'booking_approved', name: '预约审批通过', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}' },
     { id: 'booking_rejected', name: '预约审批驳回', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}' },
     { id: 'booking_cancelled', name: '预约取消', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}' },
+    { id: 'booking_upcoming', name: '上机前提醒', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}, {{ advance_minutes }}' },
     { id: 'violation_created', name: '违规记录', vars: '{{ student_id }}, {{ violation_type }}, {{ equipment_name }}' },
     { id: 'appeal_resolved', name: '申诉结果通知', vars: '{{ student_id }}, {{ violation_id }}, {{ resolution }}, {{ reply }}' },
     { id: 'whitelist_resolved', name: '白名单审批结果', vars: '{{ student_id }}, {{ equipment_name }}, {{ resolution }}, {{ reason }}' },
     { id: 'penalty_triggered', name: '处罚触发', vars: '{{ student_id }}, {{ penalty_method }}, {{ reason }}' },
+    { id: 'calendar_subscription', name: '发送个人日历订阅', vars: '{{ student_id }}, {{ calendar_url }}' },
   ];
 
   const EVENT_MAP: Record<string, string> = {
@@ -44,10 +46,12 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     booking_approved: '需要审批的设备被管理员批准通过',
     booking_rejected: '需要审批的设备被管理员驳回申请',
     booking_cancelled: '用户或系统取消了该次预约',
+    booking_upcoming: '上机前自动向用户发送提醒',
     violation_created: '用户因过失（迟到/未上机等）产生了新的违规记录',
     appeal_resolved: '管理员对用户的违规申诉进行了判定处理',
     whitelist_resolved: '管理员对用户的白名单准入申请处理完毕',
-    penalty_triggered: '违规记录累积导致处罚熔断，触发使用限制'
+    penalty_triggered: '违规记录累积导致处罚熔断，触发使用限制',
+    calendar_subscription: '用户主动请求将预约概览订阅到个人日历',
   };
 
   const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string}> = {
@@ -67,6 +71,10 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       subject: '[通知] 预约取消',
       template: '## 预约已取消\n\n您的预约已取消。\n\n- 设备：{{ equipment_name }}\n- 预约码：{{ booking_code }}'
     },
+    booking_upcoming: {
+      subject: '[提醒] 您有即将开始的实验：{{ equipment_name }}',
+      template: '## 上机前提醒\n\n您好，您预约的设备 **{{ equipment_name }}** 还有 {{ advance_minutes }} 分钟即将开始。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n请准备好您的物品，准时到达实验室。'
+    },
     violation_created: {
       subject: '[警告] 新的违规记录',
       template: '## 违规记录\n\n您好，系统检测到您存在一条新的违规记录。\n\n- 违规类型：{{ violation_type }}\n- 关联设备：{{ equipment_name }}\n\n如有异议，请在系统内提交申诉。'
@@ -82,6 +90,10 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     penalty_triggered: {
       subject: '[警告] 处罚生效',
       template: '## 处罚触发通知\n\n由于累计多次违规，您已触发系统限制。\n\n- 限制方式：{{ penalty_method }}\n- 原因：{{ reason }}'
+    },
+    calendar_subscription: {
+      subject: '[通知] 您的日历订阅链接',
+      template: '## 个人日历订阅\n\n您好，这是您的实验室预约日历订阅专属链接。\n\n**订阅链接：**\n`{{ calendar_url }}`\n\n### 如何订阅\n- **iOS / Mac**：点击链接通常会自动跳出提示。或者前往 设置 -> 日历 -> 账户 -> 添加账户 -> 其他 -> 添加入订阅日历。\n- **Outlook**：在网页版日历中点击添加日历 -> 从 Internet 订阅，粘贴该链接。\n- **Android**：通常需要通过电脑配置您的 Google 账号日历订阅，同步即可，或其他日历 App 类似操作。'
     }
   };
 
@@ -111,6 +123,8 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       const unflattened = unflattenObj(parsedData);
       setConfig({
         notification_interval_seconds: unflattened.notification_interval_seconds || '30',
+        booking_upcoming_advance_minutes: unflattened.booking_upcoming_advance_minutes || '30',
+        calendar_subscription_mode: unflattened.calendar_subscription_mode || 'disabled',
         booking_code_delivery: unflattened.booking_code_delivery || { web: 'true' },
         smtp: unflattened.smtp || { enabled: false },
         webhook: unflattened.webhook || { enabled: false, events: {} },
@@ -128,6 +142,8 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     try {
       const payload = flattenObj({
         notification_interval_seconds: config.notification_interval_seconds,
+        booking_upcoming_advance_minutes: config.booking_upcoming_advance_minutes,
+        calendar_subscription_mode: config.calendar_subscription_mode,
         booking_code_delivery: config.booking_code_delivery || { web: 'true' }
       });
 
@@ -401,6 +417,32 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                   />
                   <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">控制消息分发队列在发送时的最快吐出速率，防止由于大面积通知发送而导致并发请求过多、过度拥堵或被服务商拉黑限制等问题。默认为 30 秒。</p>
                 </div>
+                <div>
+                  <label className="block text-sm text-neutral-600 mb-1">上机前提前提醒时间(分钟)</label>
+                  <input
+                    type="number"
+                    value={config.booking_upcoming_advance_minutes || '30'}
+                    onChange={(e) => updateConfig(['booking_upcoming_advance_minutes'], e.target.value)}
+                    placeholder="30"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                  />
+                  <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">当启用了“上机前提醒”事件后，系统将以此时间（在预约开始前多少分钟）触发通知和日历提醒。默认为 30 分钟。</p>
+                </div>
+              </div>
+              <div className="pt-4 border-t border-neutral-100">
+                <label className="block text-sm font-medium text-neutral-800 mb-3">个人日历订阅功能</label>
+                <div className="flex flex-wrap gap-4 items-center">
+                  <select
+                    value={config.calendar_subscription_mode || 'disabled'}
+                    onChange={(e) => updateConfig(['calendar_subscription_mode'], e.target.value)}
+                    className="w-full sm:w-auto px-4 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white"
+                  >
+                    <option value="disabled">关闭 (禁止获取)</option>
+                    <option value="ui">在界面中直接展示及复制链接</option>
+                    <option value="email">仅允许发送至绑定的安全邮箱</option>
+                  </select>
+                </div>
+                <p className="text-xs text-neutral-500 mt-2">允许用户在“我的预约”模块获取能够同步至个人日历 App (Apple, Outlook 等) 的公开订阅日历链接。支持邮箱分发以保障最佳隐私。</p>
               </div>
               <div className="pt-4 border-t border-neutral-100">
                 <label className="block text-sm font-medium text-neutral-800 mb-3">网页端预约码显示</label>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3, EyeOff, TimerReset } from 'lucide-react';
+import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3, EyeOff, TimerReset, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EquipmentForm from './EquipmentForm';
 import BatchEditEquipmentForm from './BatchEditEquipmentForm';
@@ -759,6 +759,28 @@ export default function EquipmentManagementTab({
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell">
                     <div className="flex justify-end md:justify-end items-center space-x-1">
+                      <button onClick={async () => {
+                        const loadingId = toast.loading("获取链接中...");
+                        try {
+                          const res = await fetch(`/api/admin/equipment/${eq.id}/calendar-url`, { headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } });
+                          const data = await res.json();
+                          if (res.ok && data.url) {
+                            toast.dismiss(loadingId);
+                            try {
+                              await navigator.clipboard.writeText(data.url);
+                              toast.success("日历链接复制成功", { duration: 4000 });
+                            } catch(e) {
+                              toast.success("请复制链接: " + data.url, { duration: 5000 });
+                            }
+                          } else {
+                            toast.error(data.error || "获取日历失败", { id: loadingId });
+                          }
+                        } catch (e) {
+                          toast.error("网络请求异常", { id: loadingId });
+                        }
+                      }} title="获取日历链接" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                        <Calendar className="w-4 h-4" />
+                      </button>
                       <button onClick={() => {
                         setEditingEquipment(eq);
                         setIsDrawerOpen(true);

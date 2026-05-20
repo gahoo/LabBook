@@ -24,6 +24,7 @@ import {
 import { format, isBefore, addMinutes, parseISO } from "date-fns";
 import clsx from "clsx";
 import toast from "react-hot-toast";
+import { generateICS, ICSReservation } from "../lib/ics";
 
 interface Reservation {
   id: number;
@@ -552,6 +553,73 @@ export default function MyReservations() {
     [loading, visibleCount, myReservations.length],
   );
 
+  const handleSingleDownloadICS = (resv: Reservation) => {
+    const icsFormat: ICSReservation = {
+      ...resv,
+      start_time: resv.start_time,
+      end_time: resv.end_time,
+    };
+    const icsContent = generateICS([icsFormat], "user", parseInt(settings.booking_upcoming_advance_minutes || "30", 10));
+    const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `booking_${resv.booking_code}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("已下载日历文件");
+  };
+
+  const handleSubscribeCalendar = async () => {
+    if (myReservations.length === 0) {
+      toast.error("没有可用的预约");
+      return;
+    }
+    const primaryCode = myReservations[0].booking_code;
+    const mode = settings.calendar_subscription_mode;
+
+    if (mode === "email") {
+      const loadingId = toast.loading("申请发送中...");
+      try {
+        const res = await fetch("/api/calendar/user/mail", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking_code: primaryCode }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast.success(`日历订阅链接已发送至: ${data.email || '您的邮箱'}`, { id: loadingId });
+        } else {
+          toast.error(data.error || "发送失败", { id: loadingId });
+        }
+      } catch (e) {
+        toast.error("请求异常", { id: loadingId });
+      }
+    } else if (mode === "ui") {
+      const loadingId = toast.loading("获取链接中...");
+      try {
+        const res = await fetch(`/api/calendar/user/url?booking_code=${primaryCode}`);
+        const data = await res.json();
+        if (res.ok && data.url) {
+          toast.dismiss(loadingId);
+          try {
+            await navigator.clipboard.writeText(data.url);
+            toast.success("日历链接已复制到剪贴板，正在尝试调起日历...", { duration: 4000 });
+          } catch(e) {
+            toast.success("已获取链接，正在尝试调起日历..."); 
+          }
+          setTimeout(() => {
+            window.location.href = data.url;
+          }, 500);
+        } else {
+          toast.error(data.error || "获取日历失败", { id: loadingId });
+        }
+      } catch (e) {
+        toast.error("获取日历失败", { id: loadingId });
+      }
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-12">
       <div className="text-center">
@@ -593,6 +661,15 @@ export default function MyReservations() {
               预约列表
             </h3>
             <div className="flex items-center gap-4">
+              {settings.calendar_subscription_mode && settings.calendar_subscription_mode !== 'disabled' && (
+                <button
+                  onClick={handleSubscribeCalendar}
+                  className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  订阅全部预约
+                </button>
+              )}
               <button
                 onClick={() => setShowClearConfirm(true)}
                 className="px-3 py-1.5 bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 rounded-lg text-xs font-medium transition-colors"
@@ -1091,6 +1168,15 @@ export default function MyReservations() {
                       )}
 
                     <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
+                      {resv.status === "approved" && (
+                        <button
+                          onClick={() => handleSingleDownloadICS(resv)}
+                          title="添加到日历"
+                          className="flex-1 min-w-[120px] py-2.5 border border-blue-100 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-50 flex items-center justify-center gap-2"
+                        >
+                          <Calendar className="w-4 h-4" /> 导出日历
+                        </button>
+                      )}
                       {(resv.status === "pending" ||
                         resv.status === "approved") &&
                         !editingId &&

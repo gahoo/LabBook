@@ -10,6 +10,33 @@ import fs from 'fs';
 import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
+
+// ICS Token helper functions
+function encryptID(id: string | number, secretHex: string): string {
+  const iv = crypto.randomBytes(16);
+  const key = Buffer.from(secretHex, 'hex');
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  let encrypted = cipher.update(String(id), 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted;
+}
+
+function decryptID(token: string, secretHex: string): string | null {
+  try {
+    const parts = token.split(':');
+    if (parts.length !== 2) return null;
+    const iv = Buffer.from(parts[0], 'hex');
+    const key = Buffer.from(secretHex, 'hex');
+    const encryptedText = Buffer.from(parts[1], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch (e) {
+    return null;
+  }
+}
+
 import { marked } from 'marked';
 import { notifyEvent, processNotificationQueue, scheduleNextRun, setBaseUrl } from './src/services/notificationService';
 
@@ -216,6 +243,13 @@ try {
   insertSetting.run('auto_backup_enabled', 'false');
   insertSetting.run('auto_backup_cron', '0 3 * * *');
   insertSetting.run('auto_backup_retention', '7');
+  insertSetting.run('calendar_subscription_mode', 'disabled'); // 'disabled', 'email', 'ui'
+  insertSetting.run('booking_upcoming_advance_minutes', '30');
+  
+  const hasSecret = db.prepare('SELECT 1 FROM settings WHERE key = ?').get('calendar_sync_secret');
+  if (!hasSecret) {
+    insertSetting.run('calendar_sync_secret', crypto.randomBytes(32).toString('hex'));
+  }
 } catch (e) {}
 
 try {
@@ -930,14 +964,149 @@ app.delete('/api/admin/penalty-rules/:id', adminAuth, (req, res) => {
   }
 });
 
+import { generateICS } from './src/lib/ics';
+
 // Get settings
 app.get('/api/settings', (req, res) => {
   const settings = db.prepare('SELECT * FROM settings').all();
+  const sensitivePrefixes = ['smtp.', 'webhook.', 'calendar_sync_secret'];
   const settingsMap = settings.reduce((acc: any, curr: any) => {
-    acc[curr.key] = curr.value;
+    if (!sensitivePrefixes.some(prefix => curr.key.startsWith(prefix))) {
+      acc[curr.key] = curr.value;
+    }
     return acc;
   }, {});
   res.json(settingsMap);
+});
+
+// --- Calendar API Routes ---
+
+app.get('/api/calendar/user/url', (req, res) => {
+  try {
+    const mode = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription_mode'").get() as any)?.value || 'disabled';
+    if (mode === 'disabled') {
+      return res.status(403).json({ error: 'Calendar subscription is disabled' });
+    }
+    
+    const { booking_code, protocol = 'webcal' } = req.query;
+    if (!booking_code) return res.status(400).json({ error: 'booking_code is required to verify identity' });
+
+    const reservation = db.prepare('SELECT student_id FROM reservations WHERE booking_code = ?').get(booking_code) as any;
+    if (!reservation) return res.status(404).json({ error: 'Invalid booking code' });
+
+    const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
+    if (!secret) return res.status(500).json({ error: 'Secret not configured' });
+
+    const token = encryptID(reservation.student_id, secret);
+    const host = req.get('host');
+    const url = `${protocol}://${host}/api/calendar/user/${token}.ics`;
+    
+    res.json({ url });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to generate calendar URL' });
+  }
+});
+
+app.post('/api/calendar/user/mail', (req, res) => {
+  try {
+    const mode = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription_mode'").get() as any)?.value || 'disabled';
+    if (mode !== 'email' && mode !== 'ui') {
+      return res.status(403).json({ error: 'Calendar email subscription is disabled' });
+    }
+
+    const { booking_code } = req.body;
+    if (!booking_code) return res.status(400).json({ error: 'booking_code is required' });
+
+    const reservation = db.prepare('SELECT student_id, email FROM reservations WHERE booking_code = ?').get(booking_code) as any;
+    if (!reservation) return res.status(404).json({ error: 'Invalid booking code' });
+    
+    const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
+    const token = encryptID(reservation.student_id, secret);
+    const host = req.get('host');
+    const url = `webcal://${host}/api/calendar/user/${token}.ics`;
+    
+    if (!reservation.email) return res.status(400).json({ error: 'No email associated with this booking' });
+
+    notifyEvent('calendar_subscription', reservation.student_id, undefined, {
+      student_id: reservation.student_id,
+      calendar_url: url
+    }, reservation.email);
+
+    res.json({ success: true, email: reservation.email });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to send calendar email' });
+  }
+});
+
+app.get('/api/calendar/user/:token.ics', (req, res) => {
+  try {
+    const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
+    const studentId = decryptID(req.params.token, secret);
+    
+    if (!studentId) return res.status(400).send('Invalid token');
+    
+    const reservations = db.prepare(`
+      SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee 
+      FROM reservations r
+      JOIN equipment e ON r.equipment_id = e.id
+      WHERE r.student_id = ? AND r.status IN ('approved', 'cancelled')
+      ORDER BY r.start_time ASC
+    `).all(studentId) as any[];
+
+    const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
+    const advanceMins = parseInt(advanceRow?.value || '30', 10);
+
+    const icsContent = generateICS(reservations, 'user', advanceMins);
+    
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="my_reservations.ics"');
+    res.send(icsContent);
+  } catch (error) {
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.get('/api/calendar/equipment/:token.ics', (req, res) => {
+  try {
+    const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
+    const equipmentId = decryptID(req.params.token, secret);
+    
+    if (!equipmentId) return res.status(400).send('Invalid token');
+
+    const reservations = db.prepare(`
+      SELECT r.*, e.name as equipment_name 
+      FROM reservations r
+      JOIN equipment e ON r.equipment_id = e.id
+      WHERE r.equipment_id = ? AND r.status IN ('approved', 'cancelled')
+      ORDER BY r.start_time ASC
+    `).all(equipmentId) as any[];
+
+    const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
+    const advanceMins = parseInt(advanceRow?.value || '30', 10);
+
+    const icsContent = generateICS(reservations, 'admin', advanceMins);
+    
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="equip_${equipmentId}_reservations.ics"`);
+    res.send(icsContent);
+  } catch(error) {
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.get('/api/admin/equipment/:id/calendar-url', adminAuth, (req, res) => {
+  try {
+    const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
+    if (!secret) return res.status(500).json({ error: 'Secret not configured' });
+
+    const token = encryptID(req.params.id, secret);
+    const host = req.get('host');
+    const url = `webcal://${host}/api/calendar/equipment/${token}.ics`;
+    
+    res.json({ url });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to generate calendar URL' });
+  }
 });
 
 app.get('/api/admin/settings/violation-params', adminAuth, (req, res) => {
@@ -2447,7 +2616,7 @@ app.post('/api/admin/penalty-rules/simulate', adminAuth, (req, res) => {
            contributing_ids: contributingIds,
            violations: violations.filter(v => contributingIds.includes(v.id)).map(v => ({
              ...v,
-             equipment_name: db.prepare('SELECT e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(v.reservation_id)?.equipment_name
+             equipment_name: (db.prepare('SELECT e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(v.reservation_id) as any)?.equipment_name
            }))
          });
       }
@@ -3267,7 +3436,9 @@ app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
     action: 'test_action',
     reason: '测试原因',
     resolution: 'approved',
-    reply: '测试回复'
+    reply: '测试回复',
+    advance_minutes: '30',
+    calendar_url: 'webcal://example.com/api/calendar/user/TEST_TOKEN.ics'
   };
 
   try {
