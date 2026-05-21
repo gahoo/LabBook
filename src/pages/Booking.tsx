@@ -85,6 +85,7 @@ export default function Booking() {
   });
 
   const [bookingCode, setBookingCode] = useState<string | null>(null);
+  const [bookingId, setBookingId] = useState<number | null>(null);
   const [bookingStatus, setBookingStatus] = useState<string | null>(null);
   const [bookingCodeDelivery, setBookingCodeDelivery] = useState<any>(null);
   const [successStructuredPenalty, setSuccessStructuredPenalty] =
@@ -103,6 +104,7 @@ export default function Booking() {
   const [appealReason, setAppealReason] = useState("");
   const [allowedEmailSuffixes, setAllowedEmailSuffixes] = useState<string[]>([]);
   const [emailError, setEmailError] = useState("");
+  const [calendarSubscriptionEnabled, setCalendarSubscriptionEnabled] = useState(false);
 
   const filteredRules = useMemo(() => {
     if (!structuredPenalty || !structuredPenalty.triggered_rules) return [];
@@ -172,6 +174,9 @@ export default function Booking() {
     fetch('/api/settings').then(r => r.json()).then(data => {
       if (data.allowed_email_suffixes) {
         setAllowedEmailSuffixes(data.allowed_email_suffixes.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean));
+      }
+      if (data['calendar_subscription.enabled'] === 'true') {
+        setCalendarSubscriptionEnabled(true);
       }
     }).catch(() => {});
   }, [id, location.search]);
@@ -385,6 +390,7 @@ export default function Booking() {
       }
 
       setBookingCode(data.booking_code);
+      setBookingId(data.id);
       setBookingStatus(data.status);
       setBookingCodeDelivery(data.booking_code_delivery);
       setSuccessStructuredPenalty(data.structured_penalty);
@@ -580,8 +586,7 @@ export default function Booking() {
     const handleSingleDownloadICS = () => {
       if (!equipment) return;
       const fmt: ICSReservation = {
-        id: 0,
-        equipment_id: equipment.id,
+        id: bookingId || 0,
         equipment_name: equipment.name,
         location: equipment.location,
         student_name: formData.student_name,
@@ -592,7 +597,7 @@ export default function Booking() {
         start_time: `${format(selectedDate, "yyyy-MM-dd")} ${startTime}:00`,
         end_time: `${format(endDate, "yyyy-MM-dd")} ${endTime}:00`,
         status: isApproved ? 'approved' : 'pending',
-        booking_code: bookingCode
+        booking_code: bookingCode || undefined
       };
 
       
@@ -692,7 +697,7 @@ export default function Booking() {
         >
           前往我的预约
         </button>
-        {isApproved && (
+        {isApproved && calendarSubscriptionEnabled && (
           <button
             onClick={handleSingleDownloadICS}
             className="w-full py-3 mt-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"

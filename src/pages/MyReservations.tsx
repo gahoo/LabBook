@@ -576,7 +576,7 @@ export default function MyReservations() {
       return;
     }
     const primaryCode = myReservations[0].booking_code;
-    const mode = settings['email.events.calendar_subscription.enabled'] === 'true' ? 'email' : 'url';
+    const mode = settings['email.events.calendar_subscription.enabled'] === 'true' ? 'email' : 'ui';
 
     if (mode === "email") {
       const loadingId = toast.loading("申请发送中...");
@@ -1173,7 +1173,7 @@ export default function MyReservations() {
                       )}
 
                     <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-50">
-                      {resv.status === "approved" && (
+                      {resv.status === "approved" && settings['calendar_subscription.enabled'] === 'true' && (
                         <button
                           onClick={() => handleSingleDownloadICS(resv)}
                           title="添加到日历"

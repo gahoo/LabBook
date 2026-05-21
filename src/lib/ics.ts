@@ -1,6 +1,6 @@
 export interface ICSReservation {
   id: number;
-  booking_code: string;
+  booking_code?: string;
   equipment_name: string;
   location?: string;
   start_time: string; // 'YYYY-MM-DD HH:mm:ss' or ISO string
@@ -12,6 +12,19 @@ export interface ICSReservation {
   phone?: string;
   supervisor?: string;
   notes?: string;
+}
+
+/**
+ * 针对数值型 ID 生成简易 Hash，用于脱敏呈现
+ */
+function hashId(id: number): string {
+  let hash = 5381;
+  const str = `res_${id}_salt`;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
 }
 
 /**
@@ -74,7 +87,7 @@ export function generateICS(
     }
 
     ics += 'BEGIN:VEVENT\r\n';
-    ics += `UID:${res.booking_code}@labbook\r\n`;
+    ics += `UID:${hashId(res.id)}@labbook\r\n`;
 
     const dtstart = formatICSDate(res.start_time);
     const dtend = formatICSDate(res.end_time);
@@ -102,15 +115,16 @@ export function generateICS(
     // SUMMARY 和 DESCRIPTION
     let summary = '';
     let description = '';
+    const displayCode = res.booking_code || '请查看邮箱/相关通知群组';
 
     if (viewMode === 'user') {
       summary = `[仪器预约] ${res.equipment_name}`;
       description = res.status === 'cancelled'
-        ? `您的预约已取消。\\n预约码: ${res.booking_code}`
-        : `请准时在 ${res.location || '实验室'} 使用 ${res.equipment_name}。\\n预约码: ${res.booking_code}`;
+        ? `您的预约已取消。\\n预约码: ${displayCode}`
+        : `请准时在 ${res.location || '实验室'} 使用 ${res.equipment_name}。\\n预约码: ${displayCode}`;
     } else {
       summary = `${res.student_name} - ${res.equipment_name}`;
-      description = `预约人: ${res.student_name} (${res.student_id})\\n电话: ${res.phone || '-'}\\n预约码: ${res.booking_code}`;
+      description = `预约人: ${res.student_name} (${res.student_id})\\n电话: ${res.phone || '-'}\\n预约码: ${displayCode}`;
     }
 
     ics += foldLine(`SUMMARY:${summary}`) + '\r\n';
