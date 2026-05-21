@@ -126,7 +126,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       setConfig({
         notification_interval_seconds: unflattened.notification_interval_seconds || '30',
         booking_upcoming_advance_minutes: unflattened.booking_upcoming_advance_minutes || '30',
-        calendar_subscription_mode: unflattened.calendar_subscription_mode || 'disabled',
+        calendar_subscription: unflattened.calendar_subscription || { enabled: 'false' },
         booking_code_delivery: unflattened.booking_code_delivery || { web: 'true' },
         smtp: unflattened.smtp || { enabled: false },
         webhook: unflattened.webhook || { enabled: false, events: {} },
@@ -145,7 +145,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       const payload = flattenObj({
         notification_interval_seconds: config.notification_interval_seconds,
         booking_upcoming_advance_minutes: config.booking_upcoming_advance_minutes,
-        calendar_subscription_mode: config.calendar_subscription_mode,
+        calendar_subscription: config.calendar_subscription,
         booking_code_delivery: config.booking_code_delivery || { web: 'true' }
       });
 
@@ -360,12 +360,66 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     }
   };
 
+  const checkIsLastBookingDeliveryMethod = (path: string[], toggledValue: string): boolean => {
+    if (toggledValue === 'true') return false; 
+    
+    // Only check for specific target paths
+    const targetPaths = [
+      'booking_code_delivery.web',
+      'smtp.enabled',
+      'webhook.enabled',
+      'email.events.booking_created.enabled',
+      'email.events.booking_approved.enabled',
+      'webhook.events.booking_created.enabled',
+      'webhook.events.booking_approved.enabled'
+    ];
+    
+    const pathStr = path.join('.');
+    // Allow matching e.g., 'email.events.booking_created' to 'email.events.booking_created.enabled'
+    const isTarget = targetPaths.some(p => pathStr === p || `${pathStr}.enabled` === p);
+    
+    if (!isTarget) return false;
+
+    // Simulate next config state
+    const nextConfig = JSON.parse(JSON.stringify(config));
+    let current = nextConfig;
+    for (let i = 0; i < path.length - 1; i++) {
+        if (!current[path[i]]) current[path[i]] = {};
+        current = current[path[i]];
+    }
+    current[path[path.length - 1]] = toggledValue;
+
+    const nextWeb = String(nextConfig.booking_code_delivery?.web) !== 'false';
+    const nextSmtp = String(nextConfig.smtp?.enabled) === 'true';
+    const nextSmtpCreated = String(nextConfig.email?.events?.booking_created?.enabled) === 'true';
+    const nextSmtpApproved = String(nextConfig.email?.events?.booking_approved?.enabled) === 'true';
+    
+    const nextHook = String(nextConfig.webhook?.enabled) === 'true';
+    const nextHookCreated = String(nextConfig.webhook?.events?.booking_created?.enabled) === 'true';
+    const nextHookApproved = String(nextConfig.webhook?.events?.booking_approved?.enabled) === 'true';
+
+    const validSmtp = nextSmtp && (nextSmtpCreated || nextSmtpApproved);
+    const validHook = nextHook && (nextHookCreated || nextHookApproved);
+
+    return !(nextWeb || validSmtp || validHook);
+  };
+
+  const safeUpdateAndSaveToggle = (path: string[], value: string) => {
+    if (checkIsLastBookingDeliveryMethod(path, value)) {
+      toast.error('必须至少保留一种有效的预约码获取途径。关闭时需确保已全局开启并勾选了 Email 或 Webhook 相关的预约通知。');
+      return;
+    }
+    updateAndSaveToggle(path, value);
+  };
+  
+  const isLastMethodFor = (path: string[]) => checkIsLastBookingDeliveryMethod(path, 'false');
+
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const toggleEventOnOff = (eventId: string, channel: 'email' | 'webhook', isEnabled: boolean) => {
-      updateAndSaveToggle([channel, 'events', eventId, 'enabled'], isEnabled ? 'true' : 'false');
+      safeUpdateAndSaveToggle([channel, 'events', eventId, 'enabled'], isEnabled ? 'true' : 'false');
   };
 
   if (loading) return <div className="p-8 text-center text-neutral-500">加载中...</div>;
@@ -433,31 +487,38 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               </div>
               <div className="pt-4 border-t border-neutral-100">
                 <label className="block text-sm font-medium text-neutral-800 mb-3">个人日历订阅功能</label>
-                <div className="flex flex-wrap gap-4 items-center">
-                  <select
-                    value={config.calendar_subscription_mode || 'disabled'}
-                    onChange={(e) => updateConfig(['calendar_subscription_mode'], e.target.value)}
-                    className="w-full sm:w-auto px-4 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white"
-                  >
-                    <option value="disabled">关闭 (禁止获取)</option>
-                    <option value="ui">在界面中直接展示及复制链接</option>
-                    <option value="email">仅允许发送至绑定的安全邮箱</option>
-                  </select>
+                <div className="flex items-center gap-3">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.calendar_subscription?.enabled === 'true'}
+                      onChange={(e) => updateConfig(['calendar_subscription', 'enabled'], e.target.checked ? 'true' : 'false')}
+                    />
+                    <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                  </label>
+                  <span className="text-sm font-medium text-neutral-700">在“我的预约”页面显示订阅按钮</span>
                 </div>
-                <p className="text-xs text-neutral-500 mt-2">允许用户在“我的预约”模块获取能够同步至个人日历 App (Apple, Outlook 等) 的公开订阅日历链接。支持邮箱分发以保障最佳隐私。</p>
+                <p className="mt-2 text-xs text-neutral-500 text-left">
+                  允许用户获取能够同步至个人日历 App (Apple, Outlook 等) 的日历订阅链接。<br/>
+                  若下方“事件通知管理”中开启了“日历订阅链接”的邮件通知，按钮行为将变为“发送链接至用户邮箱”。
+                </p>
               </div>
               <div className="pt-4 border-t border-neutral-100">
                 <label className="block text-sm font-medium text-neutral-800 mb-3">网页端预约码显示</label>
                 <div className="flex flex-wrap gap-6 items-center">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 text-red-600 rounded border-neutral-300 focus:ring-red-500"
-                      checked={String(config.booking_code_delivery?.web) !== 'false'}
-                      onChange={(e) => updateAndSaveToggle(['booking_code_delivery', 'web'], e.target.checked ? 'true' : 'false')}
-                    />
-                    <span className="text-sm font-medium text-neutral-700">网页上展示预约码</span>
-                  </label>
+                  <div className={`flex items-center gap-3 ${isLastMethodFor(['booking_code_delivery', 'web']) ? 'opacity-50' : ''}`}>
+                    <label className={`relative inline-flex items-center ${isLastMethodFor(['booking_code_delivery', 'web']) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={String(config.booking_code_delivery?.web) !== 'false'}
+                        onChange={(e) => safeUpdateAndSaveToggle(['booking_code_delivery', 'web'], e.target.checked ? 'true' : 'false')}
+                      />
+                      <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                    <span className="text-sm font-medium text-neutral-700 select-none">网页上展示预约码</span>
+                  </div>
                 </div>
                 <p className="text-xs text-neutral-500 mt-2">注：若您取消勾选，则网页上的预约成功界面不显示预约码。此时系统强制要求您必须已经配置并启用了 <b>Email</b> 或 <b>Webhook</b> 的预约事件通知，以便用户通过其它渠道获取到预约码。</p>
               </div>
@@ -477,15 +538,15 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               {String(config.smtp?.enabled) === 'true' && <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">已启用</span>}
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-4 ${isLastMethodFor(['smtp', 'enabled']) ? 'opacity-50' : ''}`} onClick={(e) => e.stopPropagation()}>
                 <span>全局启用</span>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isLastMethodFor(['smtp', 'enabled']) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input 
                     type="checkbox" 
                     value="" 
                     className="sr-only peer"
                     checked={String(config.smtp?.enabled) === 'true'}
-                    onChange={(e) => updateAndSaveToggle(['smtp', 'enabled'], e.target.checked ? 'true' : 'false')}
+                    onChange={(e) => safeUpdateAndSaveToggle(['smtp', 'enabled'], e.target.checked ? 'true' : 'false')}
                   />
                   <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
                 </label>
@@ -602,15 +663,15 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
               {String(config.webhook?.enabled) === 'true' && <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">已启用</span>}
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-4 ${isLastMethodFor(['webhook', 'enabled']) ? 'opacity-50' : ''}`} onClick={(e) => e.stopPropagation()}>
                 <span>全局启用</span>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isLastMethodFor(['webhook', 'enabled']) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input 
                     type="checkbox" 
                     value="" 
                     className="sr-only peer"
                     checked={String(config.webhook?.enabled) === 'true'}
-                    onChange={(e) => updateAndSaveToggle(['webhook', 'enabled'], e.target.checked ? 'true' : 'false')}
+                    onChange={(e) => safeUpdateAndSaveToggle(['webhook', 'enabled'], e.target.checked ? 'true' : 'false')}
                   />
                   <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
                 </label>
@@ -701,6 +762,9 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                   {EVENT_TYPES.map(evt => {
                     const webhookEnabled = String(config.webhook?.events?.[evt.id]?.enabled) === 'true';
                     const emailEnabled = String(config.email?.events?.[evt.id]?.enabled) === 'true';
+                    const isCalendarSub = evt.id === 'calendar_subscription';
+                    const isCalendarSubDisabled = isCalendarSub && config.calendar_subscription?.enabled !== 'true';
+
                     return (
                         <li key={evt.id} className="flex flex-col sm:flex-row px-6 py-4 hover:bg-neutral-50 sm:items-center justify-between group transition-colors gap-4">
                             <div>
@@ -713,21 +777,22 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                             <div className="flex items-center sm:gap-6 justify-between sm:justify-end">
                                 <div className="flex items-center gap-4 border-r border-neutral-200 pr-6">
                                      <div className="flex flex-col gap-2 items-end">
-                                        <div className="flex items-center gap-2 text-xs text-neutral-600">
+                                        <div className={`flex items-center gap-2 text-xs text-neutral-600 ${isLastMethodFor(['email', 'events', evt.id, 'enabled']) ? 'opacity-50' : ''}`} title={isCalendarSubDisabled ? "请先开启“允许用户订阅个人预约日历”功能" : ""}>
                                             <Mail className="w-3.5 h-3.5 opacity-60" /> 邮件
-                                            <label className="relative inline-flex items-center cursor-pointer">
+                                            <label className={`relative inline-flex items-center ${isCalendarSubDisabled || isLastMethodFor(['email', 'events', evt.id, 'enabled']) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                                               <input 
                                                 type="checkbox" 
                                                 className="sr-only peer"
                                                 checked={emailEnabled}
+                                                disabled={isCalendarSubDisabled}
                                                 onChange={(e) => toggleEventOnOff(evt.id, 'email', e.target.checked)}
                                               />
                                               <div className="w-7 h-4 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-red-600"></div>
                                             </label>
                                         </div>
-                                        <div className="flex items-center gap-2 text-xs text-neutral-600">
+                                        <div className={`flex items-center gap-2 text-xs text-neutral-600 ${isLastMethodFor(['webhook', 'events', evt.id, 'enabled']) ? 'opacity-50' : ''}`}>
                                             <Webhook className="w-3.5 h-3.5 opacity-60" /> Hook
-                                            <label className="relative inline-flex items-center cursor-pointer">
+                                            <label className={`relative inline-flex items-center ${isLastMethodFor(['webhook', 'events', evt.id, 'enabled']) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                                               <input 
                                                 type="checkbox" 
                                                 className="sr-only peer"

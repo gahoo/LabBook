@@ -243,7 +243,7 @@ try {
   insertSetting.run('auto_backup_enabled', 'false');
   insertSetting.run('auto_backup_cron', '0 3 * * *');
   insertSetting.run('auto_backup_retention', '7');
-  insertSetting.run('calendar_subscription_mode', 'disabled'); // 'disabled', 'email', 'ui'
+  insertSetting.run('calendar_subscription.enabled', 'false');
   insertSetting.run('booking_upcoming_advance_minutes', '30');
   
   const hasSecret = db.prepare('SELECT 1 FROM settings WHERE key = ?').get('calendar_sync_secret');
@@ -1054,8 +1054,8 @@ app.get('/api/settings', (req, res) => {
 
 app.get('/api/calendar/user/url', (req, res) => {
   try {
-    const mode = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription_mode'").get() as any)?.value || 'disabled';
-    if (mode === 'disabled') {
+    const enabled = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription.enabled'").get() as any)?.value === 'true';
+    if (!enabled) {
       return res.status(403).json({ error: 'Calendar subscription is disabled' });
     }
     
@@ -1080,9 +1080,9 @@ app.get('/api/calendar/user/url', (req, res) => {
 
 app.post('/api/calendar/user/mail', (req, res) => {
   try {
-    const mode = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription_mode'").get() as any)?.value || 'disabled';
-    if (mode !== 'email' && mode !== 'ui') {
-      return res.status(403).json({ error: 'Calendar email subscription is disabled' });
+    const enabled = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription.enabled'").get() as any)?.value === 'true';
+    if (!enabled) {
+      return res.status(403).json({ error: 'Calendar subscription is disabled' });
     }
 
     const { booking_code } = req.body;

@@ -576,7 +576,7 @@ export default function MyReservations() {
       return;
     }
     const primaryCode = myReservations[0].booking_code;
-    const mode = settings.calendar_subscription_mode;
+    const mode = settings['email.events.calendar_subscription.enabled'] === 'true' ? 'email' : 'url';
 
     if (mode === "email") {
       const loadingId = toast.loading("申请发送中...");
@@ -666,7 +666,7 @@ export default function MyReservations() {
               预约列表
             </h3>
             <div className="flex items-center gap-4">
-              {settings.calendar_subscription_mode && settings.calendar_subscription_mode !== 'disabled' && (
+              {settings['calendar_subscription.enabled'] === 'true' && (
                 <button
                   onClick={handleSubscribeCalendar}
                   className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
