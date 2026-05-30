@@ -124,3 +124,32 @@
 
 **总结**
 由于系统采取了去中心化的免注册设计模式，安全防御的重心应当转移到**防自动化攻击（Rate Limit）**、**凭据的复杂性与保密性（高熵预约码）**以及**多因素维度的身份确权（学号+预约码+可能的手机验证码结合）**上。按照上述建议落实，即可在维持轻量化设计的同时达到较好的安全水平。
+
+## 4. API层的专项安全审查 (API-Specific Security Review)
+
+除上述逻辑漏洞外，从 HTTP 和 API 的设计层面出发，本系统还存在以下安全隐患：
+
+### 4.1 缺乏 IDOR (不安全的直接对象引用) 防护
+- **发现问题**：如 `/api/violations/my` 接口允许通过 `req.body.student_id` 获取该学号下的所有违约记录；`/api/reservations/:code` 允许通过 `booking_code` 随意读取预约详情。
+- **安全风险**：如果 `student_id` 存在枚举性，或者 `booking_code` 生成规律被破解，任何人都可以遍历获取其他用户的姓名、联系方式(`phone`、`email`)等个人敏感信息 (PII)。
+- **修复建议**：必须对查询者进行身份校验，或者将凭证转化为高强度的 Token（例如前文建议的增强 `booking_code` 长度，或者结合手机短信进行短效鉴权）。
+
+### 4.2 API 分页机制与资源耗尽 (Pagination & Resource Exhaustion)
+- **发现问题**：
+  1. 在 `/api/admin/delivery-logs` 等接口中，存在 `page` 和 `limit` 参数。但服务端未对 `limit` 设置最大值限制。
+  2. 诸如 `/api/admin/audit-logs` 或 `/api/admin/reports` 根本没有分页设计，直接执行 `.all()` 捞取所有数据返回。
+- **安全风险**：攻击者或者粗心的请求可以传递极其巨大的 `limit`，或在没有分页的接口上积累海量数据导致 Node.js 进程 OOM (Out Of Memory)，引发服务拒绝服务 (DoS)。
+- **修复建议**：
+  - 对所有支持分页的接口设定最大限制（如 `Math.min(parseInt(limit), 100)`）。
+  - 对没有分页的接口必须加上分页设计或强制的时间范围查询阈值（如最多查1个月）。
+
+### 4.3 负载限制与参数污染 (Payload Size & HTTP Parameter Pollution)
+- **发现问题**：
+  1. Express 初始化为 `app.use(express.json());`，没有明确设定 `limit` 属性（默认可能是 100kb，但对于某些大文本输入如 `availability_json` 或白名单文件可能需要明确控制边界）。
+  2. 未使用 `hpp` (HTTP Parameter Pollution) 等中间件，若客户端通过 `req.query.id=1&req.query.id=2` 传递数组，可能会导致非预期的数据库查询逻辑异常（虽然部分代码如 `.split(',')` 强制按字符串处理一定程度规避了问题）。
+- **修复建议**：设定明确的 payload 限制：`app.use(express.json({ limit: '1mb' }));`。并防范参数污染。
+
+### 4.4 CORS 与 CSRF 防护缺失
+- **发现问题**：代码中未见配置 CORS 和 CSRF Token 的相关中间件（如 `cors` 模块配置或 `csurf`）。
+- **安全风险**：虽然应用可能是同源部署（Frontend 与 Backend 一体），但如果不显式限制 CORS，外部站点可能会伪造 API 请求（特别是无需身份认证即可提交预约等 POST 接口），或者如果存在基于 Cookie 的管理员会话（当前使用 Bearer token 规避了 CSRF，但不代表无风险）。
+- **修复建议**：明确配置严格的 CORS 策略只允许受信任的 Origin 进行调用；针对无需登录的接口增加行为验证码（CAPTCHA 或 Turnstile）防止机器发包或跨站攻击。
