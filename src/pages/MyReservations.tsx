@@ -110,16 +110,27 @@ export default function MyReservations() {
         .find((row) => row.startsWith("lab_booking_codes="))
         ?.split("=")[1] || "";
 
-    if (!codesStr) return;
+    if (!codesStr) {
+      setMyReservations([]);
+      return;
+    }
     const codes = codesStr.split(",").filter(Boolean);
+    if (codes.length === 0) {
+      setMyReservations([]);
+      return;
+    }
 
     try {
-      const results = await Promise.all(
-        codes.map((c) =>
-          fetch(`/api/reservations/${c}`).then((r) => (r.ok ? r.json() : null)),
-        ),
-      );
-      const validResults = results.filter(Boolean);
+      const res = await fetch(`/api/reservations/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codes }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to fetch reservations");
+      }
+      const results = await res.json();
+      const validResults = Array.isArray(results) ? results.filter(Boolean) : [];
 
       // Sort: active, approved, pending, completed, cancelled, then closest to now
       const sorted = validResults.sort((a, b) => {
@@ -172,9 +183,8 @@ export default function MyReservations() {
             ?.split("=")[1] || "";
         const codes = codesStr.split(",").filter(Boolean);
         if (!codes.includes(data.booking_code)) {
-          const newCodes = codesStr
-            ? `${codesStr},${data.booking_code}`
-            : data.booking_code;
+          const newCodesArr = [data.booking_code, ...codes].slice(0, 50);
+          const newCodes = newCodesArr.join(",");
           document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
           fetchMyReservations();
         }

@@ -24,3 +24,4 @@
 - [x] 报表图表与统计表解耦控制 (feature-reports-sync-logic)
 - [x] 历史数据违规追溯扫描 (feature-penalty-retroactive-scan)
 - [x] 限制邮箱后缀预约功能 (feature-email-suffix-restriction)
+- [x] 日历集成与预通知任务 (feature-calendar-integration)

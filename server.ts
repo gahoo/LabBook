@@ -1282,7 +1282,18 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
 
 // 1. Get all equipment
 app.get('/api/equipment', (req, res) => {
-  const equipment = db.prepare('SELECT * FROM equipment').all();
+  const isAdmin = req.headers.authorization === `Bearer ${ADMIN_PASSWORD}`;
+  let equipment = db.prepare('SELECT * FROM equipment').all() as any[];
+  
+  if (!isAdmin) {
+    equipment = equipment
+      .filter((eq) => !eq.is_hidden)
+      .map((eq) => {
+        const { whitelist_data, ...rest } = eq;
+        return rest;
+      });
+  }
+  
   res.json(equipment);
 });
 
@@ -1456,11 +1467,11 @@ app.get('/api/equipment/availability/today', (req, res) => {
     windowEnd.setDate(windowEnd.getDate() + 2);
 
     const reservationsRaw = db.prepare(`
-      SELECT * FROM reservations 
+      SELECT start_time, end_time, actual_start_time FROM reservations 
       WHERE equipment_id = ? 
       AND status IN ('pending', 'approved', 'active')
       AND start_time < ? AND end_time > ?
-    `).all(eq.id, windowEnd.toISOString(), windowStart.toISOString());
+    `).all(eq.id, windowEnd.toISOString(), windowStart.toISOString()) as any[];
 
     let reservations = reservationsRaw;
     if (eq.release_noshow_slots) {
@@ -1480,7 +1491,7 @@ app.get('/api/equipment/availability/today', (req, res) => {
       equipment_id: eq.id,
       equipment_name: eq.name,
       availableSlots,
-      reservations,
+      reservations: reservations.map(r => ({ start_time: r.start_time, end_time: r.end_time })),
       maxDurationMinutes: availability.maxDurationMinutes || 60,
       minDurationMinutes: availability.minDurationMinutes || 30
     };
@@ -1492,10 +1503,12 @@ app.get('/api/equipment/availability/today', (req, res) => {
 // 3. Get availability for an equipment on a specific date
 app.get('/api/equipment/:id/availability', (req, res) => {
   const { id } = req.params;
-  const { date } = req.query; // YYYY-MM-DD
+  const { date, start_date, end_date } = req.query as any;
   
-  if (!date || typeof date !== 'string') {
-    return res.status(400).json({ error: '需要提供日期' });
+  const isRange = !!(start_date && end_date);
+
+  if (!date && !isRange) {
+    return res.status(400).json({ error: '需要提供 date 或 start_date & end_date' });
   }
 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as any;
@@ -1503,9 +1516,6 @@ app.get('/api/equipment/:id/availability', (req, res) => {
     return res.status(404).json({ error: '未找到该仪器' });
   }
 
-  const targetDate = parseISO(date);
-  const dayOfWeek = targetDate.getDay(); // 0 (Sun) to 6 (Sat)
-  
   let availability;
   try {
     availability = JSON.parse(equipment.availability_json || '{"rules":[], "advanceDays": 7, "maxDurationMinutes": 60, "minDurationMinutes": 30}');
@@ -1513,55 +1523,107 @@ app.get('/api/equipment/:id/availability', (req, res) => {
     availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
   }
 
-  // Check if date is within advance booking range
   const today = startOfDay(new Date());
   const maxDate = addDays(today, availability.advanceDays || 7);
-  if (isAfter(targetDate, maxDate)) {
-    return res.json({ availableSlots: [], message: `仅支持提前 ${availability.advanceDays} 天预约` });
+  const now = new Date().getTime();
+  
+  const datesToProcess = [];
+  if (isRange) {
+    const s = parseISO(start_date);
+    const e = parseISO(end_date);
+    let curr = s;
+    while (curr <= e && datesToProcess.length < 100) {
+      datesToProcess.push(format(curr, 'yyyy-MM-dd'));
+      curr = addDays(curr, 1);
+    }
+  } else {
+    datesToProcess.push(date);
   }
 
-  const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
-  const availableSlots: { start: string, end: string }[] = [];
+  const minDateStr = datesToProcess[0];
+  const maxDateStr = datesToProcess[datesToProcess.length - 1];
 
-  rules.forEach((rule: any) => {
-    availableSlots.push({
-      start: `${date}T${rule.start}:00`,
-      end: `${date}T${rule.end}:00`
-    });
-  });
-
-  const windowStart = new Date(`${date}T00:00:00`);
+  const windowStart = new Date(`${minDateStr}T00:00:00`);
   windowStart.setDate(windowStart.getDate() - 1);
-  const windowEnd = new Date(`${date}T00:00:00`);
+  const windowEnd = new Date(`${maxDateStr}T00:00:00`);
   windowEnd.setDate(windowEnd.getDate() + 2);
 
-  // Fetch existing reservations for this date and adjacent dates to handle timezone offsets
   const reservationsRaw = db.prepare(`
     SELECT id, start_time, end_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
     AND start_time < ? AND end_time > ?
-  `).all(id, windowEnd.toISOString(), windowStart.toISOString());
+  `).all(id, windowEnd.toISOString(), windowStart.toISOString()) as any[];
 
-  let reservations = reservationsRaw;
+  let rangeReservations = reservationsRaw;
   if (equipment.release_noshow_slots) {
-    const now = new Date().getTime();
-    reservations = reservationsRaw.filter((res: any) => {
+    rangeReservations = reservationsRaw.filter((res: any) => {
       if (!res.actual_start_time) {
         const startTime = new Date(res.start_time).getTime();
         if (now > startTime + 30 * 60 * 1000) {
-          return false; // Filter out no-shows
+          return false;
         }
       }
       return true;
     });
   }
 
-  res.json({ 
-    availableSlots, 
-    reservations, 
-    maxDurationMinutes: availability.maxDurationMinutes,
-    minDurationMinutes: availability.minDurationMinutes || 30
+  const results = datesToProcess.map(dStr => {
+    const targetDate = parseISO(dStr);
+    const dayOfWeek = targetDate.getDay();
+
+    if (isAfter(targetDate, maxDate)) {
+      return { 
+        date: dStr,
+        availableSlots: [], 
+        reservations: [], 
+        maxDurationMinutes: availability.maxDurationMinutes, 
+        minDurationMinutes: availability.minDurationMinutes || 30,
+        message: `仅支持提前 ${availability.advanceDays} 天预约` 
+      };
+    }
+
+    const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
+    const availableSlots: { start: string, end: string }[] = [];
+    rules.forEach((rule: any) => {
+      availableSlots.push({
+        start: `${dStr}T${rule.start}:00`,
+        end: `${dStr}T${rule.end}:00`
+      });
+    });
+
+    const dStrStart = new Date(`${dStr}T00:00:00`);
+    const dStrStartMs = dStrStart.getTime();
+
+    const dStrEnd = new Date(`${dStr}T00:00:00`);
+    dStrEnd.setDate(dStrEnd.getDate() + 1);
+    const dStrEndMs = dStrEnd.getTime();
+
+    const localReservations = rangeReservations.filter((r: any) => {
+      const sMs = new Date(r.start_time).getTime();
+      const eMs = new Date(r.end_time).getTime();
+      return sMs < dStrEndMs && eMs > dStrStartMs;
+    });
+
+    return {
+      date: dStr,
+      availableSlots,
+      reservations: localReservations,
+      maxDurationMinutes: availability.maxDurationMinutes,
+      minDurationMinutes: availability.minDurationMinutes || 30
+    };
   });
+
+  if (isRange) {
+    return res.json(results);
+  } else {
+    return res.json({ 
+      availableSlots: results[0].availableSlots, 
+      reservations: results[0].reservations, 
+      maxDurationMinutes: results[0].maxDurationMinutes,
+      minDurationMinutes: results[0].minDurationMinutes,
+      message: (results[0] as any).message
+    });
+  }
 });
 
 // Get all reservations for an equipment in a date range (for chart)
@@ -1903,7 +1965,35 @@ app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) =
   res.json({ success: true });
 });
 
+// 5. Get reservations by code (batch)
+app.post('/api/reservations/batch', (req, res) => {
+  const codesArray = req.body.codes as string[];
+  if (!Array.isArray(codesArray)) {
+    return res.status(400).json({ error: 'codes must be an array' });
+  }
+
+  const validCodes = codesArray.map(c => String(c).trim()).filter(Boolean);
+  if (validCodes.length === 0) {
+    return res.json([]);
+  }
+
+  if (validCodes.length > 200) {
+    return res.status(400).json({ error: 'Too many codes' });
+  }
+
+  const placeholders = validCodes.map(() => '?').join(',');
+  const reservations = db.prepare(`
+    SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee, e.release_noshow_slots 
+    FROM reservations r
+    JOIN equipment e ON r.equipment_id = e.id
+    WHERE r.booking_code IN (${placeholders})
+  `).all(...validCodes);
+
+  res.json(reservations);
+});
+
 // 5. Get reservation by code
+
 app.get('/api/reservations/:code', (req, res) => {
   const { code } = req.params;
   const reservation = db.prepare(`

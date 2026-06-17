@@ -62,7 +62,6 @@ export default function Booking() {
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [endDate, setEndDate] = useState<Date>(startOfToday());
-  const [availableRanges, setAvailableRanges] = useState<Slot[]>([]);
   const [existingReservations, setExistingReservations] = useState<
     Reservation[]
   >([]);
@@ -71,6 +70,8 @@ export default function Booking() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [advanceDays, setAdvanceDays] = useState(7);
   const [allowOutOfHours, setAllowOutOfHours] = useState(false);
+  const [allAvailability, setAllAvailability] = useState<any[]>([]);
+  const [loadingAll, setLoadingAll] = useState(false);
 
   const [startTime, setStartTime] = useState<string>("");
   const [endTime, setEndTime] = useState<string>("");
@@ -182,20 +183,20 @@ export default function Booking() {
   }, [id, location.search]);
 
   useEffect(() => {
-    if (!id || !selectedDate) return;
+    if (!selectedDate || allAvailability.length === 0) return;
     setLoadingSlots(true);
-    fetch(
-      `/api/equipment/${id}/availability?date=${format(selectedDate, "yyyy-MM-dd")}`,
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        setAvailableRanges(data.availableSlots || []);
-        setExistingReservations(data.reservations || []);
-        setMaxDuration(data.maxDurationMinutes || 60);
-        setMinDuration(data.minDurationMinutes || 30);
-        setLoadingSlots(false);
-      });
-  }, [id, selectedDate]);
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    const dayData = allAvailability.find((a) => a.date === dateStr);
+    
+    if (dayData) {
+      setExistingReservations(dayData.reservations || []);
+      setMaxDuration(dayData.maxDurationMinutes || 60);
+      setMinDuration(dayData.minDurationMinutes || 30);
+    } else {
+      setExistingReservations([]);
+    }
+    setLoadingSlots(false);
+  }, [selectedDate, allAvailability]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -403,15 +404,17 @@ export default function Booking() {
 
       // Save booking code to cookies
       if (data.booking_code) {
-        const existingCodes =
+        const existingCodesStr =
           document.cookie
             .split("; ")
             .find((row) => row.startsWith("lab_booking_codes="))
             ?.split("=")[1] || "";
-        const newCodes = existingCodes
-          ? `${existingCodes},${data.booking_code}`
-          : data.booking_code;
-        document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
+        const existingCodes = existingCodesStr.split(',').filter(Boolean);
+        if (!existingCodes.includes(data.booking_code)) {
+          const newCodesArr = [data.booking_code, ...existingCodes].slice(0, 50);
+          const newCodes = newCodesArr.join(",");
+          document.cookie = `lab_booking_codes=${newCodes}; max-age=31536000; path=/`;
+        }
       }
     } catch (err: any) {
       console.error("Reservation error:", err);
@@ -455,24 +458,19 @@ export default function Booking() {
     Sun: "周日",
   };
 
-  const [allAvailability, setAllAvailability] = useState<any[]>([]);
-  const [loadingAll, setLoadingAll] = useState(false);
-
   useEffect(() => {
     if (!id || !equipment) return;
     setLoadingAll(true);
     const fetchAll = async () => {
-      const dates = Array.from({ length: advanceDays + 1 }).map((_, i) =>
-        format(addDays(startOfToday(), i), "yyyy-MM-dd"),
-      );
-      const results = await Promise.all(
-        dates.map((d) =>
-          fetch(`/api/equipment/${id}/availability?date=${d}`).then((r) =>
-            r.json(),
-          ),
-        ),
-      );
-      setAllAvailability(results.map((r, i) => ({ date: dates[i], ...r })));
+      const startDate = format(startOfToday(), "yyyy-MM-dd");
+      const endDate = format(addDays(startOfToday(), advanceDays), "yyyy-MM-dd");
+      try {
+        const res = await fetch(`/api/equipment/${id}/availability?start_date=${startDate}&end_date=${endDate}`);
+        const results = await res.json();
+        setAllAvailability(results);
+      } catch (e) {
+        console.error("Failed to fetch all availability", e);
+      }
       setLoadingAll(false);
     };
     fetchAll();
