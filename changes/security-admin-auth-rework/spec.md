@@ -21,7 +21,7 @@
   优先读取环境变量 `process.env.JWT_SECRET`。如果在未配置的情况下，服务端进程启动时同样通过 `crypto.randomBytes` 生成一个专属当前运行周期的临时 Secret。
   *这意味着如果没配置固定的 Secret，每次服务器重启都会使过去签发的 Token 自动作废，起到极大的安全阻断作用。*
 * **改造 `/api/admin/login` 接口**：
-  * 请求中校验 `password`。符合条件后，不再原样返回密码。而是使用 `jwt.sign` 包装管理员身份信息，签发一个过期时间固定为（`12h`）或（`24h`）的加密 Token 并返回给前端。
+  * 请求中校验 `password`。符合条件后，不再原样返回密码。而是使用 `jwt.sign` 包装管理员身份信息，签发一个过期时间受系统设置 `jwt_expires_in_hours` （默认 168 小时）控制的加密 Token 并返回给前端。
 * **改造 `adminAuth` 鉴权中间件**：
   * 拦截并截取请求头里面的 `Authorization: Bearer <TOKEN>`。
   * 放弃原先直接判断 `token === adminPassword` 的危险逻辑。

@@ -257,6 +257,7 @@ try {
   insertSetting.run('auto_backup_retention', '7');
   insertSetting.run('calendar_subscription.enabled', 'false');
   insertSetting.run('booking_upcoming_advance_minutes', '30');
+  insertSetting.run('jwt_expires_in_hours', '168');
   
   const hasSecret = db.prepare('SELECT 1 FROM settings WHERE key = ?').get('calendar_sync_secret');
   if (!hasSecret) {
@@ -1322,7 +1323,9 @@ app.get('/api/equipment', (req, res) => {
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
-    const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '24h' });
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'jwt_expires_in_hours'").get() as any;
+    const expiresHours = row && !isNaN(parseInt(row.value, 10)) ? parseInt(row.value, 10) : 168;
+    const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: `${expiresHours}h` });
     res.json({ success: true, token });
   } else {
     res.status(401).json({ error: '密码错误' });

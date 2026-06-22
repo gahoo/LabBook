@@ -15,6 +15,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
   const [defaultRoute, setDefaultRoute] = useState('/');
   const [appLogo, setAppLogo] = useState('');
   const [allowedEmailSuffixes, setAllowedEmailSuffixes] = useState('');
+  const [jwtExpiresInHours, setJwtExpiresInHours] = useState('168');
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +33,7 @@ export default function SettingsTab({ token }: SettingsTabProps) {
       if (data.default_route) setDefaultRoute(data.default_route);
       if (data.app_logo) setAppLogo(data.app_logo);
       if (data.allowed_email_suffixes) setAllowedEmailSuffixes(data.allowed_email_suffixes);
+      if (data.jwt_expires_in_hours) setJwtExpiresInHours(data.jwt_expires_in_hours);
     } catch (err) {
       console.error('Failed to fetch settings', err);
     } finally {
@@ -66,7 +68,8 @@ export default function SettingsTab({ token }: SettingsTabProps) {
           app_name: appName,
           default_route: defaultRoute,
           app_logo: appLogo,
-          allowed_email_suffixes: allowedEmailSuffixes
+          allowed_email_suffixes: allowedEmailSuffixes,
+          jwt_expires_in_hours: jwtExpiresInHours
         })
       });
 
@@ -215,6 +218,23 @@ export default function SettingsTab({ token }: SettingsTabProps) {
               />
               <p className="text-xs text-neutral-500 mt-2">
                 支持配置多个后缀，以逗号分隔，留空表示不限制。例如：pku.edu.cn, tsinghua.edu.cn。
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                JWT 过期时间（小时）
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={jwtExpiresInHours}
+                onChange={(e) => setJwtExpiresInHours(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all"
+                placeholder="例如：168"
+              />
+              <p className="text-xs text-neutral-500 mt-2">
+                设置管理员登录凭证（JWT）的有效期，默认为 168 小时（7 天）。
               </p>
             </div>
 
