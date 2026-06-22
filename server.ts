@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 
 // ICS Token helper functions
 function encryptID(id: string | number, secretHex: string): string {
@@ -49,7 +50,18 @@ app.use((req, res, next) => {
 });
 
 const db = new Database('lab_equipment.db');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+
+if (!ADMIN_PASSWORD) {
+  ADMIN_PASSWORD = crypto.randomBytes(16).toString('hex');
+  console.warn('\n===================================================================');
+  console.warn('WARNING: No ADMIN_PASSWORD provided in environment variables.');
+  console.warn('A resilient temporary password has been generated for this session:');
+  console.warn(`=> ${ADMIN_PASSWORD} <=`);
+  console.warn('Please set ADMIN_PASSWORD in your .env file for production use.');
+  console.warn('===================================================================\n');
+}
 
 // Initialize DB
 db.exec(`
@@ -451,9 +463,18 @@ processNotificationQueue(db).catch(console.error);
 
 const adminAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
-  if (authHeader === `Bearer ${ADMIN_PASSWORD}`) {
-    next();
-  } else {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    if (decoded && decoded.role === 'admin') {
+      next();
+    } else {
+      res.status(401).json({ error: 'Unauthorized' });
+    }
+  } catch (err) {
     res.status(401).json({ error: 'Unauthorized' });
   }
 };
@@ -1301,7 +1322,8 @@ app.get('/api/equipment', (req, res) => {
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
-    res.json({ success: true, token: ADMIN_PASSWORD });
+    const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ success: true, token });
   } else {
     res.status(401).json({ error: '密码错误' });
   }

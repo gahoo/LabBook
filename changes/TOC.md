@@ -25,3 +25,5 @@
 - [x] 历史数据违规追溯扫描 (feature-penalty-retroactive-scan)
 - [x] 限制邮箱后缀预约功能 (feature-email-suffix-restriction)
 - [x] 日历集成与预通知任务 (feature-calendar-integration)
+- [x] 性能与安全优化 (perf-sec-optimizations)
+- [x] 管理员认证与弱密码安全修复 (security-admin-auth-rework)
