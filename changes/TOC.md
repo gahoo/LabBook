@@ -27,3 +27,4 @@
 - [x] 日历集成与预通知任务 (feature-calendar-integration)
 - [x] 性能与安全优化 (perf-sec-optimizations)
 - [x] 管理员认证与弱密码安全修复 (security-admin-auth-rework)
+- [x] 公开预约查询隐私字段层面对界屏蔽 (security-idor-privacy)

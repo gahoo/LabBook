@@ -2008,7 +2008,11 @@ app.post('/api/reservations/batch', (req, res) => {
 
   const placeholders = validCodes.map(() => '?').join(',');
   const reservations = db.prepare(`
-    SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee, e.release_noshow_slots 
+    SELECT 
+      r.id, r.equipment_id, r.student_name, r.student_id, r.supervisor, 
+      r.start_time, r.end_time, r.status, r.booking_code,
+      r.total_cost, r.consumable_quantity, r.modified_count,
+      e.name as equipment_name, e.price_type, e.price, e.consumable_fee
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     WHERE r.booking_code IN (${placeholders})
@@ -2022,7 +2026,11 @@ app.post('/api/reservations/batch', (req, res) => {
 app.get('/api/reservations/:code', (req, res) => {
   const { code } = req.params;
   const reservation = db.prepare(`
-    SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee, e.release_noshow_slots 
+    SELECT 
+      r.id, r.equipment_id, r.student_name, r.student_id, r.supervisor, 
+      r.start_time, r.end_time, r.status, r.booking_code,
+      r.total_cost, r.consumable_quantity, r.modified_count,
+      e.name as equipment_name, e.price_type, e.price, e.consumable_fee
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     WHERE r.booking_code = ?
