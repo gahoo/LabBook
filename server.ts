@@ -1864,48 +1864,65 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   }
   let isOutOfHours = validResult.isOutOfHours;
 
-  // Check if slot is already booked
-  const existingRaw = db.prepare(`
-    SELECT id, start_time, actual_start_time FROM reservations 
-    WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-    AND start_time < ? AND end_time > ?
-  `).all(equipment_id, end_time, start_time);
+  const tx = db.transaction(() => {
+    // Check if slot is already booked
+    const existingRaw = db.prepare(`
+      SELECT id, start_time, actual_start_time FROM reservations 
+      WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
+      AND start_time < ? AND end_time > ?
+    `).all(equipment_id, end_time, start_time);
 
-  let hasConflict = false;
-  if (existingRaw.length > 0) {
-    if (equipment.release_noshow_slots) {
-      const nowTime = new Date().getTime();
-      hasConflict = existingRaw.some((res: any) => {
-        if (!res.actual_start_time) {
-          const resStartTime = new Date(res.start_time).getTime();
-          if (nowTime > resStartTime + 30 * 60 * 1000) {
-            return false; // This is a no-show, so it's not a conflict
+    let hasConflict = false;
+    if (existingRaw.length > 0) {
+      if (equipment.release_noshow_slots) {
+        const nowTime = new Date().getTime();
+        hasConflict = existingRaw.some((res: any) => {
+          if (!res.actual_start_time) {
+            const resStartTime = new Date(res.start_time).getTime();
+            if (nowTime > resStartTime + 30 * 60 * 1000) {
+              return false; // This is a no-show, so it's not a conflict
+            }
           }
-        }
-        return true;
-      });
-    } else {
-      hasConflict = true;
+          return true;
+        });
+      } else {
+        hasConflict = true;
+      }
     }
+
+    if (hasConflict) {
+      return { ok: false, error: '该时间段已被预约' };
+    }
+
+    const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    let status = isOutOfHours || !equipment.auto_approve ? 'pending' : 'approved';
+    
+    if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
+      status = 'pending';
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
+    return { ok: true, info, booking_code, status };
+  });
+
+  let txResult;
+  try {
+    txResult = tx();
+  } catch (e: any) {
+    console.error('Create reservation transaction error:', e);
+    return res.status(500).json({ error: '预约失败：服务器内部数据库错误，请重试' });
   }
 
-  if (hasConflict) {
-    return res.status(400).json({ error: '该时间段已被预约' });
+  if (!txResult.ok) {
+    return res.status(400).json({ error: txResult.error });
   }
 
-  const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
-  let status = isOutOfHours || !equipment.auto_approve ? 'pending' : 'approved';
-  
-  if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
-    status = 'pending';
-  }
-
-  const stmt = db.prepare(`
-    INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
+  const { info, booking_code, status } = txResult;
 
   notifyEvent(db, 'booking_created', {
     booking_id: info.lastInsertRowid,
@@ -2240,47 +2257,62 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   }
   let isOutOfHours = validResult.isOutOfHours;
 
-  // Check conflicts (excluding self)
-  const conflictRaw = db.prepare(`
-    SELECT id, start_time, actual_start_time FROM reservations 
-    WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
-    AND start_time < ? AND end_time > ?
-  `).all(reservation.equipment_id, reservation.id, end_time, start_time);
+  const tx = db.transaction(() => {
+    // Check conflicts (excluding self)
+    const conflictRaw = db.prepare(`
+      SELECT id, start_time, actual_start_time FROM reservations 
+      WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
+      AND start_time < ? AND end_time > ?
+    `).all(reservation.equipment_id, reservation.id, end_time, start_time);
 
-  let hasConflict = false;
-  if (conflictRaw.length > 0) {
-    if (equipment.release_noshow_slots) {
-      const nowTime = new Date().getTime();
-      hasConflict = conflictRaw.some((res: any) => {
-        if (!res.actual_start_time) {
-          const resStartTime = new Date(res.start_time).getTime();
-          if (nowTime > resStartTime + 30 * 60 * 1000) {
-            return false; // This is a no-show, so it's not a conflict
+    let hasConflict = false;
+    if (conflictRaw.length > 0) {
+      if (equipment.release_noshow_slots) {
+        const nowTime = new Date().getTime();
+        hasConflict = conflictRaw.some((res: any) => {
+          if (!res.actual_start_time) {
+            const resStartTime = new Date(res.start_time).getTime();
+            if (nowTime > resStartTime + 30 * 60 * 1000) {
+              return false; // This is a no-show, so it's not a conflict
+            }
           }
-        }
-        return true;
-      });
-    } else {
-      hasConflict = true;
+          return true;
+        });
+      } else {
+        hasConflict = true;
+      }
     }
+
+    if (hasConflict) {
+      return { ok: false, error: '所选时间段已有其他预约' };
+    }
+
+    let newStatus = isOutOfHours || !equipment.auto_approve ? 'pending' : 'approved';
+    
+    if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
+      newStatus = 'pending';
+    }
+
+    const stmt = db.prepare(`
+      UPDATE reservations 
+      SET start_time = ?, end_time = ?, modified_count = modified_count + 1, status = ?
+      WHERE id = ?
+    `);
+    stmt.run(start_time, end_time, newStatus, reservation.id);
+    return { ok: true };
+  });
+
+  let txResult;
+  try {
+    txResult = tx();
+  } catch (e: any) {
+    console.error('Update reservation transaction error:', e);
+    return res.status(500).json({ error: '修改失败：服务器内部数据库错误，请重试' });
   }
 
-  if (hasConflict) {
-    return res.status(400).json({ error: '所选时间段已有其他预约' });
+  if (!txResult.ok) {
+    return res.status(400).json({ error: txResult.error });
   }
-
-  let newStatus = isOutOfHours || !equipment.auto_approve ? 'pending' : 'approved';
-  
-  if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
-    newStatus = 'pending';
-  }
-
-  const stmt = db.prepare(`
-    UPDATE reservations 
-    SET start_time = ?, end_time = ?, modified_count = modified_count + 1, status = ?
-    WHERE id = ?
-  `);
-  stmt.run(start_time, end_time, newStatus, reservation.id);
   
   res.json({ success: true });
 });

@@ -30,3 +30,4 @@
 - [x] 公开预约查询隐私字段层面对界屏蔽 (security-idor-privacy)
 - [x] 无效日期参数绕过漏洞防御 (security-date-bypass)
 - [x] 速率限制保护加固 (security-rate-limit)
+- [x] 预约并发竞态条件加固 (security-race-condition)
