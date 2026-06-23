@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -42,7 +43,32 @@ import { marked } from 'marked';
 import { notifyEvent, processNotificationQueue, scheduleNextRun, setBaseUrl } from './src/services/notificationService';
 
 const app = express();
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 0));
 app.use(express.json());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 20, 
+  message: { error: '登录请求过于频繁，请稍后再试' },
+  standardHeaders: true, 
+  legacyHeaders: false, 
+});
+
+const mailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: '发送邮件请求过于频繁，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const actionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: '操作请求过于频繁，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 app.use((req, res, next) => {
   setBaseUrl(req.protocol + '://' + req.get('host'));
@@ -1100,7 +1126,7 @@ app.get('/api/calendar/user/url', (req, res) => {
   }
 });
 
-app.post('/api/calendar/user/mail', (req, res) => {
+app.post('/api/calendar/user/mail', mailLimiter, (req, res) => {
   try {
     const enabled = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription.enabled'").get() as any)?.value === 'true';
     if (!enabled) {
@@ -1320,7 +1346,7 @@ app.get('/api/equipment', (req, res) => {
 });
 
 // Admin Login
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', authLimiter, (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'jwt_expires_in_hours'").get() as any;
@@ -1720,7 +1746,7 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
 }
 
 // 4. Create reservation
-app.post('/api/reservations', (req, res) => {
+app.post('/api/reservations', actionLimiter, (req, res) => {
   const { equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time } = req.body;
   
   // Retrieve setting and check email suffix
@@ -1776,6 +1802,11 @@ app.post('/api/reservations', (req, res) => {
   const now = new Date();
   const start = new Date(start_time);
   const end = new Date(end_time);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return res.status(400).json({ error: '无效的时间格式' });
+  }
+
   if (isBefore(start, now)) {
     return res.status(400).json({ error: '不能预约已经开始或过去的时间' });
   }
@@ -2041,7 +2072,7 @@ app.get('/api/reservations/:code', (req, res) => {
 });
 
 // 6. Cancel reservation
-app.post('/api/reservations/cancel', (req, res) => {
+app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
   const { booking_code } = req.body;
   
   try {
@@ -2113,7 +2144,7 @@ app.post('/api/reservations/cancel', (req, res) => {
 });
 
 // Update reservation (User)
-app.post('/api/reservations/update', (req, res) => {
+app.post('/api/reservations/update', actionLimiter, (req, res) => {
   const { booking_code, start_time, end_time } = req.body;
   const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
   
@@ -2145,6 +2176,10 @@ app.post('/api/reservations/update', (req, res) => {
   const start = new Date(start_time);
   const end = new Date(end_time);
   
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return res.status(400).json({ error: '无效的时间格式' });
+  }
+
   if (end <= start) {
     return res.status(400).json({ error: '结束时间必须晚于开始时间' });
   }
@@ -2398,6 +2433,12 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
   const { student_id, student_name, supervisor, phone, email, start_time, end_time, status } = req.body;
   
+  const start = new Date(start_time);
+  const end = new Date(end_time);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return res.status(400).json({ error: '无效的时间格式' });
+  }
+
   const oldRes = db.prepare('SELECT r.status, r.booking_code, e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
 
   const stmt = db.prepare(`

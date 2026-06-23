@@ -23,6 +23,7 @@
     "diff": "^8.0.3",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "marked": "^18.0.2",
