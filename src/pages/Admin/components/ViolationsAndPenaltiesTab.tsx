@@ -84,10 +84,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '获取违规记录失败');
+      }
       const data = await res.json();
       setRecords(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error(err.message || '获取违规记录失败');
+      setRecords([]);
     } finally {
       setLoading(false);
     }
@@ -101,10 +107,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '获取统计数据失败');
+      }
       const data = await res.json();
       setStats(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error(err.message || '获取统计数据失败');
+      setStats([]);
     } finally {
       setLoading(false);
     }
@@ -123,10 +135,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '获取生效中的惩罚数据失败');
+      }
       const data = await res.json();
       setActivePenalties(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error(err.message || '获取生效中的惩罚数据失败');
+      setActivePenalties([]);
     } finally {
       setLoading(false);
     }

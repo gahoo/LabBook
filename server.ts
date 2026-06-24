@@ -1026,6 +1026,33 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
 // API Routes
 
 // --- Penalty Rules API ---
+// --- Validation Helpers ---
+function validateTimeRange(req: any, res: any, startDateKey: string = 'startDate', endDateKey: string = 'endDate'): boolean {
+  const startDate = req.query[startDateKey];
+  const endDate = req.query[endDateKey];
+
+  if (!startDate || !endDate) {
+    res.status(400).json({ error: '必须提供开始和结束时间范围' });
+    return false;
+  }
+  const startObj = new Date(startDate as string);
+  const endObj = new Date(endDate as string);
+  if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
+    res.status(400).json({ error: '时间参数不合法' });
+    return false;
+  }
+  const diff = endObj.getTime() - startObj.getTime();
+  if (diff < 0) {
+    res.status(400).json({ error: '结束时间不能早于开始时间' });
+    return false;
+  }
+  if (diff > 366 * 24 * 60 * 60 * 1000) {
+    res.status(400).json({ error: '查询时间跨度不能超过 1 年 (366 天)' });
+    return false;
+  }
+  return true;
+}
+
 app.get('/api/public/penalty-rules', (req, res) => {
   try {
     const rules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1 ORDER BY id DESC').all();
@@ -2771,6 +2798,12 @@ app.post('/api/violations/:id/appeal', (req, res) => {
 
 app.get('/api/admin/violation-records', adminAuth, (req, res) => {
   const { startDate, endDate, ids, appealStatus, reservation_id } = req.query;
+
+  const hasSpecificId = reservation_id || (ids && typeof ids === 'string' && ids.trim() !== '');
+  if (!hasSpecificId) {
+    if (!validateTimeRange(req, res)) return;
+  }
+
   let query = `
     SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.actual_start_time, r.actual_end_time, r.phone, r.email, r.total_cost, r.consumable_quantity, r.notes as reservation_notes
     FROM violation_records v
@@ -3271,6 +3304,8 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
+  if (!validateTimeRange(req, res)) return;
+  
   const { startDate, endDate, dimension = 'user' } = req.query as { startDate?: string, endDate?: string, dimension?: 'user' | 'supervisor' | 'equipment' };
   
   let query = `
@@ -3431,6 +3466,8 @@ app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/reports', adminAuth, (req, res) => {
+  if (!validateTimeRange(req, res)) return;
+
   const { period, student_name, supervisor, startDate, endDate } = req.query;
   
   let dateFormat = "'%Y-%m-%d'";
@@ -3648,6 +3685,8 @@ app.get('/api/admin/reports', adminAuth, (req, res) => {
 });
 
 app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
+  if (!validateTimeRange(req, res, 'start_date', 'end_date')) return;
+
   const { start_date, end_date } = req.query;
   let query = `
     SELECT a.*, r.booking_code 
@@ -3775,6 +3814,8 @@ app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
 app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
   const { status, reference_code, target, events, startDate, endDate, page = '1', limit = '50' } = req.query;
   try {
+    const rawLimit = parseInt(limit as string) || 50;
+    const safeLimit = Math.min(rawLimit, 500);
     let query = `SELECT id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at FROM notifications WHERE 1=1`;
     const params: any[] = [];
     
@@ -3830,8 +3871,8 @@ app.get('/api/admin/delivery-logs', adminAuth, (req, res) => {
     const total = totalRow ? totalRow.total : 0;
 
     query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    params.push(parseInt(limit as string), offset);
+    const offset = (Math.max(1, parseInt(page as string) || 1) - 1) * safeLimit;
+    params.push(safeLimit, offset);
 
     const logs = db.prepare(query).all(...params) as any[];
     

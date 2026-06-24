@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Filter, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 
 interface AuditLogsTabProps {
   token: string;
@@ -49,13 +50,17 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return handleLogout();
-      if (!res.ok) throw new Error('Failed to fetch');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '获取审计日志失败');
+      }
       const data = await res.json();
       if (Array.isArray(data)) {
         setAuditLogs(data);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error(err.message || '获取审计日志失败');
     }
   };
 

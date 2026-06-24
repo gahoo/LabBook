@@ -99,10 +99,16 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '获取报表数据失败');
+      }
       const data = await res.json();
       setReports(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error(err.message || '获取报表数据失败');
+      setReports([]);
     } finally {
       setLoadingReports(false);
     }
@@ -129,9 +135,13 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
           return { id: v.id, type: v.violation_type, remark };
         });
         setManualViolations(manuals);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '获取人工违规记录失败');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch manual violations:', error);
+      toast.error(error.message || '获取人工违规记录失败');
     }
   };
 

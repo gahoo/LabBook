@@ -31,3 +31,4 @@
 - [x] 无效日期参数绕过漏洞防御 (security-date-bypass)
 - [x] 速率限制保护加固 (security-rate-limit)
 - [x] 预约并发竞态条件加固 (security-race-condition)
+- [x] 分页参数上限与防内存溢出保护 (security-pagination)
