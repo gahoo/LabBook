@@ -2978,13 +2978,8 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   db.prepare(`
     UPDATE user_penalties 
     SET status = 'revoked' 
-    WHERE status = 'active' AND (
-      contributing_violation_ids = ? OR 
-      contributing_violation_ids LIKE ? OR 
-      contributing_violation_ids LIKE ? OR 
-      contributing_violation_ids LIKE ?
-    )
-  `).run(`${id}`, `%,${id},%`, `${id},%`, `%,${id}`);
+    WHERE status = 'active' AND contributing_violation_ids LIKE ?
+  `).run(`%,${id},%`);
 
   if (violationRecord && remarkObj.appeal_reason) {
     notifyEvent(db, 'appeal_resolved', {
