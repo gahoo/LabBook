@@ -13,6 +13,15 @@ import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } fr
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
+class OperationRejectError extends Error {
+  statusCode: number;
+  constructor(message: string, statusCode: number = 400) {
+    super(message);
+    this.name = 'OperationRejectError';
+    this.statusCode = statusCode;
+  }
+}
+
 // ICS Token helper functions
 function encryptID(id: string | number, secretHex: string): string {
   const iv = crypto.randomBytes(16);
@@ -2123,9 +2132,9 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
     const result = db.transaction(() => {
       const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
       
-      if (!reservation) throw new Error('未找到该预约');
+      if (!reservation) throw new OperationRejectError('未找到该预约', 404);
       if (reservation.status !== 'pending' && reservation.status !== 'approved') {
-        throw new Error('无法取消进行中或已完成的预约');
+        throw new OperationRejectError('无法取消进行中或已完成的预约');
       }
       
       const noShowGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_no_show_grace_minutes'").get() as any;
@@ -2134,7 +2143,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
       const startTime = new Date(reservation.start_time).getTime();
       const now = Date.now();
       if (now > startTime + maxLateMinutes * 60000) {
-        throw new Error(`超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改`);
+        throw new OperationRejectError(`超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改`);
       }
 
       const nowStr = new Date(now).toISOString();
@@ -2183,7 +2192,12 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    if (error instanceof OperationRejectError) {
+      res.status(error.statusCode).json({ error: error.message });
+    } else {
+      console.error('Cancel reservation error:', error);
+      res.status(500).json({ error: '取消预约失败，请重试' });
+    }
   }
 });
 
@@ -2352,8 +2366,8 @@ app.post('/api/reservations/checkin', (req, res) => {
     const result = db.transaction(() => {
       const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
       
-      if (!reservation) throw new Error('未找到该预约');
-      if (reservation.status !== 'approved') throw new Error('预约未通过审批或已开始');
+      if (!reservation) throw new OperationRejectError('未找到该预约', 404);
+      if (reservation.status !== 'approved') throw new OperationRejectError('预约未通过审批或已开始');
 
       const now = new Date();
       const startTime = new Date(reservation.start_time);
@@ -2361,7 +2375,7 @@ app.post('/api/reservations/checkin', (req, res) => {
       const scheduledStart = new Date(reservation.start_time);
       const earliestCheckin = new Date(scheduledStart.getTime() - 30 * 60 * 1000);
       if (now.getTime() < earliestCheckin.getTime()) {
-        throw new Error(`只能在预约开始前 30 分钟内上机。您的预约开始时间为 ${format(scheduledStart, 'HH:mm')}，请在 ${format(earliestCheckin, 'HH:mm')} 后重试。`);
+        throw new OperationRejectError(`只能在预约开始前 30 分钟内上机。您的预约开始时间为 ${format(scheduledStart, 'HH:mm')}，请在 ${format(earliestCheckin, 'HH:mm')} 后重试。`);
       }
 
       const noShowGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_no_show_grace_minutes'").get() as any;
@@ -2369,7 +2383,7 @@ app.post('/api/reservations/checkin', (req, res) => {
       
       const diffMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
       if (diffMinutes > maxLateMinutes) {
-        throw new Error(`已超过预约开始时间${maxLateMinutes}分钟，不允许上机`);
+        throw new OperationRejectError(`已超过预约开始时间${maxLateMinutes}分钟，不允许上机`);
       }
 
       const nowStr = now.toISOString();
@@ -2394,7 +2408,12 @@ app.post('/api/reservations/checkin', (req, res) => {
     
     res.json({ success: true, actual_start_time: result.nowStr });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    if (error instanceof OperationRejectError) {
+      res.status(error.statusCode).json({ error: error.message });
+    } else {
+      console.error('Checkin error:', error);
+      res.status(500).json({ error: '上机失败，请重试' });
+    }
   }
 });
 
@@ -2411,8 +2430,8 @@ app.post('/api/reservations/checkout', (req, res) => {
         WHERE r.booking_code = ?
       `).get(booking_code) as any;
       
-      if (!reservation) throw new Error('未找到该预约');
-      if (reservation.status !== 'active') throw new Error('预约未在进行中');
+      if (!reservation) throw new OperationRejectError('未找到该预约', 404);
+      if (reservation.status !== 'active') throw new OperationRejectError('预约未在进行中');
 
       const now = new Date();
       const nowStr = now.toISOString();
@@ -2458,7 +2477,12 @@ app.post('/api/reservations/checkout', (req, res) => {
     
     res.json({ success: true, actual_end_time: result.nowStr, total_cost: result.total_cost, consumable_quantity: result.finalConsumableQty });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    if (error instanceof OperationRejectError) {
+      res.status(error.statusCode).json({ error: error.message });
+    } else {
+      console.error('Checkout error:', error);
+      res.status(500).json({ error: '下机失败，请重试' });
+    }
   }
 });
 
@@ -2941,7 +2965,7 @@ app.post('/api/admin/penalty-rules/simulate', adminAuth, (req, res) => {
     res.json(results);
   } catch (error: any) {
     console.error('Simulation error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: '模拟执行失败: ' + (error.message || String(error)) });
   }
 });
 
@@ -3729,13 +3753,18 @@ app.post('/api/admin/notifications/test-connection', adminAuth, async (req, res)
       if (response.ok) {
         res.json({ success: true, message: `Webhook 测试成功, 状态码: ${response.status}` });
       } else {
-        throw new Error(`Webhook 响应异常, 状态码: ${response.status}`);
+        throw new OperationRejectError(`Webhook 响应异常, 状态码: ${response.status}`);
       }
     } else {
       res.status(400).json({ error: '不支持的类型' });
     }
   } catch (error: any) {
-    res.status(500).json({ error: error.message || String(error) });
+    if (error instanceof OperationRejectError) {
+      res.status(error.statusCode).json({ error: error.message });
+    } else {
+      console.error('Test connection error:', error);
+      res.status(500).json({ error: '连接测试失败: ' + (error.message || String(error)) });
+    }
   }
 });
 
@@ -3767,7 +3796,7 @@ app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
       try {
         payload = JSON.parse(payloadString);
       } catch(e) {
-        throw new Error('解析Webhook模板JSON失败');
+        throw new OperationRejectError('解析Webhook模板JSON失败');
       }
       
       const response = await fetch(config.url, {
@@ -3775,7 +3804,7 @@ app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
         headers: config.headers ? JSON.parse(config.headers) : { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+      if (!response.ok) throw new OperationRejectError(`服务端返回 HTTP ${response.status}`);
       res.json({ success: true, message: 'Webhook 推送成功' });
       
     } else if (type === 'smtp') {
@@ -3802,7 +3831,12 @@ app.post('/api/admin/notifications/test-event', adminAuth, async (req, res) => {
       res.json({ success: true, message: '邮件推送测试成功' });
     }
   } catch (error: any) {
-    res.status(500).json({ error: error.message || String(error) });
+    if (error instanceof OperationRejectError) {
+      res.status(error.statusCode).json({ error: error.message });
+    } else {
+      console.error('Test event error:', error);
+      res.status(500).json({ error: '测试推送失败: ' + (error.message || String(error)) });
+    }
   }
 });
 

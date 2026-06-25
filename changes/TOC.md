@@ -33,3 +33,4 @@
 - [x] 预约并发竞态条件加固 (security-race-condition)
 - [x] 分页参数上限与防内存溢出保护 (security-pagination)
 - [x] 哨兵逗号查询优化 (sentinel-comma-optimization)
+- [x] 修复错误信息泄漏 (error-leak-prevention)
