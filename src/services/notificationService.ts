@@ -3,10 +3,19 @@ import nodemailer from 'nodemailer';
 import { marked } from 'marked';
 import { format } from 'date-fns';
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function renderTemplate(template: string, data: Record<string, any>): string {
   if (!template) return '';
   return template.replace(/\{\{\s*(.*?)\s*\}\}/g, (match, key) => {
-    return data[key] !== undefined ? String(data[key]) : match;
+    return data[key] !== undefined ? escapeHtml(String(data[key])) : match;
   });
 }
 

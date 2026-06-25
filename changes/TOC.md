@@ -34,3 +34,4 @@
 - [x] 分页参数上限与防内存溢出保护 (security-pagination)
 - [x] 哨兵逗号查询优化 (sentinel-comma-optimization)
 - [x] 修复错误信息泄漏 (error-leak-prevention)
+- [x] 输入参数类型校验与 XSS 防护加固 (input-validation)

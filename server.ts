@@ -1784,6 +1784,26 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
 // 4. Create reservation
 app.post('/api/reservations', actionLimiter, (req, res) => {
   const { equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time } = req.body;
+
+  // Input validation
+  const stringFields = { student_id, student_name, supervisor, phone, email, start_time, end_time };
+  for (const [key, val] of Object.entries(stringFields)) {
+    if (typeof val !== 'string' || val.trim() === '') {
+      return res.status(400).json({ error: `${key} 不能为空且必须为字符串` });
+    }
+  }
+  if (student_name.length > 100 || supervisor.length > 100) {
+    return res.status(400).json({ error: '姓名或导师名称过长（上限100字符）' });
+  }
+  if (supervisor.includes('教授') || supervisor.includes('老师')) {
+    return res.status(400).json({ error: '导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓' });
+  }
+  if (email.length > 200) {
+    return res.status(400).json({ error: '邮箱地址过长（上限200字符）' });
+  }
+  if (equipment_id === undefined || equipment_id === null || isNaN(Number(equipment_id)) || !Number.isInteger(Number(equipment_id))) {
+    return res.status(400).json({ error: 'equipment_id 必须为有效的整数' });
+  }
   
   // Retrieve setting and check email suffix
   const emailSuffixesSettingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('allowed_email_suffixes') as any;
@@ -2006,6 +2026,22 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
 app.post('/api/whitelist/apply', (req, res) => {
   const { equipment_id, student_id, student_name, supervisor, phone, email } = req.body;
   
+  const stringFields = { student_id, student_name, supervisor, phone, email };
+  for (const [key, val] of Object.entries(stringFields)) {
+    if (typeof val !== 'string' || val.trim() === '') {
+      return res.status(400).json({ error: `${key} 不能为空且必须为字符串` });
+    }
+  }
+  if (equipment_id === undefined || equipment_id === null || isNaN(Number(equipment_id)) || !Number.isInteger(Number(equipment_id))) {
+    return res.status(400).json({ error: 'equipment_id 必须为有效的整数' });
+  }
+  if (student_name.length > 100 || supervisor.length > 100) {
+    return res.status(400).json({ error: '姓名或导师名称过长（上限100字符）' });
+  }
+  if (supervisor.includes('教授') || supervisor.includes('老师')) {
+    return res.status(400).json({ error: '导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓' });
+  }
+
   const stmt = db.prepare(`
     INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -2204,6 +2240,9 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
 // Update reservation (User)
 app.post('/api/reservations/update', actionLimiter, (req, res) => {
   const { booking_code, start_time, end_time } = req.body;
+  if (typeof booking_code !== 'string' || typeof start_time !== 'string' || typeof end_time !== 'string') {
+    return res.status(400).json({ error: '参数类型错误' });
+  }
   const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
   
   if (!reservation) return res.status(404).json({ error: '未找到该预约' });
@@ -2750,7 +2789,9 @@ app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 
 app.post('/api/violations/my', (req, res) => {
   const { student_id, student_name, violation_ids } = req.body;
-  if (!student_id || !student_name) return res.status(400).json({ error: 'Missing credentials' });
+  if (typeof student_id !== 'string' || typeof student_name !== 'string' || !student_id.trim() || !student_name.trim()) {
+    return res.status(400).json({ error: 'Missing credentials' });
+  }
   
   let query = `
     SELECT v.*, r.student_id, r.student_name, r.booking_code, e.name as equipment_name 
@@ -2783,8 +2824,14 @@ app.post('/api/violations/:id/appeal', (req, res) => {
   const { id } = req.params;
   const { student_id, student_name, appeal_reason } = req.body;
   
-  if (!student_id || !student_name || !appeal_reason) {
+  if (typeof student_id !== 'string' || typeof student_name !== 'string' || typeof appeal_reason !== 'string') {
     return res.status(400).json({ error: 'Missing required fields' });
+  }
+  if (!student_id.trim() || !student_name.trim() || !appeal_reason.trim()) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  if (appeal_reason.length > 2000) {
+    return res.status(400).json({ error: '申诉理由过长（上限2000字符）' });
   }
 
   const violation = db.prepare(`
@@ -2876,7 +2923,10 @@ app.get('/api/admin/violation-records', adminAuth, (req, res) => {
 app.post('/api/admin/penalty-rules/simulate', adminAuth, (req, res) => {
   const { trigger, action, start_date, end_date } = req.body;
   
-  if (!trigger || !start_date || !end_date) {
+  if (!trigger || typeof trigger !== 'object') {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+  if (typeof start_date !== 'string' || typeof end_date !== 'string' || !start_date || !end_date) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
 
