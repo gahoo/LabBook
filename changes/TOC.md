@@ -35,3 +35,4 @@
 - [x] 哨兵逗号查询优化 (sentinel-comma-optimization)
 - [x] 修复错误信息泄漏 (error-leak-prevention)
 - [x] 输入参数类型校验与 XSS 防护加固 (input-validation)
+- [x] 修复管理员修改预约时间未触发关联处罚撤销的问题 (bugfix-admin-modify-not-trigger-penalty-revocation)

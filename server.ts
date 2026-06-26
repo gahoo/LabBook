@@ -2634,6 +2634,7 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 
   let newStatus = oldRes.status;
   let violationChanged = false;
+  const revokedViolationIds: number[] = [];
 
   if (actual_start_time && oldRes.status === 'cancelled') {
     newStatus = actual_end_time ? 'completed' : 'active';
@@ -2641,6 +2642,7 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     if (noShowViolation) {
       db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(noShowViolation.id);
       violationChanged = true;
+      revokedViolationIds.push(noShowViolation.id);
     }
   } else if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
     newStatus = 'completed';
@@ -2668,6 +2670,7 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     } else if (existingLate) {
       db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingLate.id);
       violationChanged = true;
+      revokedViolationIds.push(existingLate.id);
     }
   }
 
@@ -2688,6 +2691,7 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
     } else if (existingOverdue) {
       db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingOverdue.id);
       violationChanged = true;
+      revokedViolationIds.push(existingOverdue.id);
     }
   }
 
@@ -2710,6 +2714,7 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
         remarkObj.admin_note = (remarkObj.admin_note || '') + ' [Administratively revoked]';
         db.prepare("UPDATE violation_records SET status = 'revoked', remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), existing.id);
         violationChanged = true;
+        revokedViolationIds.push(existing.id);
       }
     }
 
@@ -2758,6 +2763,16 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
   `);
   stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, newStatus, id);
   
+  if (revokedViolationIds.length > 0) {
+    for (const rid of revokedViolationIds) {
+      db.prepare(`
+        UPDATE user_penalties 
+        SET status = 'revoked' 
+        WHERE status = 'active' AND contributing_violation_ids LIKE ?
+      `).run(`%,${rid},%`);
+    }
+  }
+
   if (violationChanged) {
     evaluatePenaltiesOnViolation(oldRes.student_id);
   }
