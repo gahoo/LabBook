@@ -1161,23 +1161,28 @@ export default function MyReservations() {
                       !editingId &&
                       resv.consumable_fee > 0 && (
                         <div className="pt-4 border-t border-neutral-50">
-                          <div className="flex items-center gap-3 bg-neutral-50/50 p-3 rounded-xl border border-neutral-100">
-                            <span className="text-sm font-medium text-neutral-700 whitespace-nowrap">
-                              预计耗材数量:
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={consumableQty}
-                              onChange={(e) =>
-                                setConsumableQty(Number(e.target.value))
-                              }
-                              className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
-                              placeholder="数量"
-                            />
-                            <span className="text-xs text-neutral-500">
-                              (¥{resv.consumable_fee}/个)
-                            </span>
+                          <div className="flex flex-col gap-2 bg-neutral-50/50 p-3 rounded-xl border border-neutral-100">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium text-neutral-700 whitespace-nowrap">
+                                预计耗材数量:
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={consumableQty}
+                                onChange={(e) =>
+                                  setConsumableQty(Number(e.target.value))
+                                }
+                                className="w-24 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
+                                placeholder="数量"
+                              />
+                              <span className="text-xs text-neutral-500">
+                                (¥{resv.consumable_fee}/个)
+                              </span>
+                            </div>
+                            <p className="text-xs text-red-500 font-medium mt-1">
+                              请如实填写耗材数量，不诚信行为将受到严厉处罚。
+                            </p>
                           </div>
                         </div>
                       )}
@@ -1375,6 +1380,9 @@ export default function MyReservations() {
                 />
                 <p className="text-xs text-neutral-400 mt-2 text-center">
                   请确认您实际使用的耗材数量，这将用于最终计费。
+                </p>
+                <p className="text-xs text-red-500 font-medium mt-2 text-center">
+                  请如实填写耗材数量，不诚信行为将受到严厉处罚。
                 </p>
               </div>
             )}
