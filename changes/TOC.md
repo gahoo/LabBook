@@ -36,3 +36,4 @@
 - [x] 修复错误信息泄漏 (error-leak-prevention)
 - [x] 输入参数类型校验与 XSS 防护加固 (input-validation)
 - [x] 修复管理员修改预约时间未触发关联处罚撤销的问题 (bugfix-admin-modify-not-trigger-penalty-revocation)
+- [x] 修复时段外预约功能启用时的时段展示逻辑与强制审批问题 (bugfix-out-of-hours-booking-display)

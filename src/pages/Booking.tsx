@@ -558,10 +558,6 @@ export default function Booking() {
           return timeDate >= start && timeDate < end;
         });
 
-        if (allowOutOfHours) {
-          isAvailable = true;
-        }
-
         const isBooked = resvs.some((r: any) => {
           const start = new Date(r.start_time);
           const end = new Date(r.end_time);

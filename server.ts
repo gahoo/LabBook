@@ -1728,9 +1728,7 @@ app.get('/api/equipment/:id/reservations', (req, res) => {
 });
 
 function validateOperatingHours(start: Date, end: Date, availability: any, tzOffset: number): { isValid: boolean, error?: string, isOutOfHours: boolean } {
-  if (availability.allowOutOfHours) {
-    return { isValid: true, isOutOfHours: true };
-  }
+  const allowOutOfHours = !!availability.allowOutOfHours;
 
   const startMs = start.getTime();
   const endMs = end.getTime();
@@ -1752,6 +1750,7 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
     const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
     
     if (dayRules.length === 0) {
+      if (allowOutOfHours) return { isValid: true, isOutOfHours: true };
       return { isValid: false, error: '所选时间包含了仪器不开放的日期', isOutOfHours: true };
     }
     
@@ -1771,6 +1770,7 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
     });
 
     if (!fallsWithinAnyRule) {
+      if (allowOutOfHours) return { isValid: true, isOutOfHours: true };
       const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
       return { isValid: false, error: `部分所选时间不在仪器开放范围内 (该日开放: ${validRanges})`, isOutOfHours: true };
     }

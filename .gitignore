@@ -8,3 +8,4 @@ coverage/
 !.env.example
 backups/
 changes/security_check/
+issues.md
