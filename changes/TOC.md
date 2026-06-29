@@ -38,4 +38,4 @@
 - [x] 修复管理员修改预约时间未触发关联处罚撤销的问题 (bugfix-admin-modify-not-trigger-penalty-revocation)
 - [x] 修复时段外预约功能启用时的时段展示逻辑与强制审批问题 (bugfix-out-of-hours-booking-display)
 - [x] 上下机耗材数量填写诚信提示 (feature-consumable-honesty-warning)
-- [ ] 惩罚提前解封/赦免功能 (feature-early-remission)
+- [x] 惩罚提前解封/赦免功能 (feature-early-remission)

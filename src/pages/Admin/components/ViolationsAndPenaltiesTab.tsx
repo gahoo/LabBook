@@ -44,6 +44,10 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   const [revokeRemark, setRevokeRemark] = useState('');
   const [revokeReservationNotes, setRevokeReservationNotes] = useState('');
   const [modalMode, setModalMode] = useState<'revoke' | 'view' | 'restore' | 'reject-appeal' | 'manage'>('manage');
+  
+  // Waive Penalty Modal State
+  const [waiveModalOpen, setWaiveModalOpen] = useState(false);
+  const [selectedPenaltyToWaive, setSelectedPenaltyToWaive] = useState<any>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -145,6 +149,46 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
       console.error(err);
       toast.error(err.message || '获取生效中的惩罚数据失败');
       setActivePenalties([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWaivePenaltySubmit = async () => {
+    if (!selectedPenaltyToWaive) return;
+
+    setLoading(true);
+    try {
+      const payload = {
+        penalty_id: selectedPenaltyToWaive.is_dynamic ? null : selectedPenaltyToWaive.id,
+        student_id: selectedPenaltyToWaive.student_id,
+        rule_id: selectedPenaltyToWaive.rule_id,
+        contributing_violation_ids: selectedPenaltyToWaive.contributing_violation_ids,
+        is_dynamic: selectedPenaltyToWaive.is_dynamic
+      };
+
+      const res = await fetch(`/api/admin/penalties/waive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (res.status === 401) return onLogout();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || '豁免操作失败');
+      }
+      
+      toast.success('已成功豁免并解封');
+      setWaiveModalOpen(false);
+      setSelectedPenaltyToWaive(null);
+      fetchActivePenalties();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || '豁免操作失败');
     } finally {
       setLoading(false);
     }
@@ -1670,6 +1714,9 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                       )}
                     </div>
                   </th>
+                  <th className="py-3 px-4 font-medium align-top text-right hidden md:table-cell">
+                    <div className="mb-2">操作</div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="text-sm block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
@@ -1741,12 +1788,24 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                           </span>
                         </div>
                       </td>
+                      <td className="px-4 py-3 md:py-4 block md:table-cell text-right">
+                        <button
+                          className="px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-medium border border-green-200 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPenaltyToWaive(p);
+                            setWaiveModalOpen(true);
+                          }}
+                        >
+                          提前解封
+                        </button>
+                      </td>
                     </tr>
                   </React.Fragment>
                 ))}
                 {activePenalties.length === 0 && (
                   <tr className="block md:table-row">
-                    <td colSpan={5} className="py-8 text-center text-neutral-500 block md:table-cell">当前没有受限用户</td>
+                    <td colSpan={6} className="py-8 text-center text-neutral-500 block md:table-cell">当前没有受限用户</td>
                   </tr>
                 )}
               </tbody>
@@ -1879,6 +1938,50 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                   }
                 })()}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Waive Modal */}
+      {waiveModalOpen && selectedPenaltyToWaive && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-neutral-900 mb-6">
+                提前解封 / 豁免确认
+              </h3>
+              
+              <div className="space-y-4">
+                <p className="text-sm text-neutral-600">
+                  您确定要为用户 <strong>{selectedPenaltyToWaive.student_name}</strong> 豁免当前的违规惩罚吗？
+                </p>
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                  <p className="text-sm text-orange-800 font-medium mb-1">⚠️ 警告：</p>
+                  <p className="text-xs text-orange-700">
+                    本次豁免仅针对引发该惩罚的**特定历史违规记录组合**。
+                    如果该用户在未来产生了新的关联违规记录，惩罚将会立刻被重新触发！
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex gap-3 justify-end">
+              <button
+                onClick={() => setWaiveModalOpen(false)}
+                className="px-5 py-2.5 text-sm font-medium text-neutral-600 bg-white border border-neutral-300 hover:bg-neutral-50 rounded-xl transition-colors"
+                disabled={loading}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleWaivePenaltySubmit}
+                disabled={loading}
+                className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors flex items-center gap-2"
+              >
+                {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                确认豁免并解封
+              </button>
             </div>
           </div>
         </div>

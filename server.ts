@@ -338,6 +338,15 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS penalty_waivers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id TEXT NOT NULL,
+        rule_id INTEGER NOT NULL,
+        violation_ids TEXT NOT NULL,
+        user_penalty_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event TEXT NOT NULL,
@@ -629,6 +638,15 @@ function evaluatePenaltiesOnViolation(student_id: string) {
     }
 
     if (metricValue >= trigger.threshold) {
+      // Check if this specific combination of violations has been waived
+      const sortedIds = [...contributingIds].sort((a, b) => a - b);
+      const snapshot = `,${sortedIds.join(',')},`;
+      const isWaived = db.prepare('SELECT id FROM penalty_waivers WHERE student_id = ? AND rule_id = ? AND violation_ids = ?').get(student_id, rule.id, snapshot);
+
+      if (isWaived) {
+        continue;
+      }
+
       // 1. If it's a fixed duration rule, insert into user_penalties
       if (action.duration_type === 'fixed' && action.duration_days) {
         const existingPenalty = db.prepare(`
@@ -880,6 +898,15 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
     }
 
     if (metricValue >= trigger.threshold) {
+      // Check if this specific combination of violations has been waived
+      const sortedIds = [...currentViolationIds].sort((a, b) => a - b);
+      const snapshot = `,${sortedIds.join(',')},`;
+      const isWaived = db.prepare('SELECT id FROM penalty_waivers WHERE student_id = ? AND rule_id = ? AND violation_ids = ?').get(student_id, rule.id, snapshot);
+
+      if (isWaived) {
+        continue;
+      }
+
       isPenalized = true;
       const formattedRuleName = formatRuleName(rule.name, rule.trigger_config, rule.violation_type);
       if (!triggeredRules.includes(formattedRuleName)) triggeredRules.push(formattedRuleName);
@@ -3332,7 +3359,15 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
     const affectedUsers = db.prepare(query).all(...queryParams) as any[];
 
     for (const user of affectedUsers) {
-      const ids = user.contributing_ids.split(',');
+      const ids = user.contributing_ids.split(',').filter(Boolean).map(Number);
+      const sortedIds = [...ids].sort((a, b) => a - b);
+      const snapshot = `,${sortedIds.join(',')},`;
+      
+      const isWaived = db.prepare('SELECT id FROM penalty_waivers WHERE student_id = ? AND rule_id = ? AND violation_ids = ?').get(user.student_id, rule.id, snapshot);
+      if (isWaived) {
+        continue;
+      }
+
       const records = db.prepare(`
         SELECT violation_time, duration_minutes 
         FROM violation_records 
@@ -3375,7 +3410,8 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
         end_time: unbanTime ? unbanTime.toISOString() : null,
         status: 'active',
         is_dynamic: true,
-        contributing_violation_ids: `,${user.contributing_ids},`
+        contributing_violation_ids: snapshot,
+        rule_id: rule.id
       });
     }
   }
@@ -3385,6 +3421,34 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
   });
 
   res.json(allPenalties);
+});
+
+app.post('/api/admin/penalties/waive', adminAuth, (req, res) => {
+  const { penalty_id, student_id, rule_id, contributing_violation_ids, is_dynamic } = req.body;
+  
+  if (!student_id || !rule_id || !contributing_violation_ids) {
+    return res.status(400).json({ error: '缺少必要的参数' });
+  }
+
+  try {
+    db.transaction(() => {
+      let user_penalty_id = null;
+      if (!is_dynamic && penalty_id) {
+        user_penalty_id = penalty_id;
+        db.prepare("UPDATE user_penalties SET status = 'waived' WHERE id = ?").run(penalty_id);
+      }
+      
+      db.prepare(`
+        INSERT INTO penalty_waivers (student_id, rule_id, violation_ids, user_penalty_id)
+        VALUES (?, ?, ?, ?)
+      `).run(student_id, rule_id, contributing_violation_ids, user_penalty_id);
+    })();
+    
+    res.json({ success: true });
+  } catch(e) {
+    console.error('Error waiving penalty:', e);
+    res.status(500).json({ error: '豁免失败' });
+  }
 });
 
 app.get('/api/admin/reports/violations', adminAuth, (req, res) => {
