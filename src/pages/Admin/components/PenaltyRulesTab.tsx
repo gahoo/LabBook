@@ -9,7 +9,7 @@ interface TriggerConfig {
   threshold: number;
   window_type: 'rolling_days' | 'natural_period' | 'current_month';
   period_days?: number;
-  period_type?: 'month' | 'quarter' | 'semester' | 'academic_year' | 'year';
+  period_type?: 'week' | 'month' | 'quarter' | 'semester' | 'academic_year' | 'year';
   scope?: number[];
   violation_types?: string[];
   count_strategy?: 'by_record' | 'by_reservation';
@@ -356,6 +356,7 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
   };
 
   const periodTypeMap: Record<string, string> = {
+    week: '自然周',
     month: '自然月',
     quarter: '自然季度',
     semester: '学期',
@@ -598,7 +599,17 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                       <label className="block text-sm text-neutral-600 mb-1">统计周期类型</label>
                       <select
                         value={formData.trigger.window_type === 'current_month' ? 'natural_period' : formData.trigger.window_type}
-                        onChange={e => setFormData({...formData, trigger: {...formData.trigger, window_type: e.target.value as 'rolling_days'|'natural_period'}})}
+                        onChange={e => {
+                          const newType = e.target.value as 'rolling_days' | 'natural_period';
+                          setFormData({
+                            ...formData,
+                            trigger: {
+                              ...formData.trigger,
+                              window_type: newType,
+                              ...(newType === 'natural_period' && !formData.trigger.period_type ? { period_type: 'month' } : {})
+                            }
+                          });
+                        }}
                         className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 outline-none bg-white"
                       >
                         <option value="rolling_days">过去 N 天</option>

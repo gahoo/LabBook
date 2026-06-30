@@ -275,7 +275,14 @@ export default function ViolationQuery() {
               const getTriggerDesc = () => {
                 let timeDesc = '';
                 if (trigger.window_type === 'natural_period') {
-                  const pMap: any = { month: '自然月', week: '自然周', year: '自然年', semester: '学期' };
+                  const pMap: any = {
+                    week: '自然周',
+                    month: '自然月',
+                    quarter: '自然季度',
+                    semester: '学期',
+                    academic_year: '学年',
+                    year: '自然年'
+                  };
                   timeDesc = `在每个${pMap[trigger.period_type] || '周期'}内`;
                 } else if (trigger.window_type === 'rolling_days') {
                   timeDesc = `在过去的 ${trigger.period_days} 天内`;
