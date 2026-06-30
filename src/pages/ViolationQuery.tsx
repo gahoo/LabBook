@@ -18,6 +18,7 @@ export default function ViolationQuery() {
   const [appealingId, setAppealingId] = useState<number | null>(null);
   const [appealReason, setAppealReason] = useState('');
   const [rules, setRules] = useState<any[]>([]);
+  const [equipments, setEquipments] = useState<any[]>([]);
 
   useEffect(() => {
     // Fetch active rules
@@ -25,6 +26,12 @@ export default function ViolationQuery() {
       .then(res => res.json())
       .then(data => setRules(data))
       .catch(err => console.error('Failed to fetch rules', err));
+
+    // Fetch equipments
+    fetch('/api/equipment')
+      .then(res => res.json())
+      .then(data => setEquipments(data))
+      .catch(err => console.error('Failed to fetch equipments', err));
 
     // Auto-fill from cookie and search
     const cookies = document.cookie.split(';');
@@ -290,13 +297,36 @@ export default function ViolationQuery() {
                   timeDesc = `在本月内`;
                 }
 
+                let scopeElements: React.ReactNode = null;
+                if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
+                  const scopeNames = trigger.scope.map((id: number, index: number, arr: number[]) => {
+                    const eq = equipments.find(e => e.id === id);
+                    const name = eq ? eq.name : `未知仪器${id}`;
+                    return (
+                      <React.Fragment key={id}>
+                        <span className="bg-orange-50 text-orange-700 border border-orange-100 px-1.5 py-0.5 rounded mx-0.5 font-medium">{name}</span>
+                        {index < arr.length - 1 ? '、' : ''}
+                      </React.Fragment>
+                    );
+                  });
+                  scopeElements = (
+                    <>
+                      使用{scopeNames}时，
+                    </>
+                  );
+                }
+
                 let typesStr = getViolationTypeLabel(rule.violation_type);
                 if (trigger.violation_types && Array.isArray(trigger.violation_types)) {
                   typesStr = trigger.violation_types.map((t: string) => getViolationTypeLabel(t)).join(' 或 ');
                 }
 
                 const metricDesc = trigger.metric === 'count' ? `次数达到 ${trigger.threshold} 次` : `累计时长达到 ${trigger.threshold} 分钟`;
-                return `${timeDesc}，${typesStr}${metricDesc}`;
+                return (
+                  <>
+                    {timeDesc}，{scopeElements}{typesStr}{metricDesc}
+                  </>
+                );
               };
 
               const getActionDesc = () => {

@@ -414,11 +414,36 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                     <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                       <div className="flex justify-between items-center md:block">
                         <span className="md:hidden font-medium text-neutral-500 text-xs">触发条件</span>
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-100 text-right md:text-left">
-                          {trigger.window_type === 'natural_period' || trigger.window_type === 'current_month' ? `本${periodTypeMap[trigger.period_type || 'month']}内，` : `过去 ${trigger.period_days} 天内，`}
-                          {(trigger.violation_types || [rule.violation_type]).map(t => violationTypeMap[t]).join(' 或 ')}
-                          {trigger.metric === 'count' ? `达到 ${trigger.threshold} 次` : `累计 ${trigger.threshold} 分钟`}
-                        </span>
+                        <div className="flex items-center gap-1.5 relative group justify-end md:justify-start">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-100 text-right md:text-left">
+                            {trigger.window_type === 'natural_period' || trigger.window_type === 'current_month' ? `本${periodTypeMap[trigger.period_type || 'month']}内，` : `过去 ${trigger.period_days} 天内，`}
+                            {(trigger.violation_types || [rule.violation_type]).map(t => violationTypeMap[t]).join(' 或 ')}
+                            {trigger.metric === 'count' ? `达到 ${trigger.threshold} 次` : `累计 ${trigger.threshold} 分钟`}
+                          </span>
+                          {trigger.scope && trigger.scope.length > 0 && (
+                            <div className="relative group/tooltip">
+                              <Info className="w-4 h-4 text-neutral-400 cursor-help" />
+                              <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block z-50">
+                                <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3 py-2 whitespace-nowrap min-w-[200px] text-left">
+                                  <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
+                                    仅对以下仪器生效
+                                  </div>
+                                  <div className="flex flex-col gap-1.5 mt-1 max-h-48 overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
+                                    {trigger.scope.map((id: number) => {
+                                      const eq = equipments.find((e: any) => e.id === id);
+                                      return (
+                                        <div key={id} className="flex justify-between items-center gap-4 text-neutral-700">
+                                          <span>{eq ? eq.name : `未知仪器${id}`}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="w-3 h-3 bg-white border-b border-r border-neutral-200 rotate-45 absolute -bottom-1.5 left-2"></div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 md:px-6 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">

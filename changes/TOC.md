@@ -42,3 +42,4 @@
 - [x] 修复 RESTRICTED 标签无中文的问题 (bugfix-restricted-label)
 - [x] 修复违规类型组合无法正确显示周期类型的问题 (bugfix-violation-query-period)
 - [x] 修复规则切换自然周期时 `period_type` 丢失的问题 (bugfix-missing-period-type)
+- [x] 在页面上展示惩罚规则的作用范围 (feature-penalty-scope-display)
