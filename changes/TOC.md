@@ -39,3 +39,4 @@
 - [x] 修复时段外预约功能启用时的时段展示逻辑与强制审批问题 (bugfix-out-of-hours-booking-display)
 - [x] 上下机耗材数量填写诚信提示 (feature-consumable-honesty-warning)
 - [x] 惩罚提前解封/赦免功能 (feature-early-remission)
+- [x] 修复 RESTRICTED 标签无中文的问题 (bugfix-restricted-label)

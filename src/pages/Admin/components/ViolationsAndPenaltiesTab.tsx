@@ -231,6 +231,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
       case 'require_approval': return '需管理员审批';
       case 'double_fee': return '费用加倍';
       case 'reduce_advance_days': return '减少提前预约天数';
+      case 'restricted': return '使用受限';
       default: return method || '未知';
     }
   };
