@@ -43,3 +43,4 @@
 - [x] 修复违规类型组合无法正确显示周期类型的问题 (bugfix-violation-query-period)
 - [x] 修复规则切换自然周期时 `period_type` 丢失的问题 (bugfix-missing-period-type)
 - [x] 在页面上展示惩罚规则的作用范围 (feature-penalty-scope-display)
+- [x] 惩罚规则 RESTRICTED 字段改造，以支持明细动作展示和过滤 (feature-penalty-restricted-refactor)

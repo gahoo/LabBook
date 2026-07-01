@@ -658,9 +658,7 @@ function evaluatePenaltiesOnViolation(student_id: string) {
           const endDate = new Date(now);
           endDate.setDate(endDate.getDate() + action.duration_days);
           
-          let penaltyMethod = 'RESTRICTED';
-          if (action.type === 'ban') penaltyMethod = 'BAN';
-          else if (action.type === 'require_approval') penaltyMethod = 'REQUIRE_APPROVAL';
+          let penaltyMethod = action.type;
 
           const restrictionsData = { ...(action.params || {}) };
           if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
@@ -812,11 +810,16 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
       params: params
     });
     
-    if (p.penalty_method === 'BAN') {
+    let methodLevel = p.penalty_method;
+    if (p.penalty_method === 'ban' || p.penalty_method === 'BAN') methodLevel = 'BAN';
+    else if (p.penalty_method === 'require_approval' || p.penalty_method === 'REQUIRE_APPROVAL') methodLevel = 'REQUIRE_APPROVAL';
+    else methodLevel = 'RESTRICTED';
+
+    if (methodLevel === 'BAN') {
       penaltyMethod = 'BAN';
-    } else if (p.penalty_method === 'REQUIRE_APPROVAL' && penaltyMethod !== 'BAN') {
+    } else if (methodLevel === 'REQUIRE_APPROVAL' && penaltyMethod !== 'BAN') {
       penaltyMethod = 'REQUIRE_APPROVAL';
-    } else if (p.penalty_method === 'RESTRICTED' && penaltyMethod === 'NONE') {
+    } else if (methodLevel === 'RESTRICTED' && penaltyMethod === 'NONE') {
       penaltyMethod = 'RESTRICTED';
     }
 
@@ -918,7 +921,7 @@ function checkUserPenalty(student_id: string, target_equipment_id?: number) {
         rule_name: formattedRuleName, 
         contributing_ids: currentViolationIds,
         violation_types: violationTypes,
-        penalty_method: action.type === 'ban' ? 'BAN' : (action.type === 'require_approval' ? 'REQUIRE_APPROVAL' : 'RESTRICTED'),
+        penalty_method: action.type,
         duration_days: action.duration_days || 0,
         params: action.params || {}
       });
@@ -3405,7 +3408,7 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
         student_name: studentInfoRow ? studentInfoRow.student_name : user.student_id,
         supervisor: studentInfoRow ? studentInfoRow.supervisor : null,
         rule_name: rule.name,
-        penalty_method: action.type === 'ban' ? 'BAN' : (action.type === 'require_approval' ? 'REQUIRE_APPROVAL' : 'RESTRICTED'),
+        penalty_method: action.type,
         start_time: records[records.length - 1].violation_time,
         end_time: unbanTime ? unbanTime.toISOString() : null,
         status: 'active',
