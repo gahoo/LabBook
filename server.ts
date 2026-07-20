@@ -3064,6 +3064,78 @@ app.post('/api/admin/penalty-rules/simulate', adminAuth, (req, res) => {
   }
 });
 
+app.post('/api/admin/violations', adminAuth, (req, res) => {
+  const { student_id, booking_code, violation_type, violation_time, admin_note } = req.body;
+
+  if (!student_id || !violation_type || !violation_time) {
+    return res.status(400).json({ error: '缺少必填字段' });
+  }
+
+  const allowedTypes = ['hygiene_issue', 'improper_operation', 'proxy_booking', 'other_manual'];
+  if (!allowedTypes.includes(violation_type)) {
+    return res.status(400).json({ error: '不支持的违规类型' });
+  }
+
+  try {
+    let reservation_id = null;
+    let actual_student_name = null;
+    let email = null;
+
+    if (booking_code) {
+      const reservation = db.prepare('SELECT id, student_id, student_name, email FROM reservations WHERE booking_code = ?').get(booking_code) as any;
+      if (!reservation) {
+        return res.status(400).json({ error: '预约码不存在' });
+      }
+      if (reservation.student_id !== student_id) {
+        return res.status(400).json({ error: '预约码与学号不匹配' });
+      }
+      reservation_id = reservation.id;
+      actual_student_name = reservation.student_name;
+      email = reservation.email;
+    }
+
+    const remark = admin_note ? JSON.stringify({ admin_note }) : null;
+
+    const result = db.prepare(
+      'INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, remark) VALUES (?, ?, ?, ?, ?)'
+    ).run(student_id, reservation_id, violation_type, new Date(violation_time).toISOString(), remark);
+
+    evaluatePenaltiesOnViolation(student_id);
+
+    try {
+      if (!email && !booking_code) {
+          const resWithEmail = db.prepare('SELECT email, student_name FROM reservations WHERE student_id = ? AND email IS NOT NULL ORDER BY id DESC LIMIT 1').get(student_id) as any;
+          if (resWithEmail) {
+              email = resWithEmail.email;
+              actual_student_name = resWithEmail.student_name;
+          }
+      }
+
+      if (email) {
+          try {
+              notifyEvent(db, 'violation_created', {
+                  userId: student_id,
+                  userName: actual_student_name || student_id,
+                  violation_type,
+                  violation_time: new Date(violation_time).toISOString(),
+                  booking_code: booking_code || '无关联预约',
+                  admin_note: admin_note || ''
+              }, email);
+          } catch (err) {
+              console.error('Failed to queue notification for standalone violation:', err);
+          }
+      }
+    } catch (e) {
+        console.error('Error fetching email for notification:', e);
+    }
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Error adding standalone violation:', error);
+    res.status(500).json({ error: '添加失败：服务器内部错误' });
+  }
+});
+
 app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;

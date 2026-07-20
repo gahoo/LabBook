@@ -49,6 +49,16 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   const [waiveModalOpen, setWaiveModalOpen] = useState(false);
   const [selectedPenaltyToWaive, setSelectedPenaltyToWaive] = useState<any>(null);
 
+  // Standalone Violation Modal State
+  const [standaloneModalOpen, setStandaloneModalOpen] = useState(false);
+  const [standaloneForm, setStandaloneForm] = useState({
+    student_id: '',
+    booking_code: '',
+    violation_type: 'hygiene_issue',
+    violation_time: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+    admin_note: ''
+  });
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (timeFilterPopupRef.current && !timeFilterPopupRef.current.contains(event.target as Node)) {
@@ -221,6 +231,53 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
       }
     } catch (err) {
       toast.error('操作失败');
+    }
+  };
+
+  const handleStandaloneSubmit = async () => {
+    if (!standaloneForm.student_id || !standaloneForm.violation_type || !standaloneForm.violation_time) {
+      toast.error('请填写所有必填字段');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/violations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...standaloneForm,
+          booking_code: standaloneForm.booking_code.trim() || undefined
+        })
+      });
+
+      if (res.status === 401) return onLogout();
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || '录入失败');
+      }
+
+      toast.success('录入违规记录成功');
+      setStandaloneModalOpen(false);
+      setStandaloneForm({
+        student_id: '',
+        booking_code: '',
+        violation_type: 'hygiene_issue',
+        violation_time: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+        admin_note: ''
+      });
+      fetchRecords();
+      if (activeSubTab === 'stats') fetchStats();
+      if (activeSubTab === 'active_penalties') fetchActivePenalties();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || '录入失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -680,7 +737,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                 <div className="flex justify-between items-center md:block">
                   <span className="md:hidden font-medium text-neutral-500 text-xs">学生</span>
                   <div className="text-right md:text-left">
-                    <div className="font-medium text-neutral-900">{v.student_name}</div>
+                    <div className="font-medium text-neutral-900">{v.student_name || v.student_id}</div>
                     <div className="text-xs text-neutral-500">{v.student_id} | {v.supervisor || '未知'}</div>
                   </div>
                 </div>
@@ -930,17 +987,33 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
             <div className="flex items-center gap-4">
               <h2 className="text-lg font-semibold text-neutral-900">违规记录明细</h2>
               {!penaltyContext && (
-                <button
-                  type="button"
-                  onClick={() => setShowMobileFilters(!showMobileFilters)}
-                  className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
-                >
-                  <Filter className="w-5 h-5" />
-                  <span className="text-sm font-medium">筛选</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileFilters(!showMobileFilters)}
+                    className="md:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded-lg flex items-center gap-2"
+                  >
+                    <Filter className="w-5 h-5" />
+                    <span className="text-sm font-medium">筛选</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStandaloneModalOpen(true)}
+                    className="md:hidden p-2 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 font-medium"
+                  >
+                    + 新增
+                  </button>
+                </>
               )}
             </div>
-            <div className="hidden md:block">
+            <div className="hidden md:flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setStandaloneModalOpen(true)}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors"
+              >
+                + 新增违规记录
+              </button>
               {!penaltyContext && renderTimeFilter()}
             </div>
           </div>
@@ -1821,6 +1894,120 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
 
       {activeSubTab === 'rules' && (
         <PenaltyRulesTab token={token || ''} />
+      )}
+
+      {/* Standalone Violation Drawer */}
+      {standaloneModalOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 transition-opacity"
+            onClick={() => setStandaloneModalOpen(false)}
+          />
+          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 translate-x-0">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-neutral-200 shrink-0">
+              <h3 className="text-xl font-bold text-neutral-900">新增违规记录</h3>
+              <button 
+                onClick={() => setStandaloneModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    违规学号 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={standaloneForm.student_id}
+                    onChange={e => setStandaloneForm(prev => ({ ...prev, student_id: e.target.value }))}
+                    placeholder="输入违规学生的学号"
+                    className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    关联预约码 <span className="text-neutral-400 font-normal">(选填)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={standaloneForm.booking_code}
+                    onChange={e => setStandaloneForm(prev => ({ ...prev, booking_code: e.target.value }))}
+                    placeholder="输入预约码关联特定仪器规则"
+                    className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">若该违规与特定预约相关，填写预约码可触发绑定仪器的特定惩罚规则。</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    违规类型 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={standaloneForm.violation_type}
+                    onChange={e => setStandaloneForm(prev => ({ ...prev, violation_type: e.target.value }))}
+                    className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                  >
+                    <option value="hygiene_issue">卫生不达标 (hygiene_issue)</option>
+                    <option value="improper_operation">违规操作 (improper_operation)</option>
+                    <option value="proxy_booking">代预约 (proxy_booking)</option>
+                    <option value="other_manual">其他违规 (other_manual)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-neutral-500">此处仅支持新增人工判定的违规记录，不支持新增自动判定类型（如迟到、超时等）。</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    违规时间 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={standaloneForm.violation_time}
+                    onChange={e => setStandaloneForm(prev => ({ ...prev, violation_time: e.target.value }))}
+                    className="w-full px-4 py-2 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    违规说明 <span className="text-neutral-400 font-normal">(选填)</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={standaloneForm.admin_note}
+                    onChange={e => setStandaloneForm(prev => ({ ...prev, admin_note: e.target.value }))}
+                    placeholder="例如：经同学举报，确认该生存在代预约行为..."
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-neutral-50 border-t border-neutral-200 flex justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setStandaloneModalOpen(false)}
+                className="px-4 py-2 text-neutral-600 font-medium hover:bg-neutral-200 rounded-xl transition-colors"
+                disabled={loading}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleStandaloneSubmit}
+                disabled={loading}
+                className="px-6 py-2 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : null}
+                确认录入
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Revoke Modal */}
