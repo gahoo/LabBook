@@ -109,8 +109,9 @@ export default function Booking() {
   >([]);
   const [maxDuration, setMaxDuration] = useState(60);
   const [minDuration, setMinDuration] = useState(30);
-  const [dailyMaxDuration, setDailyMaxDuration] = useState(240);
+  const [dailyMaxDuration, setDailyMaxDuration] = useState(0);
   const [allowExceedDuration, setAllowExceedDuration] = useState(false);
+  const [allowExceedDurationOffPeak, setAllowExceedDurationOffPeak] = useState(false);
   const [peakHours, setPeakHours] = useState<any[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [advanceDays, setAdvanceDays] = useState(7);
@@ -237,8 +238,9 @@ export default function Booking() {
       setExistingReservations(dayData.reservations || []);
       setMaxDuration(dayData.maxDurationMinutes || 60);
       setMinDuration(dayData.minDurationMinutes || 30);
-      setDailyMaxDuration(dayData.dailyMaxDurationMinutes || 240);
+      setDailyMaxDuration(dayData.dailyMaxDurationMinutes ?? 0);
       setAllowExceedDuration(!!dayData.allowExceedDuration);
+      setAllowExceedDurationOffPeak(dayData.allowExceedDurationOffPeak || false);
       setPeakHours(dayData.peakHours || []);
     } else {
       setExistingReservations([]);
@@ -313,7 +315,9 @@ export default function Booking() {
         const durationMinutes = (end.getTime() - start.getTime()) / 60000;
         
         const peakAccumulated = calculatePeakAccumulated(start, end, peakHours);
-        if (durationMinutes > dailyMaxDuration || (peakAccumulated > maxDuration && !allowExceedDuration)) {
+        if ((dailyMaxDuration > 0 && durationMinutes > dailyMaxDuration) || 
+            (peakAccumulated > maxDuration && !allowExceedDuration) ||
+            (durationMinutes > maxDuration && peakAccumulated <= maxDuration && !allowExceedDurationOffPeak)) {
           setSelectedDate(date);
           setEndDate(date);
           setStartTime(time);
@@ -360,12 +364,18 @@ export default function Booking() {
 
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     
-    if (durationMinutes > dailyMaxDuration)
+    if (dailyMaxDuration > 0 && durationMinutes > dailyMaxDuration)
       return toast.error(`单次预约时长不能超过硬性上限 ${dailyMaxDuration} 分钟`);
       
     const peakAccumulated = calculatePeakAccumulated(start, end, peakHours);
-    if (peakAccumulated > maxDuration && !allowExceedDuration) {
-      return toast.error(`您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次忙时上限 (${maxDuration} 分钟)`);
+    if (peakAccumulated > maxDuration) {
+      if (!allowExceedDuration) {
+        return toast.error(`您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)`);
+      }
+    } else if (durationMinutes > maxDuration) {
+      if (!allowExceedDurationOffPeak) {
+        return toast.error(`您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)`);
+      }
     }
 
     if (durationMinutes < minDuration)
@@ -1398,7 +1408,7 @@ export default function Booking() {
                   {allowExceedDuration && (
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-yellow-400 rounded-sm shadow-[0_0_0_1px_#eab308]"></div>
-                      <span>超忙时上限 (转审批)</span>
+                      <span>超时长上限 (需审批)</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2">
@@ -1480,12 +1490,12 @@ export default function Booking() {
                       <span className="font-bold">{minDuration} 分钟</span>
                     </p>
                     <p>
-                      • 单次最大预约时长：
+                      • 单次时长上限：
                       <span className="font-bold">{maxDuration} 分钟</span>
                     </p>
                     <p>
                       • 单日最大预约时长：
-                      <span className="font-bold">{dailyMaxDuration} 分钟</span>
+                      <span className="font-bold">{dailyMaxDuration > 0 ? `${dailyMaxDuration} 分钟` : '无限制'}</span>
                     </p>
                     {peakHours && peakHours.length > 0 && (
                       <div className="flex items-start gap-1">
@@ -1595,7 +1605,7 @@ export default function Booking() {
                   if (peakAcc > maxDuration && allowExceedDuration) {
                     return (
                       <div className="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-xl text-sm border border-yellow-200">
-                        ⚠️ 您的预约占用了较多忙时资源 ({peakAcc}分钟)，超过了单次免审批上限 ({maxDuration}分钟)。提交后将转为待审批状态，请等待管理员审核。
+                        ⚠️ 您的预约占用了较多忙时资源 ({peakAcc}分钟)，超过了单次时长上限 ({maxDuration}分钟)。提交后将转为待审批状态，请等待管理员审核。
                       </div>
                     );
                   }

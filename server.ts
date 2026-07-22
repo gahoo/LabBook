@@ -1729,6 +1729,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
       minDurationMinutes: availability.minDurationMinutes || 30,
       dailyMaxDurationMinutes: availability.dailyMaxDurationMinutes,
       allowExceedDuration: availability.allowExceedDuration,
+      allowExceedDurationOffPeak: availability.allowExceedDurationOffPeak || false,
       peakHours: availability.peakHours || []
     };
   });
@@ -1998,8 +1999,9 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   let isOutOfHours = validResult.isOutOfHours;
 
   const maxDuration = availability.maxDurationMinutes || 60;
-  const dailyMaxDuration = availability.dailyMaxDurationMinutes || 240;
+  const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
   const allowExceed = !!availability.allowExceedDuration;
+  const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
   const peakHours = availability.peakHours || [];
 
   const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
@@ -2014,7 +2016,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   `).get(equipment_id, student_id, offsetModifier, start_time, offsetModifier) as any;
   const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
 
-  if (userDailyUsed + durationMinutes > dailyMaxDuration) {
+  if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
     return res.status(400).json({ error: `超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)` });
   }
 
@@ -2023,9 +2025,13 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   
   if (peakAccumulated > maxDuration) {
     if (!allowExceed) {
-      return res.status(400).json({ error: `您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次忙时上限 (${maxDuration} 分钟)，且该仪器不允许超额预约。` });
+      return res.status(400).json({ error: `您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许忙时超额预约。` });
     }
     isPeakExceeded = true;
+  } else if (durationMinutes > maxDuration) {
+    if (!allowExceedOffPeak) {
+      return res.status(400).json({ error: `您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。` });
+    }
   }
 
   const tx = db.transaction(() => {
@@ -2444,8 +2450,9 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   let isOutOfHours = validResult.isOutOfHours;
 
   const maxDuration = availability.maxDurationMinutes || 60;
-  const dailyMaxDuration = availability.dailyMaxDurationMinutes || 240;
+  const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
   const allowExceed = !!availability.allowExceedDuration;
+  const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
   const peakHours = availability.peakHours || [];
 
   const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
@@ -2461,7 +2468,7 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   `).get(reservation.equipment_id, reservation.student_id, reservation.id, offsetModifier, start_time, offsetModifier) as any;
   const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
 
-  if (userDailyUsed + durationMinutes > dailyMaxDuration) {
+  if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
     return res.status(400).json({ error: `超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)` });
   }
 
@@ -2470,9 +2477,13 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   
   if (peakAccumulated > maxDuration) {
     if (!allowExceed) {
-      return res.status(400).json({ error: `您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次忙时上限 (${maxDuration} 分钟)，且该仪器不允许超额预约。` });
+      return res.status(400).json({ error: `您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许忙时超额预约。` });
     }
     isPeakExceeded = true;
+  } else if (durationMinutes > maxDuration) {
+    if (!allowExceedOffPeak) {
+      return res.status(400).json({ error: `您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。` });
+    }
   }
 
   const tx = db.transaction(() => {

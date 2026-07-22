@@ -31,7 +31,7 @@ export default function BatchEditEquipmentForm({
   const [modifyDuration, setModifyDuration] = useState(false);
   const [minDurationMinutes, setMinDurationMinutes] = useState<number>(30);
   const [maxDurationMinutes, setMaxDurationMinutes] = useState<number>(60);
-  const [dailyMaxDurationMinutes, setDailyMaxDurationMinutes] = useState<number>(240);
+  const [dailyMaxDurationMinutes, setDailyMaxDurationMinutes] = useState<number>(0);
 
   const [modifyLateCancel, setModifyLateCancel] = useState(false);
   const [lateCancelMinutes, setLateCancelMinutes] = useState<string>('');
@@ -54,6 +54,8 @@ export default function BatchEditEquipmentForm({
   const [allowOutOfHours, setAllowOutOfHours] = useState(false);
 
   const [modifyAllowExceedDuration, setModifyAllowExceedDuration] = useState(false);
+  const [modifyAllowExceedDurationOffPeak, setModifyAllowExceedDurationOffPeak] = useState(false);
+  const [allowExceedDurationOffPeak, setAllowExceedDurationOffPeak] = useState(false);
   const [allowExceedDuration, setAllowExceedDuration] = useState(false);
 
   const [modifyIsHidden, setModifyIsHidden] = useState(false);
@@ -89,6 +91,7 @@ export default function BatchEditEquipmentForm({
     if (modifyAutoApprove) updates.auto_approve = autoApprove ? 1 : 0;
     if (modifyAllowOutOfHours) updates.allowOutOfHours = allowOutOfHours;
     if (modifyAllowExceedDuration) updates.allowExceedDuration = allowExceedDuration;
+    if (modifyAllowExceedDurationOffPeak) updates.allowExceedDurationOffPeak = allowExceedDurationOffPeak;
     if (modifyIsHidden) updates.is_hidden = isHidden;
     if (modifyReleaseNoshow) updates.release_noshow_slots = releaseNoshow;
 
@@ -193,10 +196,10 @@ export default function BatchEditEquipmentForm({
                       />
                     </div>
                     <div className="flex-1 sm:w-32">
-                      <label className="block text-[10px] text-neutral-500 mb-1">单日硬性上限 (分)</label>
+                      <label className="block text-[10px] text-neutral-500 mb-1">单日时长上限 (0表示无限制)</label>
                       <input 
                         type="number" 
-                        min="1" 
+                        min="0" 
                         value={dailyMaxDurationMinutes} 
                         onChange={e => setDailyMaxDurationMinutes(Number(e.target.value))} 
                         className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
@@ -416,7 +419,7 @@ export default function BatchEditEquipmentForm({
                   <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
                     <input type="checkbox" checked={modifyAllowExceedDuration} onChange={e => setModifyAllowExceedDuration(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
                     <Clock className="w-4 h-4 text-neutral-500" />
-                    修改允许超单次上限预约
+                    修改允许忙时超单次时长上限
                   </label>
                   <p className="text-xs text-neutral-500 mt-0.5 ml-6">开启后，允许用户在忙时预约超单次时长上限，但需要管理员审批。</p>
                 </div>
@@ -427,6 +430,26 @@ export default function BatchEditEquipmentForm({
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${allowExceedDuration ? 'bg-red-600' : 'bg-neutral-200'}`}
                   >
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${allowExceedDuration ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyAllowExceedDurationOffPeak} onChange={e => setModifyAllowExceedDurationOffPeak(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    <Clock className="w-4 h-4 text-neutral-500" />
+                    修改允许闲时超单次时长上限
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">开启后，允许用户在闲时预约超单次时长上限，且无需审批。</p>
+                </div>
+                {modifyAllowExceedDurationOffPeak && (
+                  <button
+                    type="button"
+                    onClick={() => setAllowExceedDurationOffPeak(!allowExceedDurationOffPeak)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${allowExceedDurationOffPeak ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${allowExceedDurationOffPeak ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                 )}
               </div>
