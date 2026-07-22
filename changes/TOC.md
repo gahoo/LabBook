@@ -45,3 +45,4 @@
 - [x] 在页面上展示惩罚规则的作用范围 (feature-penalty-scope-display)
 - [x] 惩罚规则 RESTRICTED 字段改造，以支持明细动作展示和过滤 (feature-penalty-restricted-refactor)
 - [x] 管理员独立添加违规记录 (feature-admin-standalone-violation)
+- [x] 仪器预约时长限制与闲忙时段功能重构 (feature-equipment-booking-limits)

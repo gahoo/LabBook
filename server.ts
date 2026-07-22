@@ -1726,7 +1726,10 @@ app.get('/api/equipment/:id/availability', (req, res) => {
       availableSlots,
       reservations: localReservations,
       maxDurationMinutes: availability.maxDurationMinutes,
-      minDurationMinutes: availability.minDurationMinutes || 30
+      minDurationMinutes: availability.minDurationMinutes || 30,
+      dailyMaxDurationMinutes: availability.dailyMaxDurationMinutes,
+      allowExceedDuration: availability.allowExceedDuration,
+      peakHours: availability.peakHours || []
     };
   });
 
@@ -1809,6 +1812,52 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
   }
   
   return { isValid: true, isOutOfHours: false };
+}
+
+function calculatePeakAccumulatedMinutes(start: Date, end: Date, peakHours: any[], tzOffset: number): number {
+  if (!peakHours || peakHours.length === 0) return 0;
+  
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  
+  const localStartMs = startMs - tzOffset * 60000;
+  const localEndMs = endMs - tzOffset * 60000;
+  
+  let currentMs = localStartMs;
+  let accumulated = 0;
+  
+  while (currentMs < localEndMs) {
+    const currentLocal = new Date(currentMs);
+    const nextMidnightLocal = new Date(currentLocal);
+    nextMidnightLocal.setUTCHours(24, 0, 0, 0); 
+    
+    const chunkEndMs = Math.min(localEndMs, nextMidnightLocal.getTime());
+    
+    const startLocalMinutes = currentLocal.getUTCHours() * 60 + currentLocal.getUTCMinutes();
+    
+    const endDatesLocal = new Date(chunkEndMs);
+    let endLocalMinutes = endDatesLocal.getUTCHours() * 60 + endDatesLocal.getUTCMinutes();
+    if (endLocalMinutes === 0 && chunkEndMs > currentMs) {
+       endLocalMinutes = 24 * 60;
+    }
+    
+    for (const peak of peakHours) {
+      const psMins = parseInt(peak.start.split(':')[0]) * 60 + parseInt(peak.start.split(':')[1]);
+      let peMins = parseInt(peak.end.split(':')[0]) * 60 + parseInt(peak.end.split(':')[1]);
+      if (peMins === 1439) peMins = 1440;
+      
+      const overlapStart = Math.max(startLocalMinutes, psMins);
+      const overlapEnd = Math.min(endLocalMinutes, peMins);
+      
+      if (overlapEnd > overlapStart) {
+        accumulated += overlapEnd - overlapStart;
+      }
+    }
+    
+    currentMs = chunkEndMs;
+  }
+  
+  return accumulated;
 }
 
 // 4. Create reservation
@@ -1909,10 +1958,8 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   }
 
   const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-  const maxDuration = availability.maxDurationMinutes || 60;
   const minDuration = availability.minDurationMinutes || 30;
 
-  if (durationMinutes > maxDuration) return res.status(400).json({ error: `预约时长不能超过 ${maxDuration} 分钟` });
   if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
 
   const originalAdvanceDays = availability.advanceDays || 7;
@@ -1950,6 +1997,37 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   }
   let isOutOfHours = validResult.isOutOfHours;
 
+  const maxDuration = availability.maxDurationMinutes || 60;
+  const dailyMaxDuration = availability.dailyMaxDurationMinutes || 240;
+  const allowExceed = !!availability.allowExceedDuration;
+  const peakHours = availability.peakHours || [];
+
+  const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
+
+  const userDailyUsedRow = db.prepare(`
+    SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
+    FROM reservations
+    WHERE equipment_id = ?
+      AND student_id = ?
+      AND DATE(start_time, ?) = DATE(?, ?)
+      AND status IN ('pending', 'approved', 'active')
+  `).get(equipment_id, student_id, offsetModifier, start_time, offsetModifier) as any;
+  const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
+
+  if (userDailyUsed + durationMinutes > dailyMaxDuration) {
+    return res.status(400).json({ error: `超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)` });
+  }
+
+  const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
+  let isPeakExceeded = false;
+  
+  if (peakAccumulated > maxDuration) {
+    if (!allowExceed) {
+      return res.status(400).json({ error: `您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次忙时上限 (${maxDuration} 分钟)，且该仪器不允许超额预约。` });
+    }
+    isPeakExceeded = true;
+  }
+
   const tx = db.transaction(() => {
     // Check if slot is already booked
     const existingRaw = db.prepare(`
@@ -1981,7 +2059,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
     }
 
     const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
-    let status = isOutOfHours || !equipment.auto_approve ? 'pending' : 'approved';
+    let status = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
     
     if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
       status = 'pending';
@@ -2320,10 +2398,8 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
     }
   } catch (e) {}
 
-  const maxDuration = availability.maxDurationMinutes || 60;
   const minDuration = availability.minDurationMinutes || 30;
 
-  if (durationMinutes > maxDuration) return res.status(400).json({ error: `预约时长不能超过 ${maxDuration} 分钟` });
   if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
 
   const now = new Date();
@@ -2367,6 +2443,38 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   }
   let isOutOfHours = validResult.isOutOfHours;
 
+  const maxDuration = availability.maxDurationMinutes || 60;
+  const dailyMaxDuration = availability.dailyMaxDurationMinutes || 240;
+  const allowExceed = !!availability.allowExceedDuration;
+  const peakHours = availability.peakHours || [];
+
+  const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
+
+  const userDailyUsedRow = db.prepare(`
+    SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
+    FROM reservations
+    WHERE equipment_id = ?
+      AND student_id = ?
+      AND id != ?
+      AND DATE(start_time, ?) = DATE(?, ?)
+      AND status IN ('pending', 'approved', 'active')
+  `).get(reservation.equipment_id, reservation.student_id, reservation.id, offsetModifier, start_time, offsetModifier) as any;
+  const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
+
+  if (userDailyUsed + durationMinutes > dailyMaxDuration) {
+    return res.status(400).json({ error: `超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)` });
+  }
+
+  const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
+  let isPeakExceeded = false;
+  
+  if (peakAccumulated > maxDuration) {
+    if (!allowExceed) {
+      return res.status(400).json({ error: `您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次忙时上限 (${maxDuration} 分钟)，且该仪器不允许超额预约。` });
+    }
+    isPeakExceeded = true;
+  }
+
   const tx = db.transaction(() => {
     // Check conflicts (excluding self)
     const conflictRaw = db.prepare(`
@@ -2397,7 +2505,7 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       return { ok: false, error: '所选时间段已有其他预约' };
     }
 
-    let newStatus = isOutOfHours || !equipment.auto_approve ? 'pending' : 'approved';
+    let newStatus = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
     
     if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
       newStatus = 'pending';

@@ -1,3 +1,22 @@
+export interface TimeRange {
+  start: string;
+  end: string;
+}
+
+export interface EquipmentAvailability {
+  advanceDays: number;
+  minDurationMinutes: number;
+  maxDurationMinutes: number;
+  dailyMaxDurationMinutes?: number;
+  allowExceedDuration?: boolean;
+  peakHours?: TimeRange[];
+  rules: {
+    dayOfWeek: number;
+    start: string;
+    end: string;
+  }[];
+}
+
 export interface ViolationRecord {
   id: number;
   student_id: string;

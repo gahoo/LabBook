@@ -58,6 +58,48 @@ interface Reservation {
 export default function Booking() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  const calculatePeakAccumulated = (start: Date, end: Date, peakHoursList: any[]): number => {
+    if (!peakHoursList || peakHoursList.length === 0) return 0;
+    
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    
+    let currentMs = startMs;
+    let accumulated = 0;
+    
+    while (currentMs < endMs) {
+      const current = new Date(currentMs);
+      const nextMidnight = new Date(current);
+      nextMidnight.setHours(24, 0, 0, 0); 
+      
+      const chunkEndMs = Math.min(endMs, nextMidnight.getTime());
+      const startLocalMinutes = current.getHours() * 60 + current.getMinutes();
+      
+      const endDatesLocal = new Date(chunkEndMs);
+      let endLocalMinutes = endDatesLocal.getHours() * 60 + endDatesLocal.getMinutes();
+      if (endLocalMinutes === 0 && chunkEndMs > currentMs) {
+         endLocalMinutes = 24 * 60;
+      }
+      
+      for (const peak of peakHoursList) {
+        const psMins = parseInt(peak.start.split(':')[0]) * 60 + parseInt(peak.start.split(':')[1]);
+        let peMins = parseInt(peak.end.split(':')[0]) * 60 + parseInt(peak.end.split(':')[1]);
+        if (peMins === 1439) peMins = 1440;
+        
+        const overlapStart = Math.max(startLocalMinutes, psMins);
+        const overlapEnd = Math.min(endLocalMinutes, peMins);
+        
+        if (overlapEnd > overlapStart) {
+          accumulated += overlapEnd - overlapStart;
+        }
+      }
+      
+      currentMs = chunkEndMs;
+    }
+    
+    return accumulated;
+  };
   const location = useLocation();
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
@@ -67,6 +109,9 @@ export default function Booking() {
   >([]);
   const [maxDuration, setMaxDuration] = useState(60);
   const [minDuration, setMinDuration] = useState(30);
+  const [dailyMaxDuration, setDailyMaxDuration] = useState(240);
+  const [allowExceedDuration, setAllowExceedDuration] = useState(false);
+  const [peakHours, setPeakHours] = useState<any[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [advanceDays, setAdvanceDays] = useState(7);
   const [allowOutOfHours, setAllowOutOfHours] = useState(false);
@@ -192,6 +237,9 @@ export default function Booking() {
       setExistingReservations(dayData.reservations || []);
       setMaxDuration(dayData.maxDurationMinutes || 60);
       setMinDuration(dayData.minDurationMinutes || 30);
+      setDailyMaxDuration(dayData.dailyMaxDurationMinutes || 240);
+      setAllowExceedDuration(!!dayData.allowExceedDuration);
+      setPeakHours(dayData.peakHours || []);
     } else {
       setExistingReservations([]);
     }
@@ -263,7 +311,9 @@ export default function Booking() {
         // Valid end time
         const end = addMinutes(clickedTime, 30);
         const durationMinutes = (end.getTime() - start.getTime()) / 60000;
-        if (durationMinutes > maxDuration) {
+        
+        const peakAccumulated = calculatePeakAccumulated(start, end, peakHours);
+        if (durationMinutes > dailyMaxDuration || (peakAccumulated > maxDuration && !allowExceedDuration)) {
           setSelectedDate(date);
           setEndDate(date);
           setStartTime(time);
@@ -309,8 +359,15 @@ export default function Booking() {
     }
 
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    if (durationMinutes > maxDuration)
-      return toast.error(`预约时长不能超过 ${maxDuration} 分钟`);
+    
+    if (durationMinutes > dailyMaxDuration)
+      return toast.error(`单次预约时长不能超过硬性上限 ${dailyMaxDuration} 分钟`);
+      
+    const peakAccumulated = calculatePeakAccumulated(start, end, peakHours);
+    if (peakAccumulated > maxDuration && !allowExceedDuration) {
+      return toast.error(`您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次忙时上限 (${maxDuration} 分钟)`);
+    }
+
     if (durationMinutes < minDuration)
       return toast.error(`预约时长不能少于 ${minDuration} 分钟`);
 
@@ -1218,6 +1275,7 @@ export default function Booking() {
                                   let isFirstSelected = false;
                                   let isLastSelected = false;
                                   let isNextSelected = false;
+                                  let isYellow = false;
 
                                   if (startTime && endTime) {
                                     const blockStart = new Date(
@@ -1229,6 +1287,10 @@ export default function Booking() {
                                     const selEnd = new Date(
                                       `${format(endDate, "yyyy-MM-dd")}T${endTime}`,
                                     );
+                                    
+                                    if (calculatePeakAccumulated(selStart, selEnd, peakHours) > maxDuration) {
+                                      isYellow = true;
+                                    }
 
                                     if (
                                       blockStart >= selStart &&
@@ -1274,9 +1336,11 @@ export default function Booking() {
                                   if (t.isBooked) {
                                     bgColor = "bg-red-500";
                                   } else if (t.isAvailable && !isPast) {
-                                    bgColor = isSelectedBlock
-                                      ? "bg-emerald-400"
-                                      : "bg-emerald-500";
+                                    if (isSelectedBlock) {
+                                      bgColor = isYellow ? "bg-yellow-400" : "bg-emerald-400";
+                                    } else {
+                                      bgColor = "bg-emerald-500";
+                                    }
                                   }
 
                                   return (
@@ -1296,13 +1360,13 @@ export default function Booking() {
                                         isSelectedBlock &&
                                           isFirstSelected &&
                                           isLastSelected
-                                          ? "shadow-[0_0_0_2px_#047857] rounded-sm z-10"
+                                          ? isYellow ? "shadow-[0_0_0_2px_#eab308] rounded-sm z-10" : "shadow-[0_0_0_2px_#047857] rounded-sm z-10"
                                           : isSelectedBlock && isFirstSelected
-                                            ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm z-10"
+                                            ? isYellow ? "shadow-[0_2px_0_#eab308,0_-2px_0_#eab308,-2px_0_0_#eab308] rounded-l-sm z-10" : "shadow-[0_2px_0_#047857,0_-2px_0_#047857,-2px_0_0_#047857] rounded-l-sm z-10"
                                             : isSelectedBlock && isLastSelected
-                                              ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm z-10"
+                                              ? isYellow ? "shadow-[0_2px_0_#eab308,0_-2px_0_#eab308,2px_0_0_#eab308] rounded-r-sm z-10" : "shadow-[0_2px_0_#047857,0_-2px_0_#047857,2px_0_0_#047857] rounded-r-sm z-10"
                                               : isSelectedBlock
-                                                ? "shadow-[0_2px_0_#047857,0_-2px_0_#047857] z-10"
+                                                ? isYellow ? "shadow-[0_2px_0_#eab308,0_-2px_0_#eab308] z-10" : "shadow-[0_2px_0_#047857,0_-2px_0_#047857] z-10"
                                                 : "",
                                       )}
                                       onClick={() => {
@@ -1326,11 +1390,17 @@ export default function Booking() {
                   </div>
                 )}
 
-                <div className="flex gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4">
+                <div className="flex gap-6 mt-6 text-xs text-neutral-500 justify-center border-t border-neutral-50 pt-4 flex-wrap">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
                     <span>可预约 (点击色块快速选择)</span>
                   </div>
+                  {allowExceedDuration && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-yellow-400 rounded-sm shadow-[0_0_0_1px_#eab308]"></div>
+                      <span>超忙时上限 (转审批)</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
                     <span>已被预约</span>
@@ -1410,9 +1480,23 @@ export default function Booking() {
                       <span className="font-bold">{minDuration} 分钟</span>
                     </p>
                     <p>
-                      • 最大预约时长：
+                      • 单次最大预约时长：
                       <span className="font-bold">{maxDuration} 分钟</span>
                     </p>
+                    <p>
+                      • 单日最大预约时长：
+                      <span className="font-bold">{dailyMaxDuration} 分钟</span>
+                    </p>
+                    {peakHours && peakHours.length > 0 && (
+                      <div className="flex items-start gap-1">
+                        <span>• 忙时时段：</span>
+                        <div className="font-bold flex flex-col">
+                          {peakHours.map((p, i) => (
+                            <span key={i}>{p.start} - {p.end}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <p>
                       • 步进单位：<span className="font-bold">5 分钟</span>
                     </p>
@@ -1501,6 +1585,24 @@ export default function Booking() {
                 </p>
               )}
             </div>
+
+            {(() => {
+              if (startTime && endTime) {
+                const sDate = new Date(`${format(selectedDate, "yyyy-MM-dd")}T${startTime}`);
+                const eDate = new Date(`${format(endDate, "yyyy-MM-dd")}T${endTime}`);
+                if (eDate > sDate) {
+                  const peakAcc = calculatePeakAccumulated(sDate, eDate, peakHours);
+                  if (peakAcc > maxDuration && allowExceedDuration) {
+                    return (
+                      <div className="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-xl text-sm border border-yellow-200">
+                        ⚠️ 您的预约占用了较多忙时资源 ({peakAcc}分钟)，超过了单次免审批上限 ({maxDuration}分钟)。提交后将转为待审批状态，请等待管理员审核。
+                      </div>
+                    );
+                  }
+                }
+              }
+              return null;
+            })()}
 
             <div className="pt-6">
               <button

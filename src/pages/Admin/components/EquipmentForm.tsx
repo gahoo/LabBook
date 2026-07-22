@@ -27,7 +27,7 @@ export default function EquipmentForm({
 }: EquipmentFormProps) {
   const [formData, setFormData] = useState(() => {
     if (editingEquipment) {
-      let avail = { advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30, lateCancellationMinutes: '' as number | string, rules: [] as any[], allowOutOfHours: false };
+      let avail = { advanceDays: 7, maxDurationMinutes: 60, dailyMaxDurationMinutes: 240, allowExceedDuration: false, minDurationMinutes: 30, lateCancellationMinutes: '' as number | string, rules: [] as any[], peakHours: [] as any[], allowOutOfHours: false };
       try {
         if (editingEquipment.availability_json) {
           const parsed = JSON.parse(editingEquipment.availability_json);
@@ -54,9 +54,12 @@ export default function EquipmentForm({
         release_noshow_slots: editingEquipment.release_noshow_slots || false,
         advanceDays: avail.advanceDays || 7,
         maxDurationMinutes: avail.maxDurationMinutes || 60,
+        dailyMaxDurationMinutes: avail.dailyMaxDurationMinutes || 240,
+        allowExceedDuration: avail.allowExceedDuration || false,
         minDurationMinutes: avail.minDurationMinutes || 30,
         lateCancellationMinutes: avail.lateCancellationMinutes !== undefined && avail.lateCancellationMinutes !== null ? avail.lateCancellationMinutes : '',
-        rules: avail.rules || []
+        rules: avail.rules || [],
+        peakHours: avail.peakHours || []
       };
     }
     return {
@@ -75,9 +78,12 @@ export default function EquipmentForm({
       release_noshow_slots: false,
       advanceDays: 7,
       maxDurationMinutes: 60,
+      dailyMaxDurationMinutes: 240,
+      allowExceedDuration: false,
       minDurationMinutes: 30,
       lateCancellationMinutes: '',
-      rules: [] as any[]
+      rules: [] as any[],
+      peakHours: [] as any[]
     };
   });
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
@@ -135,6 +141,9 @@ export default function EquipmentForm({
       rules: formData.rules,
       advanceDays: formData.advanceDays,
       maxDurationMinutes: formData.maxDurationMinutes,
+      dailyMaxDurationMinutes: formData.dailyMaxDurationMinutes,
+      allowExceedDuration: formData.allowExceedDuration,
+      peakHours: formData.peakHours,
       minDurationMinutes: formData.minDurationMinutes,
       lateCancellationMinutes: formData.lateCancellationMinutes === '' ? undefined : Number(formData.lateCancellationMinutes),
       allowOutOfHours: formData.allow_out_of_hours
@@ -173,8 +182,11 @@ export default function EquipmentForm({
           release_noshow_slots: false,
           advanceDays: 7,
           maxDurationMinutes: 60,
+          dailyMaxDurationMinutes: 240,
+          allowExceedDuration: false,
           minDurationMinutes: 30,
-          rules: []
+          rules: [],
+          peakHours: []
         });
         setEditingEquipment(null);
         onSuccess();
@@ -227,7 +239,7 @@ export default function EquipmentForm({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-xs text-neutral-500 mb-1">提前预约天数</label>
                   <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
@@ -236,9 +248,18 @@ export default function EquipmentForm({
                   <label className="block text-xs text-neutral-500 mb-1">单次最小时长 (分)</label>
                   <input type="number" min="1" value={formData.minDurationMinutes} onChange={e => setFormData({...formData, minDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
                 </div>
-                <div>
-                  <label className="block text-xs text-neutral-500 mb-1">单次最大时长 (分)</label>
+                <div className="relative group">
+                  <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                    忙时单次上限 (分)
+                    <div className="hidden group-hover:block absolute z-10 w-48 p-2 bg-neutral-800 text-white text-xs rounded-lg shadow-lg -top-10 left-0">
+                      超过此上限的忙时预约会转审批或被拦截
+                    </div>
+                  </label>
                   <input type="number" min="1" value={formData.maxDurationMinutes} onChange={e => setFormData({...formData, maxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">单日硬性上限 (分)</label>
+                  <input type="number" min="1" value={formData.dailyMaxDurationMinutes} onChange={e => setFormData({...formData, dailyMaxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
                 </div>
                 <div className="relative group">
                   <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
@@ -248,6 +269,47 @@ export default function EquipmentForm({
                     </div>
                   </label>
                   <input type="number" min="0" value={formData.lateCancellationMinutes} onChange={e => setFormData({...formData, lateCancellationMinutes: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" placeholder="默认" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-neutral-500 mb-2">忙时时段 (全周通用)</label>
+                <div className="space-y-2">
+                  {formData.peakHours.sort((a: any, b: any) => a.start.localeCompare(b.start)).map((peak: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-neutral-200">
+                      <span className="text-xs text-neutral-700 font-medium">{peak.start} - {peak.end}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setFormData({...formData, peakHours: formData.peakHours.filter((_: any, i: number) => i !== idx)})}
+                        className="ml-auto text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  
+                  <div className="p-3 bg-white rounded-xl border border-neutral-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                      <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                        <input id="new-peak-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
+                        <span className="text-xs">至</span>
+                        <input id="new-peak-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const start = (document.getElementById('new-peak-start') as HTMLInputElement).value;
+                          const end = (document.getElementById('new-peak-end') as HTMLInputElement).value;
+                          if (start >= end) return toast.error('结束时间必须晚于开始时间');
+                          
+                          setFormData({...formData, peakHours: [...formData.peakHours, { start, end }]});
+                        }}
+                        className="w-full sm:w-auto px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
+                      >
+                        添加忙时
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -362,6 +424,23 @@ export default function EquipmentForm({
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-neutral-500" />
+                    允许超单次上限预约
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">开启后，允许用户在忙时预约超单次时长上限，但需要管理员审批。</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, allowExceedDuration: !formData.allowExceedDuration})}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.allowExceedDuration ? 'bg-red-600' : 'bg-neutral-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.allowExceedDuration ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
 

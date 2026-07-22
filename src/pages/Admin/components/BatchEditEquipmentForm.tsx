@@ -31,6 +31,7 @@ export default function BatchEditEquipmentForm({
   const [modifyDuration, setModifyDuration] = useState(false);
   const [minDurationMinutes, setMinDurationMinutes] = useState<number>(30);
   const [maxDurationMinutes, setMaxDurationMinutes] = useState<number>(60);
+  const [dailyMaxDurationMinutes, setDailyMaxDurationMinutes] = useState<number>(240);
 
   const [modifyLateCancel, setModifyLateCancel] = useState(false);
   const [lateCancelMinutes, setLateCancelMinutes] = useState<string>('');
@@ -38,6 +39,9 @@ export default function BatchEditEquipmentForm({
   const [modifyRules, setModifyRules] = useState(false);
   const [rules, setRules] = useState<any[]>([]);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+
+  const [modifyPeakHours, setModifyPeakHours] = useState(false);
+  const [peakHours, setPeakHours] = useState<any[]>([]);
 
   const [modifyWhitelist, setModifyWhitelist] = useState(false);
   const [whitelistEnabled, setWhitelistEnabled] = useState(false);
@@ -48,6 +52,9 @@ export default function BatchEditEquipmentForm({
 
   const [modifyAllowOutOfHours, setModifyAllowOutOfHours] = useState(false);
   const [allowOutOfHours, setAllowOutOfHours] = useState(false);
+
+  const [modifyAllowExceedDuration, setModifyAllowExceedDuration] = useState(false);
+  const [allowExceedDuration, setAllowExceedDuration] = useState(false);
 
   const [modifyIsHidden, setModifyIsHidden] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
@@ -68,17 +75,20 @@ export default function BatchEditEquipmentForm({
     if (modifyDuration) {
       updates.minDurationMinutes = minDurationMinutes;
       updates.maxDurationMinutes = maxDurationMinutes;
+      updates.dailyMaxDurationMinutes = dailyMaxDurationMinutes;
     }
     if (modifyLateCancel) {
       updates.lateCancellationMinutes = lateCancelMinutes === '' ? null : Number(lateCancelMinutes);
     }
     if (modifyRules) updates.rules = rules;
+    if (modifyPeakHours) updates.peakHours = peakHours;
     if (modifyWhitelist) {
       updates.whitelist_enabled = whitelistEnabled;
       updates.whitelist_data = whitelistData;
     }
     if (modifyAutoApprove) updates.auto_approve = autoApprove ? 1 : 0;
     if (modifyAllowOutOfHours) updates.allowOutOfHours = allowOutOfHours;
+    if (modifyAllowExceedDuration) updates.allowExceedDuration = allowExceedDuration;
     if (modifyIsHidden) updates.is_hidden = isHidden;
     if (modifyReleaseNoshow) updates.release_noshow_slots = releaseNoshow;
 
@@ -182,6 +192,16 @@ export default function BatchEditEquipmentForm({
                         className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
                       />
                     </div>
+                    <div className="flex-1 sm:w-32">
+                      <label className="block text-[10px] text-neutral-500 mb-1">单日硬性上限 (分)</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        value={dailyMaxDurationMinutes} 
+                        onChange={e => setDailyMaxDurationMinutes(Number(e.target.value))} 
+                        className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -205,6 +225,57 @@ export default function BatchEditEquipmentForm({
                         className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 text-sm focus:ring-2 focus:ring-red-600 focus:border-red-600 transition-all bg-white" 
                         placeholder="留空即复原"
                       />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-start justify-between flex-col gap-4">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyPeakHours} onChange={e => setModifyPeakHours(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    修改忙时时段
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">勾选后，将用以下时段<span className="text-red-600 font-medium">覆盖</span>选中仪器的原有忙时</p>
+                </div>
+                {modifyPeakHours && (
+                  <div className="w-full pl-6">
+                    <div className="space-y-2">
+                      {peakHours.sort((a: any, b: any) => a.start.localeCompare(b.start)).map((peak: any, idx: number) => (
+                        <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-neutral-200">
+                          <span className="text-xs text-neutral-700 font-medium">{peak.start} - {peak.end}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setPeakHours(peakHours.filter((_: any, i: number) => i !== idx))}
+                            className="ml-auto text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      
+                      <div className="p-3 bg-white rounded-xl border border-neutral-200 space-y-3">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                          <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                            <input id="batch-new-peak-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
+                            <span className="text-xs">至</span>
+                            <input id="batch-new-peak-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
+                          </div>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              const start = (document.getElementById('batch-new-peak-start') as HTMLInputElement).value;
+                              const end = (document.getElementById('batch-new-peak-end') as HTMLInputElement).value;
+                              if (start >= end) return toast.error('结束时间必须晚于开始时间');
+                              
+                              setPeakHours([...peakHours, { start, end }]);
+                            }}
+                            className="w-full sm:w-auto px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
+                          >
+                            添加忙时
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -336,6 +407,26 @@ export default function BatchEditEquipmentForm({
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${autoApprove ? 'bg-red-600' : 'bg-neutral-200'}`}
                   >
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoApprove ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={modifyAllowExceedDuration} onChange={e => setModifyAllowExceedDuration(e.target.checked)} className="rounded border-neutral-300 text-red-600 focus:ring-red-600" />
+                    <Clock className="w-4 h-4 text-neutral-500" />
+                    修改允许超单次上限预约
+                  </label>
+                  <p className="text-xs text-neutral-500 mt-0.5 ml-6">开启后，允许用户在忙时预约超单次时长上限，但需要管理员审批。</p>
+                </div>
+                {modifyAllowExceedDuration && (
+                  <button
+                    type="button"
+                    onClick={() => setAllowExceedDuration(!allowExceedDuration)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${allowExceedDuration ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${allowExceedDuration ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                 )}
               </div>
