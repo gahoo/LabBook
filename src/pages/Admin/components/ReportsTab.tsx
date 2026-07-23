@@ -1703,7 +1703,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                     const dynamicRowHeight = hasWrapping ? 36 : 24;
                     const dynamicHeight = reportChartType === 'bar' ? Math.max(384, chartData.length * dynamicRowHeight + 80) : 384;
 
-                    const CustomYAxisTick = ({ x, y, payload }: any) => {
+                    const renderCustomYAxisTick = ({ x, y, payload }: any) => {
                       const label = String(payload.value || '');
                       let lines: string[] = [];
                       let currentLine = '';
@@ -1748,7 +1748,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                                 tickLine={false} 
                                 width={maxLabelWidth + 16} 
                                 interval={0} 
-                                tick={<CustomYAxisTick />} 
+                                tick={renderCustomYAxisTick} 
                               />
                               <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
                               <Bar 
