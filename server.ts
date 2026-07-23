@@ -1396,7 +1396,17 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
 
 // 1. Get all equipment
 app.get('/api/equipment', (req, res) => {
-  const isAdmin = req.headers.authorization === `Bearer ${ADMIN_PASSWORD}`;
+  let isAdmin = false;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      if (decoded && decoded.role === 'admin') {
+        isAdmin = true;
+      }
+    } catch (e) {}
+  }
   let equipment = db.prepare('SELECT * FROM equipment').all() as any[];
   
   if (!isAdmin) {

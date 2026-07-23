@@ -59,7 +59,9 @@ export default function EquipmentManagementTab({
 
   const fetchEquipment = async () => {
     try {
-      const res = await fetch('/api/equipment');
+      const res = await fetch('/api/equipment', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       if (Array.isArray(data)) {

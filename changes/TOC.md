@@ -47,3 +47,4 @@
 - [x] 管理员独立添加违规记录 (feature-admin-standalone-violation)
 - [x] 仪器预约时长限制与闲忙时段功能重构 (feature-equipment-booking-limits)
 - [x] 报表图表展示优化 (enhancement-reports-chart-display)
+- [x] 修复编辑仪器时人员白名单无法正常加载的问题 (bugfix-admin-whitelist-load)
