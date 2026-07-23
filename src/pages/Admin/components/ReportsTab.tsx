@@ -52,7 +52,7 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
 
   const [activeSubTab, setActiveSubTab] = useState<'detailed' | 'stats' | 'charts'>('detailed');
   const [chartMetric, setChartMetric] = useState<'duration' | 'revenue'>('duration');
-  const [chartDimension, setChartDimension] = useState<'time' | 'user' | 'supervisor' | 'equipment'>('time');
+  const [chartDimension, setChartDimension] = useState<'time' | 'user' | 'supervisor' | 'equipment'>('user');
   const [statsType, setStatsType] = useState<'user' | 'supervisor' | 'equipment'>('user');
   const [statsFilterUser, setStatsFilterUser] = useState('');
   const [statsFilterSupervisor, setStatsFilterSupervisor] = useState('');
@@ -1678,64 +1678,126 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                   </div>
                 </div>
                 <div className="p-6">
-                  <div className="h-96">
-                    <ResponsiveContainer width="100%" height="100%">
-                      {(() => {
-                        const chartData = chartDimension === 'time' ? chartUsageByTime : chartDimension === 'user' ? chartBasePersonData : chartDimension === 'supervisor' ? chartBaseSupervisorData : chartBaseEquipmentData;
-                        const keyAxis = chartDimension === 'time' ? 'period' : chartDimension === 'user' ? 'student_name' : chartDimension === 'supervisor' ? 'supervisor' : 'equipment_name';
-                        
-                        return reportChartType === 'bar' ? (
-                          <BarChart data={chartData} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                            <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
-                            <YAxis dataKey={keyAxis} type="category" axisLine={false} tickLine={false} tick={{fontSize: 12}} width={80} />
-                            <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
-                            <Bar 
-                              dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
-                              name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
-                              fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
-                              radius={[0, 4, 4, 0]} 
-                            />
-                          </BarChart>
-                        ) : (
-                          <LineChart data={chartDimension === 'time' ? chartData : multiLineData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                            <XAxis dataKey={chartDimension === 'time' ? keyAxis : 'period'} axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
-                            <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
-                            {chartDimension !== 'time' && <Legend wrapperStyle={{ fontSize: '12px' }} />}
-                            {chartDimension === 'time' ? (
-                              <Line 
-                                type="monotone" 
+                  {(() => {
+                    let chartData = chartDimension === 'time' ? chartUsageByTime : chartDimension === 'user' ? chartBasePersonData : chartDimension === 'supervisor' ? chartBaseSupervisorData : chartBaseEquipmentData;
+                    const keyAxis = chartDimension === 'time' ? 'period' : chartDimension === 'user' ? 'student_name' : chartDimension === 'supervisor' ? 'supervisor' : 'equipment_name';
+                    
+                    if (chartDimension !== 'time') {
+                      const sortKey = chartMetric === 'duration' ? 'total_hours' : 'total_revenue';
+                      chartData = [...chartData].sort((a: any, b: any) => Number(b[sortKey] || 0) - Number(a[sortKey] || 0));
+                    }
+                    
+                    const getLabelWidth = (str: string) => {
+                      let len = 0;
+                      if (!str) return 0;
+                      const s = String(str);
+                      for(let i = 0; i < s.length; i++) {
+                        len += s.charCodeAt(i) > 255 ? 14 : 8;
+                      }
+                      return len;
+                    };
+                    
+                    const calculatedMaxWidth = Math.max(...chartData.map(d => getLabelWidth(d[keyAxis as keyof typeof d] as string || '')));
+                    const maxLabelWidth = Math.min(150, Math.max(80, calculatedMaxWidth));
+                    const hasWrapping = calculatedMaxWidth > 150;
+                    const dynamicRowHeight = hasWrapping ? 36 : 24;
+                    const dynamicHeight = reportChartType === 'bar' ? Math.max(384, chartData.length * dynamicRowHeight + 80) : 384;
+
+                    const CustomYAxisTick = ({ x, y, payload }: any) => {
+                      const label = String(payload.value || '');
+                      let lines: string[] = [];
+                      let currentLine = '';
+                      let currentLen = 0;
+                      for(let i=0; i<label.length; i++) {
+                        const char = label[i];
+                        const charWidth = char.charCodeAt(0) > 255 ? 14 : 8;
+                        if (currentLen + charWidth > maxLabelWidth) {
+                          lines.push(currentLine);
+                          currentLine = char;
+                          currentLen = charWidth;
+                        } else {
+                          currentLine += char;
+                          currentLen += charWidth;
+                        }
+                      }
+                      if (currentLine) lines.push(currentLine);
+
+                      return (
+                        <g transform={`translate(${x},${y})`}>
+                          <text x={-8} y={4 - (lines.length - 1) * 6} textAnchor="end" fill="#666" fontSize={12}>
+                            <title>{label}</title>
+                            {lines.map((line, index) => (
+                              <tspan key={index} x={-8} dy={index === 0 ? 0 : "1.2em"}>{line}</tspan>
+                            ))}
+                          </text>
+                        </g>
+                      );
+                    };
+
+                    return (
+                      <div style={{ height: dynamicHeight }} className="w-full transition-all duration-300">
+                        <ResponsiveContainer width="100%" height="100%">
+                          {reportChartType === 'bar' ? (
+                            <BarChart data={chartData} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
+                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
+                              <YAxis 
+                                dataKey={keyAxis} 
+                                type="category" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                width={maxLabelWidth + 16} 
+                                interval={0} 
+                                tick={<CustomYAxisTick />} 
+                              />
+                              <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
+                              <Bar 
                                 dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
                                 name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
-                                stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
-                                strokeWidth={2} 
-                                dot={{r: 4}} 
-                                activeDot={{r: 6}} 
+                                fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
+                                radius={[0, 4, 4, 0]} 
                               />
-                            ) : (
-                              multiLineKeys.map((k, i) => {
-                                const colors = ['#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#4f46e5', '#ea580c', '#16a34a'];
-                                return (
-                                  <Line
-                                    key={k}
-                                    type="monotone"
-                                    dataKey={`${k}_${chartMetric}`}
-                                    name={k}
-                                    stroke={colors[i % colors.length]}
-                                    strokeWidth={2}
-                                    dot={{r: 4}}
-                                    activeDot={{r: 6}}
-                                  />
-                                );
-                              })
-                            )}
-                          </LineChart>
-                        );
-                      })()}
-                    </ResponsiveContainer>
-                  </div>
+                            </BarChart>
+                          ) : (
+                            <LineChart data={chartDimension === 'time' ? chartData : multiLineData}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+                              <XAxis dataKey={chartDimension === 'time' ? keyAxis : 'period'} axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
+                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
+                              <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
+                              {chartDimension !== 'time' && <Legend wrapperStyle={{ fontSize: '12px' }} />}
+                              {chartDimension === 'time' ? (
+                                <Line 
+                                  type="monotone" 
+                                  dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
+                                  name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
+                                  stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
+                                  strokeWidth={2} 
+                                  dot={{r: 4}} 
+                                  activeDot={{r: 6}} 
+                                />
+                              ) : (
+                                multiLineKeys.map((k, i) => {
+                                  const colors = ['#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#4f46e5', '#ea580c', '#16a34a'];
+                                  return (
+                                    <Line
+                                      key={k}
+                                      type="monotone"
+                                      dataKey={`${k}_${chartMetric}`}
+                                      name={k}
+                                      stroke={colors[i % colors.length]}
+                                      strokeWidth={2}
+                                      dot={{r: 4}}
+                                      activeDot={{r: 6}}
+                                    />
+                                  );
+                                })
+                              )}
+                            </LineChart>
+                          )}
+                        </ResponsiveContainer>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
