@@ -48,3 +48,4 @@
 - [x] 仪器预约时长限制与闲忙时段功能重构 (feature-equipment-booking-limits)
 - [x] 报表图表展示优化 (enhancement-reports-chart-display)
 - [x] 修复编辑仪器时人员白名单无法正常加载的问题 (bugfix-admin-whitelist-load)
+- [ ] 修复多处通知模板缺失变量渲染问题 (bugfix-notification-template-rendering)
