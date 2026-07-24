@@ -471,7 +471,8 @@ function upcomingReminderScan() {
             equipment_name: resv.equipment_name,
             booking_code: resv.booking_code,
             start_time: resv.start_time,
-            end_time: resv.end_time
+            end_time: resv.end_time,
+            advance_minutes: advanceMins
           }, resv.email);
         }
       }
@@ -678,6 +679,7 @@ function evaluatePenaltiesOnViolation(student_id: string) {
             penalty_id: info.lastInsertRowid,
             student_id,
             rule_name: rule.name,
+            reason: '违反规则：' + rule.name,
             penalty_method: penaltyMethod,
             start_time: nowStr,
             end_time: endDate.toISOString()
@@ -2290,7 +2292,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
   
   try {
     const result = db.transaction(() => {
-      const reservation = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(booking_code) as any;
+      const reservation = db.prepare('SELECT r.*, e.name as equipment_name FROM reservations r LEFT JOIN equipment e ON r.equipment_id = e.id WHERE r.booking_code = ?').get(booking_code) as any;
       
       if (!reservation) throw new OperationRejectError('未找到该预约', 404);
       if (reservation.status !== 'pending' && reservation.status !== 'approved') {
@@ -2344,6 +2346,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
       student_id: result.reservation.student_id,
       student_name: result.reservation.student_name,
       equipment_id: result.reservation.equipment_id,
+      equipment_name: result.reservation.equipment_name,
       start_time: result.reservation.start_time,
       end_time: result.reservation.end_time,
       status: 'cancelled',
@@ -3209,9 +3212,10 @@ app.post('/api/admin/violations', adminAuth, (req, res) => {
     let reservation_id = null;
     let actual_student_name = null;
     let email = null;
+    let equipment_name = '无关联设备';
 
     if (booking_code) {
-      const reservation = db.prepare('SELECT id, student_id, student_name, email FROM reservations WHERE booking_code = ?').get(booking_code) as any;
+      const reservation = db.prepare('SELECT r.id, r.student_id, r.student_name, r.email, e.name as equipment_name FROM reservations r LEFT JOIN equipment e ON r.equipment_id = e.id WHERE r.booking_code = ?').get(booking_code) as any;
       if (!reservation) {
         return res.status(400).json({ error: '预约码不存在' });
       }
@@ -3221,6 +3225,9 @@ app.post('/api/admin/violations', adminAuth, (req, res) => {
       reservation_id = reservation.id;
       actual_student_name = reservation.student_name;
       email = reservation.email;
+      if (reservation.equipment_name) {
+        equipment_name = reservation.equipment_name;
+      }
     }
 
     const remark = admin_note ? JSON.stringify({ admin_note }) : null;
@@ -3246,6 +3253,7 @@ app.post('/api/admin/violations', adminAuth, (req, res) => {
                   userId: student_id,
                   userName: actual_student_name || student_id,
                   violation_type,
+                  equipment_name,
                   violation_time: new Date(violation_time).toISOString(),
                   booking_code: booking_code || '无关联预约',
                   admin_note: admin_note || ''
