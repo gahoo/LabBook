@@ -26,3 +26,4 @@
 ## 阶段 3: 全局检查与收尾
 - [x] 执行 `npx tsc --noEmit` 和 `npm run build` 进行初步验证，确保没有引入语法或架构错误。
 - [x] 确保 `changes/TOC.md` 中添加或更新此功能的记录。
+- [x] 修改 `ReportsTab.tsx`，在详细预约记录的编辑侧边栏中渲染预约记录的 `created_at`。

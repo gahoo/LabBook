@@ -1122,6 +1122,9 @@ export default function ReportsTab({ token, onLogout, initialBookingCode, initia
                   <form onSubmit={handleUpdateReportRecord} className="space-y-4">
                     <div className="bg-neutral-50 p-4 rounded-xl mb-6 space-y-1.5">
                       <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{editingReportRecord.booking_code}</span></p>
+                      {editingReportRecord.created_at && (
+                        <p className="text-sm text-neutral-500">提交时间: <span className="text-neutral-900">{format(new Date(editingReportRecord.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}</span></p>
+                      )}
                       <p className="text-sm text-neutral-500">姓名: <span className="text-neutral-900">{editingReportRecord.student_name}</span></p>
                       <p className="text-sm text-neutral-500">学号: <span className="text-neutral-900">{editingReportRecord.student_id}</span></p>
                       <p className="text-sm text-neutral-500">导师: <span className="text-neutral-900">{editingReportRecord.supervisor}</span></p>

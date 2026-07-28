@@ -1853,11 +1853,6 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                           <span className="md:hidden font-medium text-neutral-500 text-xs">封禁开始时间</span>
                           <div className="text-right md:text-left">
                             <div>{new Date(p.start_time).toLocaleString('zh-CN')}</div>
-                            {p.created_at && (
-                              <div className="text-[10px] text-neutral-400 mt-0.5">
-                                创建于 {format(new Date(p.created_at + 'Z'), 'MM-dd HH:mm')}
-                              </div>
-                            )}
                           </div>
                         </div>
                       </td>

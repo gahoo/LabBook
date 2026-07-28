@@ -389,6 +389,7 @@ try { db.exec(`ALTER TABLE equipment ADD COLUMN created_at DATETIME`); } catch (
 try { db.exec(`ALTER TABLE equipment ADD COLUMN updated_at DATETIME`); } catch (e) {}
 try { db.exec(`ALTER TABLE penalty_rules ADD COLUMN created_at DATETIME`); } catch (e) {}
 try { db.exec(`ALTER TABLE penalty_rules ADD COLUMN updated_at DATETIME`); } catch (e) {}
+
 // Auto Backup Logic
 const backupDir = path.join(process.cwd(), 'backups');
 if (!fs.existsSync(backupDir)) {
@@ -2274,7 +2275,7 @@ app.post('/api/reservations/batch', (req, res) => {
     SELECT 
       r.id, r.equipment_id, r.student_name, r.student_id, r.supervisor, 
       r.start_time, r.end_time, r.status, r.booking_code,
-      r.total_cost, r.consumable_quantity, r.modified_count,
+      r.total_cost, r.consumable_quantity, r.modified_count, r.created_at,
       e.name as equipment_name, e.price_type, e.price, e.consumable_fee
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
