@@ -382,13 +382,6 @@ try {
   `);
 } catch (e) {}
 
-// Migrations: Add created_at and updated_at
-try { db.exec(`ALTER TABLE reservations ADD COLUMN created_at DATETIME`); } catch (e) {}
-try { db.exec(`ALTER TABLE reservations ADD COLUMN updated_at DATETIME`); } catch (e) {}
-try { db.exec(`ALTER TABLE equipment ADD COLUMN created_at DATETIME`); } catch (e) {}
-try { db.exec(`ALTER TABLE equipment ADD COLUMN updated_at DATETIME`); } catch (e) {}
-try { db.exec(`ALTER TABLE penalty_rules ADD COLUMN created_at DATETIME`); } catch (e) {}
-try { db.exec(`ALTER TABLE penalty_rules ADD COLUMN updated_at DATETIME`); } catch (e) {}
 
 // Auto Backup Logic
 const backupDir = path.join(process.cwd(), 'backups');
