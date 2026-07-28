@@ -10,3 +10,8 @@ backups/
 changes/security_check/
 issues.md
 test-*
+database.sqlite
+lab_equipment.db
+check-schema.cjs
+check-schema2.cjs
+patch.cjs

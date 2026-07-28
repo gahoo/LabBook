@@ -1851,7 +1851,14 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                       <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                         <div className="flex justify-between items-center md:block">
                           <span className="md:hidden font-medium text-neutral-500 text-xs">封禁开始时间</span>
-                          <span className="text-right">{new Date(p.start_time).toLocaleString('zh-CN')}</span>
+                          <div className="text-right md:text-left">
+                            <div>{new Date(p.start_time).toLocaleString('zh-CN')}</div>
+                            {p.created_at && (
+                              <div className="text-[10px] text-neutral-400 mt-0.5">
+                                创建于 {format(new Date(p.created_at + 'Z'), 'MM-dd HH:mm')}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 md:py-4 block md:table-cell">
@@ -2018,8 +2025,30 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
               <h3 className="text-xl font-bold text-neutral-900 mb-6">
                 违规记录详情
               </h3>
-              
+
               <div className="space-y-4">
+                <div className="flex flex-col gap-1 text-xs text-neutral-500 bg-neutral-50 p-3 rounded-lg border border-neutral-100">
+                  <div className="flex items-center gap-4">
+                    <span>违规时间: {format(new Date(selectedRecord.violation_time), 'yyyy-MM-dd HH:mm:ss')}</span>
+                  </div>
+                  {(() => {
+                    const isLateRecord = selectedRecord.created_at && 
+                      Math.abs(
+                        new Date(selectedRecord.created_at + 'Z').getTime() - 
+                        new Date(selectedRecord.violation_time).getTime()
+                      ) > 60000;
+                      
+                    if (isLateRecord) {
+                      return (
+                        <div className="flex items-center gap-4">
+                          <span>记录时间: {format(new Date(selectedRecord.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+
                 {revokeReservationNotes && (
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">预约备注</label>

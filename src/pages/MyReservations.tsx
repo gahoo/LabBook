@@ -46,6 +46,7 @@ interface Reservation {
   consumable_quantity?: number;
   modified_count: number;
   release_noshow_slots: number;
+  created_at?: string;
 }
 
 export default function MyReservations() {
@@ -1126,6 +1127,16 @@ export default function MyReservations() {
                               - {format(new Date(resv.end_time), "HH:mm")}
                             </p>
                           </div>
+                          {resv.created_at && (
+                            <div>
+                              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                                提交时间
+                              </p>
+                              <p className="text-sm text-neutral-700">
+                                {format(new Date(resv.created_at + 'Z'), "yyyy-MM-dd HH:mm")}
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <div className="space-y-4">
                           <div>

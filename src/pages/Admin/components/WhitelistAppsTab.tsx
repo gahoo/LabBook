@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { format } from 'date-fns';
 import { Filter, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -193,6 +194,9 @@ export default function WhitelistAppsTab({ token, handleLogout }: WhitelistAppsT
                 />
               </th>
               <th className="px-4 py-4 font-medium align-top">
+                <div className="mb-2">申请时间</div>
+              </th>
+              <th className="px-4 py-4 font-medium align-top">
                 <div className="mb-2">状态</div>
                 <div className="relative" ref={wlStatusFilterPopupRef}>
                   <button 
@@ -285,6 +289,14 @@ export default function WhitelistAppsTab({ token, handleLogout }: WhitelistAppsT
                       <p className="text-neutral-900">{app.phone}</p>
                       <p className="text-xs text-neutral-500">{app.email}</p>
                     </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                  <div className="flex justify-between items-center md:block">
+                    <span className="md:hidden font-medium text-neutral-500 text-xs">申请时间</span>
+                    <span className="text-neutral-700 text-xs">
+                      {app.created_at ? format(new Date(app.created_at + 'Z'), 'yyyy-MM-dd HH:mm') : '—'}
+                    </span>
                   </div>
                 </td>
                 <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">

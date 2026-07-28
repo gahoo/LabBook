@@ -113,7 +113,11 @@ db.exec(`
     price REAL NOT NULL,
     consumable_fee REAL DEFAULT 0,
     whitelist_enabled INTEGER DEFAULT 0,
-    whitelist_data TEXT
+    whitelist_data TEXT,
+    is_hidden INTEGER DEFAULT 0,
+    release_noshow_slots INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS whitelist_applications (
@@ -145,8 +149,12 @@ db.exec(`
     actual_end_time TEXT,
     total_cost REAL,
     consumable_quantity REAL DEFAULT 0,
-    modified_count INTEGER DEFAULT 0, -- New field
-    notes TEXT, -- New field
+    modified_count INTEGER DEFAULT 0,
+    notes TEXT,
+    violation_type TEXT,
+    violation_time TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (equipment_id) REFERENCES equipment(id)
   );
 
@@ -254,15 +262,17 @@ try {
       violation_type TEXT NOT NULL,
       trigger_config TEXT NOT NULL,
       action_config TEXT NOT NULL,
-      is_active INTEGER DEFAULT 1
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
   
   const rulesCount = db.prepare('SELECT COUNT(*) as count FROM penalty_rules').get() as any;
   if (rulesCount.count === 0) {
     const insertRule = db.prepare(`
-      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `);
     insertRule.run('频繁爽约封禁', '近30天内爽约达到2次，固定封禁', 'no-show', '{"metric":"count","threshold":2,"period_days":30}', '{"type":"ban"}', 1);
     insertRule.run('频繁逾期限制', '近30天内逾期达到3次，将限制借用（需管理员审批）', 'overdue', '{"metric":"count","threshold":3,"period_days":30}', '{"type":"require_approval"}', 1);
@@ -372,6 +382,13 @@ try {
   `);
 } catch (e) {}
 
+// Migrations: Add created_at and updated_at
+try { db.exec(`ALTER TABLE reservations ADD COLUMN created_at DATETIME`); } catch (e) {}
+try { db.exec(`ALTER TABLE reservations ADD COLUMN updated_at DATETIME`); } catch (e) {}
+try { db.exec(`ALTER TABLE equipment ADD COLUMN created_at DATETIME`); } catch (e) {}
+try { db.exec(`ALTER TABLE equipment ADD COLUMN updated_at DATETIME`); } catch (e) {}
+try { db.exec(`ALTER TABLE penalty_rules ADD COLUMN created_at DATETIME`); } catch (e) {}
+try { db.exec(`ALTER TABLE penalty_rules ADD COLUMN updated_at DATETIME`); } catch (e) {}
 // Auto Backup Logic
 const backupDir = path.join(process.cwd(), 'backups');
 if (!fs.existsSync(backupDir)) {
@@ -691,9 +708,9 @@ function evaluatePenaltiesOnViolation(student_id: string) {
       if (action.type === 'ban' && action.params?.cancel_future_reservations) {
         if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
           const placeholders = trigger.scope.map(() => '?').join(',');
-          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status IN ('pending', 'approved') AND start_time > ? AND equipment_id IN (${placeholders})`).run(student_id, nowStr, ...trigger.scope);
+          db.prepare(`UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE student_id = ? AND status IN ('pending', 'approved') AND start_time > ? AND equipment_id IN (${placeholders})`).run(student_id, nowStr, ...trigger.scope);
         } else {
-          db.prepare(`UPDATE reservations SET status = 'cancelled' WHERE student_id = ? AND status IN ('pending', 'approved') AND start_time > ?`).run(student_id, nowStr);
+          db.prepare(`UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE student_id = ? AND status IN ('pending', 'approved') AND start_time > ?`).run(student_id, nowStr);
         }
       }
     }
@@ -1116,8 +1133,8 @@ app.post('/api/admin/penalty-rules', adminAuth, (req, res) => {
   try {
     const { name, description, violation_type, trigger_config, action_config, is_active } = req.body;
     const stmt = db.prepare(`
-      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `);
     const info = stmt.run(name, description, violation_type, JSON.stringify(trigger_config), JSON.stringify(action_config), is_active ? 1 : 0);
     res.json({ id: info.lastInsertRowid });
@@ -1131,7 +1148,7 @@ app.put('/api/admin/penalty-rules/:id', adminAuth, (req, res) => {
     const { name, description, violation_type, trigger_config, action_config, is_active } = req.body;
     const stmt = db.prepare(`
       UPDATE penalty_rules 
-      SET name = ?, description = ?, violation_type = ?, trigger_config = ?, action_config = ?, is_active = ?
+      SET name = ?, description = ?, violation_type = ?, trigger_config = ?, action_config = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     stmt.run(name, description, violation_type, JSON.stringify(trigger_config), JSON.stringify(action_config), is_active ? 1 : 0, req.params.id);
@@ -1441,8 +1458,8 @@ app.post('/api/admin/equipment', adminAuth, (req, res) => {
   const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots } = req.body;
   
   const stmt = db.prepare(`
-    INSERT INTO equipment (name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO equipment (name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
   `);
   const info = stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', is_hidden ? 1 : 0, release_noshow_slots ? 1 : 0);
   
@@ -1456,7 +1473,7 @@ app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
   
   const stmt = db.prepare(`
     UPDATE equipment 
-    SET name = ?, description = ?, image_url = ?, location = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?, is_hidden = ?, release_noshow_slots = ?
+    SET name = ?, description = ?, image_url = ?, location = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?, is_hidden = ?, release_noshow_slots = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
   stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', is_hidden ? 1 : 0, release_noshow_slots ? 1 : 0, id);
@@ -1550,7 +1567,7 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
           updateValues.push(id);
           const stmt = db.prepare(`
             UPDATE equipment 
-            SET ${updateFields.join(', ')}
+            SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `);
           stmt.run(...updateValues);
@@ -2084,8 +2101,8 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
     }
 
     const stmt = db.prepare(`
-      INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `);
 
     const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
@@ -2202,7 +2219,7 @@ app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) 
     whitelist.push(app.student_name.trim());
   }
   
-  db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run(whitelist.join('\n'), app.equipment_id);
+  db.prepare('UPDATE equipment SET whitelist_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(whitelist.join('\n'), app.equipment_id);
   db.prepare("UPDATE whitelist_applications SET status = 'approved' WHERE id = ?").run(id);
 
   notifyEvent(db, 'whitelist_resolved', {
@@ -2275,7 +2292,7 @@ app.get('/api/reservations/:code', (req, res) => {
     SELECT 
       r.id, r.equipment_id, r.student_name, r.student_id, r.supervisor, 
       r.start_time, r.end_time, r.status, r.booking_code,
-      r.total_cost, r.consumable_quantity, r.modified_count,
+      r.total_cost, r.consumable_quantity, r.modified_count, r.created_at,
       e.name as equipment_name, e.price_type, e.price, e.consumable_fee
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
@@ -2309,7 +2326,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
       }
 
       const nowStr = new Date(now).toISOString();
-      db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ? WHERE booking_code = ?").run(nowStr, booking_code);
+      db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_code = ?").run(nowStr, booking_code);
       
       let lateCancelMinutes = 120;
       let eqAvail = null;
@@ -2537,7 +2554,7 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
 
     const stmt = db.prepare(`
       UPDATE reservations 
-      SET start_time = ?, end_time = ?, modified_count = modified_count + 1, status = ?
+      SET start_time = ?, end_time = ?, modified_count = modified_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     stmt.run(start_time, end_time, newStatus, reservation.id);
@@ -2588,7 +2605,7 @@ app.post('/api/reservations/checkin', (req, res) => {
       }
 
       const nowStr = now.toISOString();
-      db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ?, consumable_quantity = ? WHERE booking_code = ?").run(nowStr, consumable_quantity || 0, booking_code);
+      db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ?, consumable_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_code = ?").run(nowStr, consumable_quantity || 0, booking_code);
       
       const lateGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_late_grace_minutes'").get() as any;
       const lateGraceMinutes = lateGraceRow ? parseInt(lateGraceRow.value, 10) : 15;
@@ -2667,7 +2684,7 @@ app.post('/api/reservations/checkout', (req, res) => {
         db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'overdue', nowStr, durationMinutes);
       }
 
-      db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ?, consumable_quantity = ? WHERE booking_code = ?").run(nowStr, total_cost, finalConsumableQty, booking_code);
+      db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ?, consumable_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_code = ?").run(nowStr, total_cost, finalConsumableQty, booking_code);
       
       return { nowStr, total_cost, finalConsumableQty, isOvertime, student_id: reservation.student_id };
     })();
@@ -2727,7 +2744,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
 
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, status = ?
+    SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, status = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
   stmt.run(student_id, student_name, supervisor, phone, email, start_time, end_time, status, id);
@@ -2920,7 +2937,7 @@ app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
 
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?, notes = ?, status = ?
+    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?, notes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
   stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, newStatus, id);
@@ -3473,7 +3490,7 @@ app.post('/api/admin/penalties/batch', adminAuth, (req, res) => {
                 continue;
               }
             }
-            db.prepare("UPDATE reservations SET status = 'cancelled' WHERE id = ?").run(rev.id);
+            db.prepare("UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(rev.id);
           }
         }
       }
@@ -4310,7 +4327,7 @@ function scanForNoShows() {
           const currentRes = db.prepare('SELECT status FROM reservations WHERE id = ?').get(res.id) as any;
           if (currentRes && currentRes.status === 'approved') {
             const nowStr = now.toISOString();
-            db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ? WHERE id = ?").run(nowStr, res.id);
+            db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nowStr, res.id);
             db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time) VALUES (?, ?, ?, ?)").run(res.student_id, res.id, 'no-show', nowStr);
             
             evaluatePenaltiesOnViolation(res.student_id);

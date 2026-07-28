@@ -35,6 +35,7 @@ interface PenaltyRule {
   trigger_config: string; // JSON string
   action_config: string; // JSON string
   is_active: number;
+  updated_at?: string;
 }
 
 interface Equipment {
@@ -408,6 +409,11 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                         <div className="text-right md:text-left">
                           <div className="font-medium text-neutral-900">{rule.name}</div>
                           {rule.description && <div className="text-neutral-500 text-xs mt-1">{rule.description}</div>}
+                          {rule.updated_at && (
+                            <div className="text-neutral-400 text-[10px] mt-1">
+                              最后修改: {format(new Date(rule.updated_at + 'Z'), 'yyyy-MM-dd HH:mm')}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>

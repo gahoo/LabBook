@@ -9,6 +9,7 @@
 
 - **`reservations`** 表:
   - 增加 `created_at` (DATETIME DEFAULT CURRENT_TIMESTAMP)
+  - 增加 `updated_at` (DATETIME DEFAULT CURRENT_TIMESTAMP)
 - **`equipment`** 表:
   - 增加 `created_at` (DATETIME DEFAULT CURRENT_TIMESTAMP)
   - 增加 `updated_at` (DATETIME DEFAULT CURRENT_TIMESTAMP)
@@ -18,6 +19,7 @@
 
 ## 3. API 变更设计
 - `GET /api/reservations/:code`: `SELECT` 语句中增加 `r.created_at`。
+- `PUT /api/reservations/update/:code`, `PUT /api/admin/reservations/:id` 以及状态流转相关的 API：相关的 `UPDATE reservations` 语句中增加 `updated_at = CURRENT_TIMESTAMP`。
 - `PUT /api/admin/penalty-rules/:id`: `UPDATE` 语句中增加 `updated_at = CURRENT_TIMESTAMP`。
 - `PUT /api/admin/equipment/:id` 及批量更新: `UPDATE` 语句中增加 `updated_at = CURRENT_TIMESTAMP`。
 
