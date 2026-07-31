@@ -50,3 +50,4 @@
 - [x] 修复编辑仪器时人员白名单无法正常加载的问题 (bugfix-admin-whitelist-load)
 - [x] 修复多处通知模板缺失变量渲染问题 (bugfix-notification-template-rendering)
 - [x] 增加 created_at / updated_at 字段迁移方案 (feature-timestamps)
+- [ ] 后台预约、报表与白名单模块重构 (refactor-admin-reservations-reports-whitelist)
