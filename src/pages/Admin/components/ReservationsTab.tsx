@@ -732,22 +732,24 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
 
             return (
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <div className={`relative w-8 h-4 rounded-full transition-colors ${reportFilterFromToday ? 'bg-red-500' : 'bg-neutral-300'}`}>
-                    <input type="checkbox" className="sr-only" checked={reportFilterFromToday} onChange={(e) => {
-                      setReportFilterFromToday(e.target.checked);
-                      if (isThisWeek) {
-                        setReportStartDate(e.target.checked ? todayStr : format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
-                        setReportEndDate(e.target.checked ? format(addDays(today, 6), 'yyyy-MM-dd') : format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
-                      } else if (isThisMonth) {
-                        setReportStartDate(e.target.checked ? todayStr : format(startOfMonth(today), 'yyyy-MM-dd'));
-                        setReportEndDate(e.target.checked ? format(addDays(today, 29), 'yyyy-MM-dd') : format(endOfMonth(today), 'yyyy-MM-dd'));
-                      }
-                    }} />
-                    <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${reportFilterFromToday ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                  </div>
-                  <span className="text-xs font-medium text-neutral-500">今日起</span>
-                </label>
+                {(isThisWeek || isThisMonth) && (
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <div className={`relative w-8 h-4 rounded-full transition-colors ${reportFilterFromToday ? 'bg-red-500' : 'bg-neutral-300'}`}>
+                      <input type="checkbox" className="sr-only" checked={reportFilterFromToday} onChange={(e) => {
+                        setReportFilterFromToday(e.target.checked);
+                        if (isThisWeek) {
+                          setReportStartDate(e.target.checked ? todayStr : format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                          setReportEndDate(e.target.checked ? format(addDays(today, 6), 'yyyy-MM-dd') : format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                        } else if (isThisMonth) {
+                          setReportStartDate(e.target.checked ? todayStr : format(startOfMonth(today), 'yyyy-MM-dd'));
+                          setReportEndDate(e.target.checked ? format(addDays(today, 29), 'yyyy-MM-dd') : format(endOfMonth(today), 'yyyy-MM-dd'));
+                        }
+                      }} />
+                      <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${reportFilterFromToday ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                    </div>
+                    <span className="text-xs font-medium text-neutral-500">今日起</span>
+                  </label>
+                )}
                 <div className="flex bg-neutral-100 p-1 rounded-lg">
                   <button
                     onClick={() => {
