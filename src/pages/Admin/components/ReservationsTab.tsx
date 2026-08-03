@@ -1391,8 +1391,331 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
             </div>
             )}
 
-            
-        
+            {activeSubTab === 'stats' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+                <div className="p-6 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <h3 className="font-bold">时长费用统计</h3>
+                    <div className="flex bg-neutral-100 p-1 rounded-lg">
+                      <button
+                        onClick={() => setStatsType('user')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          statsType === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按用户
+                      </button>
+                      <button
+                        onClick={() => setStatsType('supervisor')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          statsType === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按导师
+                      </button>
+                      <button
+                        onClick={() => setStatsType('equipment')}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                          statsType === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                        }`}
+                      >
+                        按仪器
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-4 self-end sm:self-auto">
+                    <div className="flex items-center gap-2 relative"
+                         onMouseEnter={() => setShowSyncStatsTooltip(true)}
+                         onMouseLeave={() => setShowSyncStatsTooltip(false)}
+                         onClick={() => setShowSyncStatsTooltip(!showSyncStatsTooltip)}
+                    >
+                      <div className="flex items-center gap-1 cursor-pointer">
+                        <label className="text-xs font-medium text-neutral-500 cursor-pointer">联动</label>
+                        <Info className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600 transition-colors" />
+                      </div>
+                      
+                      {showSyncStatsTooltip && (
+                        <div className="absolute z-50 top-full mt-2 right-0 md:left-1/2 md:-translate-x-1/2 w-48 sm:w-max sm:whitespace-nowrap p-3 bg-white text-neutral-600 border border-neutral-200 text-xs rounded-xl shadow-lg ring-1 ring-black/5"
+                             onClick={(e) => e.stopPropagation()}
+                        >
+                          与详细预约记录表的筛选条件联动
+                        </div>
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSyncStatsWithFilters(!syncStatsWithFilters);
+                        }}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
+                          syncStatsWithFilters ? 'bg-red-600' : 'bg-neutral-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            syncStatsWithFilters ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <button 
+                      onClick={exportStats}
+                      className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      title={`导出${statsType === 'user' ? '用户' : statsType === 'supervisor' ? '导师' : '仪器'}统计`}
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm block md:table">
+                    <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
+                      <tr>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">{statsType === 'user' ? '用户/导师' : statsType === 'supervisor' ? '导师' : '仪器'}</div>
+                          {statsType === 'user' ? (
+                            <input 
+                              type="text" 
+                              placeholder="姓名/学号/导师..." 
+                              value={statsFilterUser}
+                              onChange={e => setStatsFilterUser(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          ) : statsType === 'supervisor' ? (
+                            <input 
+                              type="text" 
+                              placeholder="搜索导师..." 
+                              value={statsFilterSupervisor}
+                              onChange={e => setStatsFilterSupervisor(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          ) : (
+                            <input 
+                              list="reports-equipment-list"
+                              type="text" 
+                              placeholder="搜索仪器..." 
+                              value={statsFilterEquipment}
+                              onChange={e => setStatsFilterEquipment(e.target.value)}
+                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none text-left"
+                            />
+                          )}
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">上机时长</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min" 
+                              value={statsFilterDurationMin}
+                              onChange={e => setStatsFilterDurationMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max" 
+                              value={statsFilterDurationMax}
+                              onChange={e => setStatsFilterDurationMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">预约时长</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min" 
+                              value={statsFilterBookedMin}
+                              onChange={e => setStatsFilterBookedMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max" 
+                              value={statsFilterBookedMax}
+                              onChange={e => setStatsFilterBookedMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">时长利用率</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min%" 
+                              value={statsFilterUtilMin}
+                              onChange={e => setStatsFilterUtilMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max%" 
+                              value={statsFilterUtilMax}
+                              onChange={e => setStatsFilterUtilMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                        <th className="px-4 py-4 font-medium align-top">
+                          <div className="mb-2">总费用</div>
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              placeholder="Min" 
+                              value={statsFilterCostMin}
+                              onChange={e => setStatsFilterCostMin(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                            <span className="text-neutral-400">-</span>
+                            <input 
+                              type="number" 
+                              placeholder="Max" 
+                              value={statsFilterCostMax}
+                              onChange={e => setStatsFilterCostMax(e.target.value)}
+                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
+                            />
+                          </div>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
+                      {statsType === 'user' ? (
+                        filteredUsageByPerson.map((u: any, i: number) => {
+                          const utilization = u.booked_hours > 0 ? (u.machine_hours / u.booked_hours) * 100 : 0;
+                          return (
+                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
+                                  <div className="text-right md:text-left">
+                                    <p className="font-medium text-neutral-900">{u.student_name}</p>
+                                    <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
+                                  <span className="text-neutral-900">{(u.machine_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
+                                  <span className="text-neutral-900">{(u.booked_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长利用率</span>
+                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                  <span className="font-bold text-neutral-900">¥{(u.total_revenue || 0).toFixed(2)}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : statsType === 'supervisor' ? (
+                        filteredUsageBySupervisor.map((s: any, i: number) => {
+                          const utilization = s.booked_hours > 0 ? (s.machine_hours / s.booked_hours) * 100 : 0;
+                          return (
+                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
+                                  <span className="font-medium text-neutral-900">{s.supervisor}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
+                                  <span className="text-neutral-900">{(s.machine_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
+                                  <span className="text-neutral-900">{(s.booked_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长利用率</span>
+                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                  <span className="font-bold text-neutral-900">¥{(s.total_revenue || 0).toFixed(2)}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        filteredUsageByEquipment.map((e: any, i: number) => {
+                          const utilization = e.booked_hours > 0 ? (e.machine_hours / e.booked_hours) * 100 : 0;
+                          return (
+                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
+                                  <p className="font-medium text-neutral-900">{e.equipment_name}</p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
+                                  <span className="text-neutral-900">{(e.machine_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
+                                  <span className="text-neutral-900">{(e.booked_hours || 0).toFixed(1)}h</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长利用率</span>
+                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 md:py-4 block md:table-cell">
+                                <div className="flex justify-between items-center md:block">
+                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
+                                  <span className="font-bold text-neutral-900">¥{(e.total_revenue || 0).toFixed(2)}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                      {((statsType === 'user' && filteredUsageByPerson.length === 0) || 
+                        (statsType === 'supervisor' && filteredUsageBySupervisor.length === 0) ||
+                        (statsType === 'equipment' && filteredUsageByEquipment.length === 0)) && (
+                        <tr className="block md:table-row">
+                          <td colSpan={5} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {activeSubTab === 'charts' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="p-4 border-b border-neutral-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
