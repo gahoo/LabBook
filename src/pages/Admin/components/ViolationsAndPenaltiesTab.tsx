@@ -94,7 +94,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
           query.append('appealStatus', appealStatusFilter);
         }
       }
-      const res = await fetch(`/api/admin/violation-records?${query.toString()}`, {
+      const res = await fetch(`/api/admin/violations?${query.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();
@@ -210,7 +210,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
     const action = actionOverride || (modalMode === 'revoke' ? 'revoke' : modalMode === 'restore' ? 'restore' : 'reject-appeal');
     
     try {
-      const res = await fetch(`/api/admin/violation-records/${revokeRecordId}/${action}`, {
+      const res = await fetch(`/api/admin/violations/${revokeRecordId}/${action}`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,

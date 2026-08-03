@@ -2990,7 +2990,26 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
 // Admin update reservation
 app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
-  const { student_id, student_name, supervisor, phone, email, start_time, end_time, status } = req.body;
+  const updates = req.body;
+  
+  const oldRes = db.prepare('SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
+  if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
+
+  // Merge old data with incoming data (PATCH style)
+  const student_id = updates.student_id !== undefined ? updates.student_id : oldRes.student_id;
+  const student_name = updates.student_name !== undefined ? updates.student_name : oldRes.student_name;
+  const supervisor = updates.supervisor !== undefined ? updates.supervisor : oldRes.supervisor;
+  const phone = updates.phone !== undefined ? updates.phone : oldRes.phone;
+  const email = updates.email !== undefined ? updates.email : oldRes.email;
+  const start_time = updates.start_time !== undefined ? updates.start_time : oldRes.start_time;
+  const end_time = updates.end_time !== undefined ? updates.end_time : oldRes.end_time;
+  
+  const actual_start_time = updates.actual_start_time !== undefined ? updates.actual_start_time : oldRes.actual_start_time;
+  const actual_end_time = updates.actual_end_time !== undefined ? updates.actual_end_time : oldRes.actual_end_time;
+  const consumable_quantity = updates.consumable_quantity !== undefined ? updates.consumable_quantity : oldRes.consumable_quantity;
+  const notes = updates.notes !== undefined ? updates.notes : oldRes.notes;
+  
+  let status = updates.status !== undefined ? updates.status : oldRes.status;
   
   const start = new Date(start_time);
   const end = new Date(end_time);
@@ -2998,16 +3017,92 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
     return res.status(400).json({ error: '无效的时间格式' });
   }
 
-  const oldRes = db.prepare('SELECT r.status, r.booking_code, e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
+  // Cost and Violation Logic (from reports)
+  let total_cost = oldRes.total_cost;
+  if (actual_start_time && actual_end_time) {
+    const aStart = new Date(actual_start_time);
+    const aEnd = new Date(actual_end_time);
+    const hours = (aEnd.getTime() - aStart.getTime()) / (1000 * 60 * 60);
+    
+    if (oldRes.price_type === 'hour') {
+      total_cost = hours * oldRes.price;
+    } else {
+      total_cost = oldRes.price;
+    }
+    if (oldRes.consumable_fee > 0 && consumable_quantity > 0) {
+      total_cost += oldRes.consumable_fee * consumable_quantity;
+    }
+  }
+
+  let violationChanged = false;
+  const revokedViolationIds: number[] = [];
+  
+  if (actual_start_time && oldRes.status === 'cancelled') {
+    status = actual_end_time ? 'completed' : 'active';
+    const noShowViolation = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'no-show' AND status = 'active'").get(id) as any;
+    if (noShowViolation) {
+      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(noShowViolation.id);
+      violationChanged = true;
+      revokedViolationIds.push(noShowViolation.id);
+    }
+  } else if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
+    status = 'completed';
+  }
+
+  const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
+  const settingsMap = settingsRows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
+  const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
+  const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
+
+  if (actual_start_time) {
+    const scheduledStart = new Date(start_time);
+    const actualStart = new Date(actual_start_time);
+    const diffMinutes = (actualStart.getTime() - scheduledStart.getTime()) / (1000 * 60);
+    const existingLate = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'late' AND status = 'active'").get(id) as any;
+    
+    if (diffMinutes > lateGraceMinutes) {
+      if (!existingLate) {
+        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(student_id, id, 'late', actual_start_time, Math.round(diffMinutes));
+        violationChanged = true;
+      } else {
+        db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_start_time, existingLate.id);
+      }
+    } else if (existingLate) {
+      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingLate.id);
+      violationChanged = true;
+      revokedViolationIds.push(existingLate.id);
+    }
+  }
+
+  if (actual_end_time) {
+    const scheduledEnd = new Date(end_time);
+    const actualEnd = new Date(actual_end_time);
+    const diffMinutes = (actualEnd.getTime() - scheduledEnd.getTime()) / (1000 * 60);
+    const existingOverdue = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'overdue' AND status = 'active'").get(id) as any;
+    if (diffMinutes > overtimeGraceMinutes) {
+      if (!existingOverdue) {
+        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(student_id, id, 'overdue', actual_end_time, Math.round(diffMinutes));
+        violationChanged = true;
+      } else {
+        db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_end_time, existingOverdue.id);
+      }
+    } else if (existingOverdue) {
+      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingOverdue.id);
+      violationChanged = true;
+      revokedViolationIds.push(existingOverdue.id);
+    }
+  }
 
   const stmt = db.prepare(`
     UPDATE reservations 
-    SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, start_time = ?, end_time = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+    SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, 
+        start_time = ?, end_time = ?, actual_start_time = ?, actual_end_time = ?, 
+        consumable_quantity = ?, total_cost = ?, notes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
-  stmt.run(student_id, student_name, supervisor, phone, email, start_time, end_time, status, id);
+  stmt.run(student_id, student_name, supervisor, phone, email, start_time, end_time, actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, status, id);
   
-  if (oldRes && oldRes.status === 'pending' && status === 'approved') {
+  if (oldRes.status === 'pending' && status === 'approved') {
     notifyEvent(db, 'booking_approved', {
       booking_code: oldRes.booking_code,
       student_id,
@@ -3016,7 +3111,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       start_time,
       end_time
     }, email || undefined);
-  } else if (oldRes && oldRes.status === 'pending' && (status === 'cancelled' || status === 'rejected')) {
+  } else if (oldRes.status === 'pending' && (status === 'cancelled' || status === 'rejected')) {
     notifyEvent(db, 'booking_rejected', {
       booking_code: oldRes.booking_code,
       student_id,
@@ -3027,7 +3122,21 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
     }, email || undefined);
   }
 
-  res.json({ success: true });
+  if (revokedViolationIds.length > 0) {
+    for (const rid of revokedViolationIds) {
+      db.prepare(`
+        UPDATE user_penalties 
+        SET status = 'revoked' 
+        WHERE status = 'active' AND contributing_violation_ids LIKE ?
+      `).run(`%,${rid},%`);
+    }
+  }
+  
+  if (violationChanged) {
+    evaluatePenaltiesOnViolation(student_id);
+  }
+
+  res.json({ success: true, total_cost });
 });
 
 // Admin delete reservation
@@ -3044,200 +3153,9 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
   res.json({ success: true });
 });
 
-// 9. Admin Reports
-app.put('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
-  const { id } = req.params;
-  const { actual_start_time, actual_end_time, consumable_quantity, notes, manual_violations } = req.body;
-  
-  const oldRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
-  if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
+// Deprecated PUT /api/admin/reports/reservations/:id removed
 
-  let total_cost = oldRes.total_cost;
-  if (actual_start_time && actual_end_time) {
-    const eq = db.prepare('SELECT * FROM equipment WHERE id = ?').get(oldRes.equipment_id) as any;
-    const start = new Date(actual_start_time);
-    const end = new Date(actual_end_time);
-    const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-    
-    if (eq.price_type === 'hour') {
-      total_cost = hours * eq.price;
-    } else {
-      total_cost = eq.price;
-    }
-    if (eq.consumable_fee > 0 && consumable_quantity > 0) {
-      total_cost += eq.consumable_fee * consumable_quantity;
-    }
-  }
-
-  let newStatus = oldRes.status;
-  let violationChanged = false;
-  const revokedViolationIds: number[] = [];
-
-  if (actual_start_time && oldRes.status === 'cancelled') {
-    newStatus = actual_end_time ? 'completed' : 'active';
-    const noShowViolation = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'no-show' AND status = 'active'").get(id) as any;
-    if (noShowViolation) {
-      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(noShowViolation.id);
-      violationChanged = true;
-      revokedViolationIds.push(noShowViolation.id);
-    }
-  } else if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
-    newStatus = 'completed';
-  }
-
-  const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
-  const settingsMap = settingsRows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
-  const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
-  const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
-
-  if (actual_start_time) {
-    const scheduledStart = new Date(oldRes.start_time);
-    const actualStart = new Date(actual_start_time);
-    const diffMinutes = (actualStart.getTime() - scheduledStart.getTime()) / (1000 * 60);
-
-    const existingLate = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'late' AND status = 'active'").get(id) as any;
-    
-    if (diffMinutes > lateGraceMinutes) {
-      if (!existingLate) {
-        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(oldRes.student_id, id, 'late', actual_start_time, Math.round(diffMinutes));
-        violationChanged = true;
-      } else {
-        db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_start_time, existingLate.id);
-      }
-    } else if (existingLate) {
-      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingLate.id);
-      violationChanged = true;
-      revokedViolationIds.push(existingLate.id);
-    }
-  }
-
-  if (actual_end_time) {
-    const scheduledEnd = new Date(oldRes.end_time);
-    const actualEnd = new Date(actual_end_time);
-    const diffMinutes = (actualEnd.getTime() - scheduledEnd.getTime()) / (1000 * 60);
-
-    const existingOverdue = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'overdue' AND status = 'active'").get(id) as any;
-
-    if (diffMinutes > overtimeGraceMinutes) {
-      if (!existingOverdue) {
-        db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(oldRes.student_id, id, 'overdue', actual_end_time, Math.round(diffMinutes));
-        violationChanged = true;
-      } else {
-        db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_end_time, existingOverdue.id);
-      }
-    } else if (existingOverdue) {
-      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingOverdue.id);
-      violationChanged = true;
-      revokedViolationIds.push(existingOverdue.id);
-    }
-  }
-
-  // Handle manual violations (Diff & Sync)
-  if (manual_violations && Array.isArray(manual_violations)) {
-    const existingManuals = db.prepare(`
-      SELECT id, remark FROM violation_records 
-      WHERE reservation_id = ? AND violation_type IN ('hygiene_issue', 'improper_operation', 'proxy_booking', 'other_manual') AND status = 'active'
-    `).all(id) as any[];
-
-    const incomingIds = manual_violations.map(v => v.id).filter(id => id !== null);
-
-    // 1. Revoke removed violations
-    for (const existing of existingManuals) {
-      if (!incomingIds.includes(existing.id)) {
-        let remarkObj: any = {};
-        if (existing.remark) {
-          try { remarkObj = JSON.parse(existing.remark); } catch (e) { remarkObj = { admin_note: existing.remark }; }
-        }
-        remarkObj.admin_note = (remarkObj.admin_note || '') + ' [Administratively revoked]';
-        db.prepare("UPDATE violation_records SET status = 'revoked', remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), existing.id);
-        violationChanged = true;
-        revokedViolationIds.push(existing.id);
-      }
-    }
-
-    // 2. Insert or Update
-    for (const mv of manual_violations) {
-      if (!mv.id) {
-        // Insert
-        const remarkObj = { admin_note: mv.remark };
-        const nowIso = new Date().toISOString();
-        db.prepare(`
-          INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, remark)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(oldRes.student_id, id, mv.type, nowIso, JSON.stringify(remarkObj));
-        violationChanged = true;
-
-        notifyEvent(db, 'violation_created', {
-          student_id: oldRes.student_id,
-          violation_type: mv.type,
-          equipment_name: '系统管理员录入', 
-          booking_code: oldRes.booking_code
-        }, oldRes.email);
-      } else {
-        // Update
-        const existing = existingManuals.find(e => e.id === mv.id);
-        if (existing) {
-          let remarkObj: any = {};
-          if (existing.remark) {
-            try { remarkObj = JSON.parse(existing.remark); } catch (e) { remarkObj = { admin_note: existing.remark }; }
-          }
-          remarkObj.admin_note = mv.remark;
-          db.prepare(`
-            UPDATE violation_records SET violation_type = ?, remark = ? WHERE id = ?
-          `).run(mv.type, JSON.stringify(remarkObj), mv.id);
-          // If type or remark changed, we might consider it a change, but to be safe we can just set violationChanged = true if type changed.
-          // Actually, if they updated it, we should re-evaluate just in case the type changed.
-          violationChanged = true;
-        }
-      }
-    }
-  }
-
-  const stmt = db.prepare(`
-    UPDATE reservations 
-    SET actual_start_time = ?, actual_end_time = ?, consumable_quantity = ?, total_cost = ?, notes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `);
-  stmt.run(actual_start_time, actual_end_time, consumable_quantity, total_cost, notes, newStatus, id);
-  
-  if (revokedViolationIds.length > 0) {
-    for (const rid of revokedViolationIds) {
-      db.prepare(`
-        UPDATE user_penalties 
-        SET status = 'revoked' 
-        WHERE status = 'active' AND contributing_violation_ids LIKE ?
-      `).run(`%,${rid},%`);
-    }
-  }
-
-  if (violationChanged) {
-    evaluatePenaltiesOnViolation(oldRes.student_id);
-  }
-
-  const newRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
-  
-  db.prepare(`
-    INSERT INTO audit_logs (reservation_id, action, old_data, new_data)
-    VALUES (?, ?, ?, ?)
-  `).run(id, 'Admin modified actual times/consumables/notes', JSON.stringify(oldRes), JSON.stringify(newRes));
-  
-  res.json({ success: true, total_cost });
-});
-
-app.delete('/api/admin/reports/reservations/:id', adminAuth, (req, res) => {
-  const { id } = req.params;
-  const oldRes = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
-  if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
-
-  db.prepare('DELETE FROM reservations WHERE id = ?').run(id);
-
-  db.prepare(`
-    INSERT INTO audit_logs (reservation_id, action, old_data, new_data)
-    VALUES (?, ?, ?, ?)
-  `).run(id, 'Admin deleted reservation from reports', JSON.stringify(oldRes), null);
-
-  res.json({ success: true });
-});
+// Deprecated DELETE /api/admin/reports/reservations/:id removed
 
 app.post('/api/violations/my', (req, res) => {
   const { student_id, student_name, violation_ids } = req.body;
@@ -3319,7 +3237,7 @@ app.post('/api/violations/:id/appeal', (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/admin/violation-records', adminAuth, (req, res) => {
+app.get('/api/admin/violations', adminAuth, (req, res) => {
   const { startDate, endDate, ids, appealStatus, reservation_id } = req.query;
 
   const hasSpecificId = reservation_id || (ids && typeof ids === 'string' && ids.trim() !== '');
@@ -3548,7 +3466,52 @@ app.post('/api/admin/violations', adminAuth, (req, res) => {
   }
 });
 
-app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
+app.put('/api/admin/violations/:id', adminAuth, (req, res) => {
+  const { id } = req.params;
+  const { violation_type, remark } = req.body;
+
+  if (!violation_type) {
+    return res.status(400).json({ error: '缺少违规类型字段' });
+  }
+
+  const allowedTypes = ['hygiene_issue', 'improper_operation', 'proxy_booking', 'other_manual'];
+  if (!allowedTypes.includes(violation_type)) {
+    return res.status(400).json({ error: '不支持的违规类型' });
+  }
+
+  const existing = db.prepare('SELECT student_id, remark FROM violation_records WHERE id = ?').get(id) as any;
+  if (!existing) {
+    return res.status(404).json({ error: '违规记录不存在' });
+  }
+
+  let finalRemark = existing.remark;
+  if (remark !== undefined) {
+    let remarkObj: any = {};
+    try {
+      remarkObj = existing.remark ? JSON.parse(existing.remark) : {};
+    } catch(e) {}
+    if (remark) {
+      remarkObj.admin_note = remark;
+    } else {
+      delete remarkObj.admin_note;
+    }
+    finalRemark = Object.keys(remarkObj).length > 0 ? JSON.stringify(remarkObj) : null;
+  }
+
+  try {
+    db.prepare('UPDATE violation_records SET violation_type = ?, remark = ? WHERE id = ?').run(violation_type, finalRemark, id);
+    
+    // Re-evaluate penalties just in case
+    evaluatePenaltiesOnViolation(existing.student_id);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+app.post('/api/admin/violations/:id/revoke', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   
@@ -3597,7 +3560,7 @@ app.post('/api/admin/violation-records/:id/revoke', adminAuth, (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
+app.post('/api/admin/violations/:id/restore', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   
@@ -3642,7 +3605,7 @@ app.post('/api/admin/violation-records/:id/restore', adminAuth, (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/admin/violation-records/:id/reject-appeal', adminAuth, (req, res) => {
+app.post('/api/admin/violations/:id/reject-appeal', adminAuth, (req, res) => {
   const { id } = req.params;
   const { remark } = req.body;
   

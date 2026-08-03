@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Clock, DollarSign, FileText, Download, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { format, subDays, startOfToday, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import ReservationEditDrawer from './ReservationEditDrawer';
 import toast from 'react-hot-toast';
 
 interface ReservationsTabProps {
@@ -189,7 +190,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
 
   const fetchManualViolations = async (reservationId: number) => {
     try {
-      const res = await fetch(`/api/admin/violation-records?reservation_id=${reservationId}`, {
+      const res = await fetch(`/api/admin/violations?reservation_id=${reservationId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -589,7 +590,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
         return new Date(y, m - 1, d, h, min).toISOString();
       };
       
-      const res = await fetch(`/api/admin/reports/reservations/${editingReportRecord.id}`, {
+      const res = await fetch(`/api/admin/reservations/${editingReportRecord.id}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -617,7 +618,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
 
   const handleDeleteReportRecord = async (id: number) => {
     try {
-      const res = await fetch(`/api/admin/reports/reservations/${id}`, {
+      const res = await fetch(`/api/admin/reservations/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1323,6 +1324,8 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                                 };
                                 setEditingReportRecord({
                                   ...res,
+                                  start_time: toLocal(res.start_time),
+                                  end_time: toLocal(res.end_time),
                                   actual_start_time: toLocal(res.actual_start_time),
                                   actual_end_time: toLocal(res.actual_end_time)
                                 });
@@ -1386,550 +1389,29 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
             </div>
             )}
 
-            {/* Edit Drawer */}
-            {/* Drawer Overlay */}
-            <div 
-              className={`fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              onClick={() => setIsDrawerOpen(false)}
-            />
-
-            {/* Drawer Panel */}
-            <div 
-              className={`fixed top-0 right-0 h-full w-full sm:w-[500px] md:w-[600px] bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out overflow-y-auto ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
-            >
-              <div className="p-4 border-b border-neutral-200 flex items-center justify-between sticky top-0 bg-white z-10">
-                <h2 className="text-lg font-bold text-neutral-900">编辑预约记录</h2>
-                <button 
-                  onClick={() => setIsDrawerOpen(false)}
-                  className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-4 sm:p-6">
-                {editingReportRecord && (
-                  <form onSubmit={handleUpdateReportRecord} className="space-y-4">
-                    <div className="bg-neutral-50 p-4 rounded-xl mb-6 space-y-1.5">
-                      <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{editingReportRecord.booking_code}</span></p>
-                      {editingReportRecord.created_at && (
-                        <p className="text-sm text-neutral-500">提交时间: <span className="text-neutral-900">{format(new Date(editingReportRecord.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}</span></p>
-                      )}
-                      <p className="text-sm text-neutral-500">姓名: <span className="text-neutral-900">{editingReportRecord.student_name}</span></p>
-                      <p className="text-sm text-neutral-500">学号: <span className="text-neutral-900">{editingReportRecord.student_id}</span></p>
-                      <p className="text-sm text-neutral-500">导师: <span className="text-neutral-900">{editingReportRecord.supervisor}</span></p>
-                      <p className="text-sm text-neutral-500">仪器: <span className="text-neutral-900">{editingReportRecord.equipment_name}</span></p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-neutral-500 mb-1">实际上机时间</label>
-                        <input 
-                          type="datetime-local" 
-                          step="300"
-                          value={editingReportRecord.actual_start_time || ''} 
-                          onChange={e => setEditingReportRecord({...editingReportRecord, actual_start_time: e.target.value})} 
-                          className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-neutral-500 mb-1">实际下机时间</label>
-                        <input 
-                          type="datetime-local" 
-                          step="300"
-                          value={editingReportRecord.actual_end_time || ''} 
-                          onChange={e => setEditingReportRecord({...editingReportRecord, actual_end_time: e.target.value})} 
-                          className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-500 mb-1">耗材数量</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        value={editingReportRecord.consumable_quantity || 0} 
-                        onChange={e => setEditingReportRecord({...editingReportRecord, consumable_quantity: Number(e.target.value)})} 
-                        className="w-full px-4 py-2 rounded-xl border border-neutral-300" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-500 mb-1">备注</label>
-                      <textarea 
-                        rows={3}
-                        value={editingReportRecord.notes || ''} 
-                        onChange={e => setEditingReportRecord({...editingReportRecord, notes: e.target.value})} 
-                        className="w-full px-4 py-2 rounded-xl border border-neutral-300 resize-none"
-                        placeholder="添加备注信息..."
-                      />
-                    </div>
-
-                    <div className="mt-8 pt-6 border-t border-neutral-200">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
-                          <span className="text-red-500">⚠️</span> 异常与违规标记
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => setManualViolations([...manualViolations, { id: null, type: 'hygiene_issue', remark: '' }])}
-                          className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
-                        >
-                          + 新增违规记录
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        {manualViolations.map((mv, index) => (
-                          <div key={index} className="p-4 bg-red-50/50 border border-red-100 rounded-xl relative">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newMvs = [...manualViolations];
-                                newMvs.splice(index, 1);
-                                setManualViolations(newMvs);
-                              }}
-                              className="absolute top-4 right-4 text-neutral-400 hover:text-red-600 transition-colors"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                            
-                            <div className="space-y-3 pr-8">
-                              <div>
-                                <label className="block text-xs font-medium text-neutral-600 mb-1">违规类型</label>
-                                <select
-                                  value={mv.type}
-                                  onChange={e => {
-                                    const newMvs = [...manualViolations];
-                                    newMvs[index].type = e.target.value;
-                                    setManualViolations(newMvs);
-                                  }}
-                                  className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm"
-                                >
-                                  <option value="hygiene_issue">卫生不达标</option>
-                                  <option value="improper_operation">违规操作</option>
-                                  <option value="proxy_booking">代预约</option>
-                                  <option value="other_manual">其他违规</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-neutral-600 mb-1">违规说明 <span className="text-red-500">*</span></label>
-                                <textarea
-                                  required
-                                  rows={2}
-                                  value={mv.remark}
-                                  onChange={e => {
-                                    const newMvs = [...manualViolations];
-                                    newMvs[index].remark = e.target.value;
-                                    setManualViolations(newMvs);
-                                  }}
-                                  placeholder="请详细描述违规情况..."
-                                  className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm resize-none"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        {manualViolations.length === 0 && (
-                          <div className="text-center py-6 bg-neutral-50 rounded-xl border border-neutral-200 border-dashed">
-                            <p className="text-sm text-neutral-500">暂无手动标记的违规记录</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-4 mt-8">
-                      <button type="button" onClick={() => setIsDrawerOpen(false)} className="flex-1 py-3 border border-neutral-300 rounded-xl font-medium hover:bg-neutral-50">取消</button>
-                      <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700">保存修改</button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </div>
-
-            {activeSubTab === 'stats' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-6 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <h3 className="font-bold">时长费用统计</h3>
-                    <div className="flex bg-neutral-100 p-1 rounded-lg">
-                      <button
-                        onClick={() => setStatsType('user')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                          statsType === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                        }`}
-                      >
-                        按用户
-                      </button>
-                      <button
-                        onClick={() => setStatsType('supervisor')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                          statsType === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                        }`}
-                      >
-                        按导师
-                      </button>
-                      <button
-                        onClick={() => setStatsType('equipment')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                          statsType === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                        }`}
-                      >
-                        按仪器
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-4 self-end sm:self-auto">
-                    <div className="flex items-center gap-2 relative"
-                         onMouseEnter={() => setShowSyncStatsTooltip(true)}
-                         onMouseLeave={() => setShowSyncStatsTooltip(false)}
-                         onClick={() => setShowSyncStatsTooltip(!showSyncStatsTooltip)}
-                    >
-                      <div className="flex items-center gap-1 cursor-pointer">
-                        <label className="text-xs font-medium text-neutral-500 cursor-pointer">联动</label>
-                        <Info className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600 transition-colors" />
-                      </div>
-                      
-                      {showSyncStatsTooltip && (
-                        <div className="absolute z-50 top-full mt-2 right-0 md:left-1/2 md:-translate-x-1/2 w-48 sm:w-max sm:whitespace-nowrap p-3 bg-white text-neutral-600 border border-neutral-200 text-xs rounded-xl shadow-lg ring-1 ring-black/5"
-                             onClick={(e) => e.stopPropagation()}
-                        >
-                          与详细预约记录表的筛选条件联动
-                        </div>
-                      )}
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSyncStatsWithFilters(!syncStatsWithFilters);
-                        }}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
-                          syncStatsWithFilters ? 'bg-red-600' : 'bg-neutral-300'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            syncStatsWithFilters ? 'translate-x-[18px]' : 'translate-x-[2px]'
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    <button 
-                      onClick={exportStats}
-                      className="p-2 border border-neutral-300 text-neutral-500 rounded-xl hover:bg-neutral-50 hover:text-red-600 transition-colors"
-                      title={`导出${statsType === 'user' ? '用户' : statsType === 'supervisor' ? '导师' : '仪器'}统计`}
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm block md:table">
-                    <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200 hidden md:table-header-group">
-                      <tr>
-                        <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">{statsType === 'user' ? '用户/导师' : statsType === 'supervisor' ? '导师' : '仪器'}</div>
-                          {statsType === 'user' ? (
-                            <input 
-                              type="text" 
-                              placeholder="姓名/学号/导师..." 
-                              value={statsFilterUser}
-                              onChange={e => setStatsFilterUser(e.target.value)}
-                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                          ) : statsType === 'supervisor' ? (
-                            <input 
-                              type="text" 
-                              placeholder="搜索导师..." 
-                              value={statsFilterSupervisor}
-                              onChange={e => setStatsFilterSupervisor(e.target.value)}
-                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                          ) : (
-                            <input 
-                              list="reports-equipment-list"
-                              type="text" 
-                              placeholder="搜索仪器..." 
-                              value={statsFilterEquipment}
-                              onChange={e => setStatsFilterEquipment(e.target.value)}
-                              className="w-full px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none text-left"
-                            />
-                          )}
-                        </th>
-                        <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">上机时长</div>
-                          <div className="flex items-center gap-1">
-                            <input 
-                              type="number" 
-                              placeholder="Min" 
-                              value={statsFilterDurationMin}
-                              onChange={e => setStatsFilterDurationMin(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                            <span className="text-neutral-400">-</span>
-                            <input 
-                              type="number" 
-                              placeholder="Max" 
-                              value={statsFilterDurationMax}
-                              onChange={e => setStatsFilterDurationMax(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                          </div>
-                        </th>
-                        <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">预约时长</div>
-                          <div className="flex items-center gap-1">
-                            <input 
-                              type="number" 
-                              placeholder="Min" 
-                              value={statsFilterBookedMin}
-                              onChange={e => setStatsFilterBookedMin(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                            <span className="text-neutral-400">-</span>
-                            <input 
-                              type="number" 
-                              placeholder="Max" 
-                              value={statsFilterBookedMax}
-                              onChange={e => setStatsFilterBookedMax(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                          </div>
-                        </th>
-                        <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">时长</div>
-                          <div className="flex items-center gap-1">
-                            <input 
-                              type="number" 
-                              placeholder="Min%" 
-                              value={statsFilterUtilMin}
-                              onChange={e => setStatsFilterUtilMin(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                            <span className="text-neutral-400">-</span>
-                            <input 
-                              type="number" 
-                              placeholder="Max%" 
-                              value={statsFilterUtilMax}
-                              onChange={e => setStatsFilterUtilMax(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                          </div>
-                        </th>
-                        <th className="px-4 py-4 font-medium align-top">
-                          <div className="mb-2">总费用</div>
-                          <div className="flex items-center gap-1">
-                            <input 
-                              type="number" 
-                              placeholder="Min" 
-                              value={statsFilterCostMin}
-                              onChange={e => setStatsFilterCostMin(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                            <span className="text-neutral-400">-</span>
-                            <input 
-                              type="number" 
-                              placeholder="Max" 
-                              value={statsFilterCostMax}
-                              onChange={e => setStatsFilterCostMax(e.target.value)}
-                              className="w-16 px-2 py-1 text-xs rounded border border-neutral-300 focus:ring-1 focus:ring-red-600 outline-none"
-                            />
-                          </div>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
-                      {statsType === 'user' ? (
-                        filteredUsageByPerson.map((u: any, i: number) => {
-                          const utilization = u.booked_hours > 0 ? (u.machine_hours / u.booked_hours) * 100 : 0;
-                          return (
-                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">用户/导师</span>
-                                  <div className="text-right md:text-left">
-                                    <p className="font-medium text-neutral-900">{u.student_name}</p>
-                                    <p className="text-xs text-neutral-500">{u.student_id} | {u.supervisor}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
-                                  <span className="text-neutral-900">{(u.machine_hours || 0).toFixed(1)}h</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
-                                  <span className="text-neutral-900">{(u.booked_hours || 0).toFixed(1)}h</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长</span>
-                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                                  <span className="font-bold text-neutral-900">¥{(u.total_revenue || 0).toFixed(2)}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : statsType === 'supervisor' ? (
-                        filteredUsageBySupervisor.map((s: any, i: number) => {
-                          const utilization = s.booked_hours > 0 ? (s.machine_hours / s.booked_hours) * 100 : 0;
-                          return (
-                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">导师</span>
-                                  <span className="font-medium text-neutral-900">{s.supervisor}</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
-                                  <span className="text-neutral-900">{(s.machine_hours || 0).toFixed(1)}h</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
-                                  <span className="text-neutral-900">{(s.booked_hours || 0).toFixed(1)}h</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长</span>
-                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                                  <span className="font-bold text-neutral-900">¥{(s.total_revenue || 0).toFixed(2)}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        filteredUsageByEquipment.map((e: any, i: number) => {
-                          const utilization = e.booked_hours > 0 ? (e.machine_hours / e.booked_hours) * 100 : 0;
-                          return (
-                            <tr key={i} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">仪器</span>
-                                  <p className="font-medium text-neutral-900">{e.equipment_name}</p>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">上机时长</span>
-                                  <span className="text-neutral-900">{(e.machine_hours || 0).toFixed(1)}h</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">预约时长</span>
-                                  <span className="text-neutral-900">{(e.booked_hours || 0).toFixed(1)}h</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">时长</span>
-                                  <span className="text-neutral-900">{utilization.toFixed(1)}%</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 md:py-4 block md:table-cell">
-                                <div className="flex justify-between items-center md:block">
-                                  <span className="md:hidden font-medium text-neutral-500 text-xs">总费用</span>
-                                  <span className="font-bold text-neutral-900">¥{(e.total_revenue || 0).toFixed(2)}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                      {((statsType === 'user' && filteredUsageByPerson.length === 0) || 
-                        (statsType === 'supervisor' && filteredUsageBySupervisor.length === 0) ||
-                        (statsType === 'equipment' && filteredUsageByEquipment.length === 0)) && (
-                        <tr className="block md:table-row">
-                          <td colSpan={5} className="px-4 py-12 text-center text-neutral-500 block md:table-cell">暂无数据</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
+            
+        
             {activeSubTab === 'charts' && (
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="p-6 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="p-4 border-b border-neutral-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <h3 className="font-bold flex items-center gap-2">
-                      <BarChart2 className="w-5 h-5 text-red-600" />
-                      统计图表
-                    </h3>
-                    <div className="flex bg-neutral-100 p-1 rounded-lg">
-                      <button
-                        onClick={() => setChartMetric('duration')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                          chartMetric === 'duration' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                        }`}
-                      >
-                        按时长
-                      </button>
-                      <button
-                        onClick={() => setChartMetric('revenue')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                          chartMetric === 'revenue' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                        }`}
-                      >
-                        按费用
-                      </button>
+                    <h3 className="text-sm font-bold text-neutral-900">统计图表</h3>
+                    <div className="flex bg-neutral-100 p-1 rounded-xl">
+                      <button onClick={() => setChartMetric('duration')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartMetric === 'duration' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>时长</button>
+                      <button onClick={() => setChartMetric('revenue')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartMetric === 'revenue' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>收入</button>
+                    </div>
+                    <div className="flex bg-neutral-100 p-1 rounded-xl">
+                      <button onClick={() => setChartDimension('time')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'time' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按时间</button>
+                      <button onClick={() => setChartDimension('user')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按用户</button>
+                      <button onClick={() => setChartDimension('supervisor')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按导师</button>
+                      <button onClick={() => setChartDimension('equipment')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按仪器</button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex items-center gap-2">
-                       <label className="text-xs font-medium text-neutral-500">维度</label>
-                       <select 
-                        value={chartDimension} 
-                        onChange={e => setChartDimension(e.target.value as any)}
-                        className="px-3 py-1.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
-                      >
-                        <option value="time">按时间</option>
-                        <option value="user">按用户</option>
-                        <option value="supervisor">按导师</option>
-                        <option value="equipment">按仪器</option>
-                      </select>
-                    </div>
-                    {(chartDimension === 'time' || reportChartType === 'line') && (
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-medium text-neutral-500">时间维度</label>
-                        <select 
-                          value={reportPeriod} 
-                          onChange={e => setReportPeriod(e.target.value)}
-                          className="px-3 py-1.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all bg-white text-sm font-medium"
-                        >
-                          <option value="day">按天</option>
-                          <option value="week">按周</option>
-                          <option value="month">按月</option>
-                          <option value="quarter">按季度</option>
-                          <option value="year">按年</option>
-                        </select>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 relative"
-                         onMouseEnter={() => setShowSyncChartTooltip(true)}
-                         onMouseLeave={() => setShowSyncChartTooltip(false)}
-                         onClick={() => setShowSyncChartTooltip(!showSyncChartTooltip)}
+                  <div className="flex items-center gap-4">
+                    <div 
+                      className="relative flex items-center gap-2" 
+                      onMouseEnter={() => setShowSyncChartTooltip(true)} 
+                      onMouseLeave={() => setShowSyncChartTooltip(false)}
                     >
                       <div className="flex items-center gap-1 cursor-pointer">
                         <label className="text-xs font-medium text-neutral-500 cursor-pointer">联动</label>
@@ -1943,7 +1425,6 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                           与详细预约记录表的筛选条件联动
                         </div>
                       )}
-
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1993,113 +1474,115 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                     const maxLabelWidth = Math.min(150, Math.max(80, calculatedMaxWidth));
                     const hasWrapping = calculatedMaxWidth > 150;
                     const dynamicRowHeight = hasWrapping ? 36 : 24;
-                    const dynamicHeight = reportChartType === 'bar' ? Math.max(384, chartData.length * dynamicRowHeight + 80) : 384;
-
-                    const renderCustomYAxisTick = ({ x, y, payload }: any) => {
-                      const label = String(payload.value || '');
-                      let lines: string[] = [];
-                      let currentLine = '';
-                      let currentLen = 0;
-                      for(let i=0; i<label.length; i++) {
-                        const char = label[i];
-                        const charWidth = char.charCodeAt(0) > 255 ? 14 : 8;
-                        if (currentLen + charWidth > maxLabelWidth) {
-                          lines.push(currentLine);
-                          currentLine = char;
-                          currentLen = charWidth;
-                        } else {
-                          currentLine += char;
-                          currentLen += charWidth;
-                        }
-                      }
-                      if (currentLine) lines.push(currentLine);
-
-                      return (
-                        <g transform={`translate(${x},${y})`}>
-                          <text x={-8} y={4 - (lines.length - 1) * 6} textAnchor="end" fill="#666" fontSize={12}>
-                            <title>{label}</title>
-                            {lines.map((line, index) => (
-                              <tspan key={index} x={-8} dy={index === 0 ? 0 : "1.2em"}>{line}</tspan>
-                            ))}
-                          </text>
-                        </g>
-                      );
-                    };
-
-                    return (
-                      <div style={{ height: dynamicHeight }} className="w-full transition-all duration-300">
-                        <ResponsiveContainer width="100%" height="100%">
-                          {reportChartType === 'bar' ? (
-                            <BarChart data={chartData} layout="vertical">
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />
-                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
-                              <YAxis 
-                                dataKey={keyAxis} 
-                                type="category" 
-                                axisLine={false} 
-                                tickLine={false} 
-                                width={maxLabelWidth + 16} 
-                                interval={0} 
-                                tick={renderCustomYAxisTick} 
-                              />
-                              <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />
-                              <Bar 
-                                dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
-                                name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
-                                fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
-                                radius={[0, 4, 4, 0]} 
-                              />
-                            </BarChart>
-                          ) : (
-                            <LineChart data={chartDimension === 'time' ? chartData : multiLineData}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                              <XAxis dataKey={chartDimension === 'time' ? keyAxis : 'period'} axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />
-                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />
-                              <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
-                              {chartDimension !== 'time' && <Legend wrapperStyle={{ fontSize: '12px' }} />}
-                              {chartDimension === 'time' ? (
-                                <Line 
-                                  type="monotone" 
-                                  dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'} 
-                                  name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'} 
-                                  stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'} 
-                                  strokeWidth={2} 
-                                  dot={{r: 4}} 
-                                  activeDot={{r: 6}} 
-                                />
-                              ) : (
-                                multiLineKeys.map((k, i) => {
-                                  const colors = ['#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#4f46e5', '#ea580c', '#16a34a'];
-                                  return (
-                                    <Line
-                                      key={k}
-                                      type="monotone"
-                                      dataKey={`${k}_${chartMetric}`}
-                                      name={k}
-                                      stroke={colors[i % colors.length]}
-                                      strokeWidth={2}
-                                      dot={{r: 4}}
-                                      activeDot={{r: 6}}
-                                    />
-                                  );
-                                })
-                              )}
-                            </LineChart>
-                          )}
-                        </ResponsiveContainer>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
+                    const dynamicHeight = reportChartType === 'bar' ? Math.max(384, chartData.length * dynamicRowHeight + 80) : 384;         
+                    const renderCustomYAxisTick = ({ x, y, payload }: any) => {  
+                      const label = String(payload.value || '');  
+                      let lines: string[] = [];  
+                      let currentLine = '';  
+                      let currentLen = 0;  
+                      for(let i=0; i<label.length; i++) {  
+                        const char = label[i];  
+                        const charWidth = char.charCodeAt(0) > 255 ? 14 : 8;  
+                        if (currentLen + charWidth > maxLabelWidth) {  
+                          lines.push(currentLine);  
+                          currentLine = char;  
+                          currentLen = charWidth;  
+                        } else {  
+                          currentLine += char;  
+                          currentLen += charWidth;  
+                        }  
+                      }  
+                      if (currentLine) lines.push(currentLine);         
+                      return (  
+                        <g transform={`translate(${x},${y})`}>  
+                          <text x={-8} y={4 - (lines.length - 1) * 6} textAnchor="end" fill="#666" fontSize={12}>  
+                            <title>{label}</title>  
+                            {lines.map((line, index) => (  
+                              <tspan key={index} x={-8} dy={index === 0 ? 0 : "1.2em"}>{line}</tspan>  
+                            ))}  
+                          </text>  
+                        </g>  
+                      );  
+                    };         
+                    return (  
+                      <div style={{ height: dynamicHeight }} className="w-full transition-all duration-300">  
+                        <ResponsiveContainer width="100%" height="100%">  
+                          {reportChartType === 'bar' ? (  
+                            <BarChart data={chartData} layout="vertical">  
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e5e5" />  
+                              <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />  
+                              <YAxis   
+                                dataKey={keyAxis}   
+                                type="category"   
+                                axisLine={false}   
+                                tickLine={false}   
+                                width={maxLabelWidth + 16}   
+                                interval={0}   
+                                tick={renderCustomYAxisTick}   
+                              />  
+                              <Tooltip cursor={{fill: '#f5f5f5'}} formatter={(value: number) => Number(value).toFixed(2)} />  
+                              <Bar   
+                                dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'}   
+                                name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'}   
+                                fill={chartMetric === 'duration' ? '#dc2626' : '#d97706'}   
+                                radius={[0, 4, 4, 0]}   
+                              />  
+                            </BarChart>  
+                          ) : (  
+                            <LineChart data={chartDimension === 'time' ? chartData : multiLineData}>  
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />  
+                              <XAxis dataKey={chartDimension === 'time' ? keyAxis : 'period'} axisLine={false} tickLine={false} tick={{fill: '#737373', fontSize: 12}} />  
+                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => Number(val).toFixed(2)} />  
+                              <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />  
+                              {chartDimension !== 'time' && <Legend wrapperStyle={{ fontSize: '12px' }} />}  
+                              {chartDimension === 'time' ? (  
+                                <Line   
+                                  type="monotone"   
+                                  dataKey={chartMetric === 'duration' ? 'total_hours' : 'total_revenue'}   
+                                  name={chartMetric === 'duration' ? '时长 (小时)' : '收入 (¥)'}   
+                                  stroke={chartMetric === 'duration' ? '#dc2626' : '#d97706'}   
+                                  strokeWidth={2}   
+                                  dot={{r: 4}}   
+                                  activeDot={{r: 6}}   
+                                />  
+                              ) : (  
+                                multiLineKeys.map((k, i) => {  
+                                  const colors = ['#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed', '#db2777', '#0891b2', '#4f46e5', '#ea580c', '#16a34a'];  
+                                  return (  
+                                    <Line  
+                                      key={k}  
+                                      type="monotone"  
+                                      dataKey={`${k}_${chartMetric}`}  
+                                      name={k}  
+                                      stroke={colors[i % colors.length]}  
+                                      strokeWidth={2}  
+                                      dot={{r: 4}}  
+                                      activeDot={{r: 6}}  
+                                    />  
+                                  );  
+                                })  
+                              )}  
+                            </LineChart>  
+                          )}  
+                        </ResponsiveContainer>  
+                      </div>  
+                    );  
+                  })()}  
+                </div>  
+              </div>  
             )}
-
 
           </div>
         ) : null}
       </div>
-
-      {deleteConfirmId !== null && (
+<ReservationEditDrawer 
+          isOpen={isDrawerOpen} 
+          onClose={() => setIsDrawerOpen(false)} 
+          reservation={editingReportRecord} 
+          token={token} 
+          onUpdate={fetchReports} 
+        />
+{deleteConfirmId !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
             <div className="flex justify-center mb-4">
