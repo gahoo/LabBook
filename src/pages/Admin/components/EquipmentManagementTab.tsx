@@ -76,12 +76,12 @@ export default function EquipmentManagementTab({
   const [pendingWhitelistApps, setPendingWhitelistApps] = useState<any[]>([]);
   const fetchWhitelistApps = async () => {
     try {
-      const res = await fetch('/api/admin/whitelist/applications', {
+      const res = await fetch('/api/admin/whitelist/applications?status=pending', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setPendingWhitelistApps(data.filter((app: any) => app.status === 'pending'));
+        setPendingWhitelistApps(data);
       }
     } catch (err) {
       console.error('Failed to fetch whitelist apps:', err);

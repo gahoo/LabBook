@@ -21,12 +21,12 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
 
   const fetchWhitelistApps = async () => {
     try {
-      const res = await fetch('/api/admin/whitelist/applications', {
+      const res = await fetch('/api/admin/whitelist/applications?status=pending', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setPendingWhitelistApps(data.filter((app: any) => app.status === 'pending'));
+        setPendingWhitelistApps(data);
       }
     } catch (err) {
       console.error('Failed to fetch whitelist apps:', err);
@@ -71,8 +71,6 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
 
   useEffect(() => {
     fetchWhitelistApps();
-    const interval = setInterval(fetchWhitelistApps, 30000);
-    return () => clearInterval(interval);
   }, []);
   const [reportPeriod, setReportPeriod] = useState(initialDate ? 'day' : 'day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
@@ -713,9 +711,9 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
             const today = new Date();
             const todayStr = format(today, 'yyyy-MM-dd');
             const currentWeekStart = reportFilterFromToday ? todayStr : format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-            const currentWeekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+            const currentWeekEnd = reportFilterFromToday ? format(addDays(today, 6), 'yyyy-MM-dd') : format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
             const currentMonthStart = reportFilterFromToday ? todayStr : format(startOfMonth(today), 'yyyy-MM-dd');
-            const currentMonthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
+            const currentMonthEnd = reportFilterFromToday ? format(addDays(today, 29), 'yyyy-MM-dd') : format(endOfMonth(today), 'yyyy-MM-dd');
 
             const isThisWeek = reportStartDate === currentWeekStart && reportEndDate === currentWeekEnd;
             const isThisMonth = reportStartDate === currentMonthStart && reportEndDate === currentMonthEnd;
@@ -728,8 +726,10 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                       setReportFilterFromToday(e.target.checked);
                       if (isThisWeek) {
                         setReportStartDate(e.target.checked ? todayStr : format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                        setReportEndDate(e.target.checked ? format(addDays(today, 6), 'yyyy-MM-dd') : format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
                       } else if (isThisMonth) {
                         setReportStartDate(e.target.checked ? todayStr : format(startOfMonth(today), 'yyyy-MM-dd'));
+                        setReportEndDate(e.target.checked ? format(addDays(today, 29), 'yyyy-MM-dd') : format(endOfMonth(today), 'yyyy-MM-dd'));
                       }
                     }} />
                     <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${reportFilterFromToday ? 'translate-x-4' : 'translate-x-0'}`}></div>

@@ -15,27 +15,6 @@ export default function Admin() {
   const [targetBookingCode, setTargetBookingCode] = useState<string | null>(null);
   const [targetReservationDate, setTargetReservationDate] = useState<string | null>(null);
 
-  const [hasPendingWhitelist, setHasPendingWhitelist] = useState(false);
-
-  useEffect(() => {
-    if (token) {
-      const checkPending = async () => {
-        try {
-          const res = await fetch('/api/admin/whitelist/applications', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setHasPendingWhitelist(data.some((app: any) => app.status === 'pending'));
-          }
-        } catch (e) {}
-      };
-      checkPending();
-      const interval = setInterval(checkPending, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [token]);
-
 
   const handleNavigateToReservation = (bookingCode: string, date?: string) => {
     setTargetBookingCode(bookingCode);
