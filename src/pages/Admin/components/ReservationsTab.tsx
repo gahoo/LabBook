@@ -871,46 +871,36 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-neutral-500 mb-2">状态</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['待审批', '已审批', '进行中', '已完成', '已取消', '已驳回'].map((value) => (
-                        <label key={value} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg">
-                          <input type="checkbox" checked={reportFilterStatus.includes(value)} onChange={e => {
-                            if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
-                            else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
-                          }} className="text-red-600 rounded border-neutral-300 focus:ring-red-600" />
-                          <span className="text-sm">{value}</span>
-                        </label>
-                      ))}
-                      <div className="w-full h-px bg-neutral-200 my-1"></div>
-                      {['待审批', '已审批', '进行中', '已完成', '已取消', '已驳回'].map((value) => (
-                                    <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={reportFilterStatus.includes(value)}
-                                        onChange={e => {
-                                          if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
-                                          else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
-                                        }}
-                                        className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
-                                      />
-                                      <span className="text-xs text-neutral-700">{value}</span>
-                                    </label>
-                                  ))}
-                                  <div className="w-full h-px bg-neutral-200 my-1"></div>
-                                  {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
-                                    <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={reportFilterStatus.includes(value)}
-                                        onChange={e => {
-                                          if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
-                                          else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
-                                        }}
-                                        className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
-                                      />
-                                      <span className="text-xs text-neutral-700">{value}</span>
-                                    </label>
-                                  ))}
+                    <div className="flex gap-3">
+                      <div className="flex-1 space-y-2">
+                        <div className="text-xs text-neutral-400">原生状态</div>
+                        <div className="flex flex-wrap gap-2">
+                          {['待审批', '已通过', '进行中', '已完成', '已取消', '已驳回'].map((value) => (
+                            <label key={value} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50 transition-colors">
+                              <input type="checkbox" checked={reportFilterStatus.includes(value)} onChange={e => {
+                                if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
+                                else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
+                              }} className="text-red-600 rounded border-neutral-300 focus:ring-red-600" />
+                              <span className="text-sm text-neutral-700">{value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="w-px bg-neutral-200"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="text-xs text-neutral-400">计算状态</div>
+                        <div className="flex flex-wrap gap-2">
+                          {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
+                            <label key={value} className="flex items-center gap-2 px-2 py-1.5 bg-white border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50 transition-colors">
+                              <input type="checkbox" checked={reportFilterStatus.includes(value)} onChange={e => {
+                                if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
+                                else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
+                              }} className="text-red-600 rounded border-neutral-300 focus:ring-red-600" />
+                              <span className="text-sm text-neutral-700">{value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1091,24 +1081,45 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                             )}
                           </button>
                           {showReportStatusFilterPopup && (
-                            <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
+                            <div className="absolute top-full right-0 mt-1 w-[280px] bg-white border border-neutral-200 rounded-lg shadow-lg p-3 z-10 font-normal">
                               <div className="mb-3">
                                 <label className="block text-[10px] font-medium text-neutral-500 mb-1 uppercase tracking-wider">状态</label>
-                                <div className="space-y-1 max-h-48 overflow-y-auto">
-                                  {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
-                                    <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={reportFilterStatus.includes(value)}
-                                        onChange={e => {
-                                          if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
-                                          else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
-                                        }}
-                                        className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
-                                      />
-                                      <span className="text-xs text-neutral-700">{value}</span>
-                                    </label>
-                                  ))}
+                                <div className="flex gap-2">
+                                  <div className="flex-1 space-y-1 pr-1">
+                                    <div className="text-[10px] text-neutral-400 mb-1 px-2">原生状态</div>
+                                    {['待审批', '已通过', '进行中', '已完成', '已取消', '已驳回'].map((value) => (
+                                      <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer transition-colors">
+                                        <input 
+                                          type="checkbox" 
+                                          checked={reportFilterStatus.includes(value)}
+                                          onChange={e => {
+                                            if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
+                                            else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
+                                          }}
+                                          className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                        />
+                                        <span className="text-xs text-neutral-700">{value}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                  <div className="w-px bg-neutral-200"></div>
+                                  <div className="flex-1 space-y-1 pr-1">
+                                    <div className="text-[10px] text-neutral-400 mb-1 px-2">计算状态</div>
+                                    {['正常', '迟到', '超时', '待上机', '爽约', '临期取消'].map((value) => (
+                                      <label key={value} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded cursor-pointer transition-colors">
+                                        <input 
+                                          type="checkbox" 
+                                          checked={reportFilterStatus.includes(value)}
+                                          onChange={e => {
+                                            if (e.target.checked) setReportFilterStatus([...reportFilterStatus, value]);
+                                            else setReportFilterStatus(reportFilterStatus.filter(s => s !== value));
+                                          }}
+                                          className="text-red-600 rounded border-neutral-300 focus:ring-red-600"
+                                        />
+                                        <span className="text-xs text-neutral-700">{value}</span>
+                                      </label>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
                               <div className="mb-3">
