@@ -257,8 +257,19 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
       if (reportFilterUtilizationMax && utilization > Number(reportFilterUtilizationMax)) return false;
       
       if (reportFilterStatus.length > 0) {
-        const statuses = [...(res.reportStatus ? res.reportStatus.split(', ') : []), statusMap[res.status] || res.status];
-        if (!statuses.some((s: string) => reportFilterStatus.includes(s))) {
+        const NATIVE_STATUSES = ['待审批', '已通过', '进行中', '已完成', '已取消', '已驳回'];
+        const COMPUTED_STATUSES = ['正常', '迟到', '超时', '待上机', '爽约', '临期取消'];
+        
+        const selectedNative = reportFilterStatus.filter(s => NATIVE_STATUSES.includes(s));
+        const selectedComputed = reportFilterStatus.filter(s => COMPUTED_STATUSES.includes(s));
+        
+        const resNative = statusMap[res.status] || res.status;
+        const resComputed = res.reportStatus ? res.reportStatus.split(', ') : [];
+        
+        const matchNative = selectedNative.length === 0 || selectedNative.includes(resNative);
+        const matchComputed = selectedComputed.length === 0 || resComputed.some((s: string) => selectedComputed.includes(s));
+        
+        if (!(matchNative && matchComputed)) {
           return false;
         }
       }
