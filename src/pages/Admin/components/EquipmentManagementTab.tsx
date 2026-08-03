@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3, EyeOff, TimerReset, Calendar } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3, EyeOff, TimerReset, Calendar, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EquipmentForm from './EquipmentForm';
 import BatchEditEquipmentForm from './BatchEditEquipmentForm';
@@ -72,9 +73,62 @@ export default function EquipmentManagementTab({
     }
   };
 
+  const [pendingWhitelistApps, setPendingWhitelistApps] = useState<any[]>([]);
+  const fetchWhitelistApps = async () => {
+    try {
+      const res = await fetch('/api/admin/whitelist/applications', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingWhitelistApps(data.filter((app: any) => app.status === 'pending'));
+      }
+    } catch (err) {
+      console.error('Failed to fetch whitelist apps:', err);
+    }
+  };
+
+  const handleApproveWhitelist = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/whitelist/applications/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success('已通过');
+        fetchWhitelistApps();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || '操作失败');
+      }
+    } catch (error) {
+      toast.error('操作失败');
+    }
+  };
+
+  const handleRejectWhitelist = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/whitelist/applications/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success('已驳回');
+        fetchWhitelistApps();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || '操作失败');
+      }
+    } catch (error) {
+      toast.error('操作失败');
+    }
+  };
+  
+
   useEffect(() => {
     if (token) {
       fetchEquipment();
+      fetchWhitelistApps();
     }
   }, [token]);
 
@@ -634,6 +688,7 @@ export default function EquipmentManagementTab({
             </thead>
             <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
               {filteredEquipmentList.map(eq => {
+                const eqPendingApps = pendingWhitelistApps.filter((app: any) => app.equipment_id === eq.id);
                 let advanceDays = 7;
                 let allowOutOfHours = false;
                 try {
@@ -643,7 +698,7 @@ export default function EquipmentManagementTab({
                 } catch (e) {}
                 
                 return (
-                <tr key={eq.id} className="block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-b md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 bg-white shadow-sm md:shadow-none">
+                <React.Fragment key={eq.id}><tr className={`block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none ${eqPendingApps.length > 0 ? 'bg-amber-50/30 border-b-0 md:border-b-0' : 'bg-white md:border-b'}`}>
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <div className="flex justify-between items-center md:block">
                       <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
@@ -801,6 +856,73 @@ export default function EquipmentManagementTab({
                     </div>
                   </td>
                 </tr>
+{eqPendingApps.length > 0 && (
+                <tr className="block md:table-row bg-amber-50/30 border-b border-neutral-200 border-t-0"><td colSpan={6} className="px-4 py-3 md:py-4 block md:table-cell"><div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 text-amber-800 text-sm font-medium whitespace-nowrap">
+                        <AlertCircle className="w-4 h-4" />
+                        待审批白名单申请
+                      </div>
+                  <AnimatePresence mode="popLayout">
+                  {eqPendingApps.map((app: any) => (
+                    <motion.div 
+                      layout
+                      initial={{ opacity: 0, scale: 0.8, x: -20 }}
+                      animate={{ opacity: 1, scale: 1, x: 0 }}
+                      exit={{ opacity: 0, scale: 0.8, x: -20, transition: { duration: 0.2 } }}
+                      key={app.id}
+                      tabIndex={0}
+                      className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-3 py-2 md:px-2 md:py-1 shadow-sm flex items-center shrink-0 cursor-pointer md:cursor-default"
+                    >
+                      <span className="font-medium text-sm text-neutral-900">{app.student_name}</span>
+                      <div className="flex items-center border-l border-amber-100 pl-2 ml-2">
+                        <button onClick={() => handleApproveWhitelist(app.id)} className="p-1 text-emerald-500 hover:text-emerald-700 rounded transition-colors" title="通过">
+                          <UserCheck className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleRejectWhitelist(app.id)} className="p-1 text-red-400 hover:text-red-600 rounded transition-colors" title="驳回">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50">
+                        <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3 py-2 whitespace-nowrap min-w-[200px]">
+                          <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
+                            申请明细
+                          </div>
+                          <div className="flex flex-col gap-1.5 mt-1">
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">申请人</span>
+                              <span className="text-neutral-900">{app.student_name} ({app.student_id})</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">所属导师</span>
+                              <span className="text-neutral-900">{app.supervisor}</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">手机</span>
+                              <span className="text-neutral-900">{app.phone || '无'}</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">Email</span>
+                              <span className="text-neutral-900">{app.email || '无'}</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">申请时间</span>
+                              <span className="text-neutral-900">{new Date(app.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {app.reason && (
+                              <div className="mt-1 pt-2 border-t border-neutral-100 whitespace-normal">
+                                <div className="text-neutral-500 mb-1">申请理由:</div>
+                                <div className="text-neutral-900">{app.reason}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="w-3 h-3 bg-white border-t border-l border-neutral-200 rotate-45 absolute -top-1.5 left-4"></div>
+                      </div>
+                    </motion.div>
+                  ))}
+                  </AnimatePresence>
+                </div></td></tr>)}
+</React.Fragment>
               )})}
               {filteredEquipmentList.length === 0 && (
                 <tr className="block md:table-row">

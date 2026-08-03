@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
-import { BarChart3, CalendarDays, List, Lock, FileText, Settings, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CalendarDays, List, Lock, FileText, Settings, ShieldAlert } from 'lucide-react';
 import AuditLogsTab from './components/AuditLogsTab';
-import WhitelistAppsTab from './components/WhitelistAppsTab';
 import ReservationsTab from './components/ReservationsTab';
-import ReportsTab from './components/ReportsTab';
 import EquipmentManagementTab from './components/EquipmentManagementTab';
 import SettingsTab from './components/SettingsTab';
 import ViolationsAndPenaltiesTab from './components/ViolationsAndPenaltiesTab';
@@ -13,16 +11,38 @@ export default function Admin() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'reports' | 'reservations' | 'equipment' | 'whitelist_apps' | 'audit_logs' | 'settings' | 'violations'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reservations' | 'equipment' | 'audit_logs' | 'settings' | 'violations'>('reservations');
   const [targetBookingCode, setTargetBookingCode] = useState<string | null>(null);
   const [targetReservationDate, setTargetReservationDate] = useState<string | null>(null);
+
+  const [hasPendingWhitelist, setHasPendingWhitelist] = useState(false);
+
+  useEffect(() => {
+    if (token) {
+      const checkPending = async () => {
+        try {
+          const res = await fetch('/api/admin/whitelist/applications', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setHasPendingWhitelist(data.some((app: any) => app.status === 'pending'));
+          }
+        } catch (e) {}
+      };
+      checkPending();
+      const interval = setInterval(checkPending, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [token]);
+
 
   const handleNavigateToReservation = (bookingCode: string, date?: string) => {
     setTargetBookingCode(bookingCode);
     if (date) {
       setTargetReservationDate(date);
     }
-    setActiveTab('reports');
+    setActiveTab('reservations');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -113,20 +133,6 @@ export default function Admin() {
               <span className={activeTab === 'reservations' ? 'inline' : 'hidden sm:inline'}>预约管理</span>
             </button>
             <button
-              onClick={() => setActiveTab('whitelist_apps')}
-              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'whitelist_apps' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
-            >
-              <Lock className="w-4 h-4" />
-              <span className={activeTab === 'whitelist_apps' ? 'inline' : 'hidden sm:inline'}>白名单申请</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reports' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span className={activeTab === 'reports' ? 'inline' : 'hidden sm:inline'}>报表</span>
-            </button>
-            <button
               onClick={() => setActiveTab('violations')}
               className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'violations' ? 'bg-white text-red-600 shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}
             >
@@ -162,26 +168,16 @@ export default function Admin() {
         <ReservationsTab 
           token={token} 
           onLogout={handleLogout} 
-          statusMap={statusMap} 
-        />
-      )}
-
-      {activeTab === 'whitelist_apps' && (
-        <WhitelistAppsTab token={token} handleLogout={handleLogout} />
-      )}
-
-      {activeTab === 'reports' && (
-        <ReportsTab 
-          token={token} 
-          onLogout={handleLogout} 
           initialBookingCode={targetBookingCode}
           initialDate={targetReservationDate}
           onClearInitialBookingCode={() => {
             setTargetBookingCode(null);
             setTargetReservationDate(null);
           }}
+          statusMap={statusMap} 
         />
       )}
+
       {activeTab === 'violations' && (
         <ViolationsAndPenaltiesTab 
           token={token} 

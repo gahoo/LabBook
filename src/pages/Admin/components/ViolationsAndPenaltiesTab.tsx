@@ -117,7 +117,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
     setLoading(true);
     try {
       const query = new URLSearchParams({ startDate, endDate, dimension: statsDimension });
-      const res = await fetch(`/api/admin/reports/violations?${query.toString()}`, {
+      const res = await fetch(`/api/admin/violations/stats?${query.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401) return onLogout();

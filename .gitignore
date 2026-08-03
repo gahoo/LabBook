@@ -16,3 +16,7 @@ check-schema.cjs
 check-schema2.cjs
 patch.cjs
 .agents
+patch_*
+fix_*
+swap_*
+restore_iife.cjs
