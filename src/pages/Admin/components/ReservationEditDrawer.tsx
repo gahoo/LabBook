@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { X, AlertTriangle } from 'lucide-react';
+import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -218,10 +218,10 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
           {activeTab === 'info' && (
             <form onSubmit={e => { e.preventDefault(); handleUpdate('info'); }} className="space-y-4">
               <div className="bg-neutral-50 p-4 rounded-xl mb-6 space-y-1.5">
-                <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{formData.booking_code}</span></p>
                 {formData.created_at && (
                   <p className="text-sm text-neutral-500">提交时间: <span className="text-neutral-900">{format(new Date(formData.created_at + (formData.created_at.includes('Z') ? '' : 'Z')), 'yyyy-MM-dd HH:mm:ss')}</span></p>
                 )}
+                <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{formData.booking_code}</span></p>
                 <p className="text-sm text-neutral-500">仪器: <span className="text-neutral-900">{formData.equipment_name}</span></p>
               </div>
 
@@ -333,7 +333,7 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
               {systemViolations.length > 0 && (
                 <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4">
                   <h3 className="text-sm font-bold text-neutral-800 mb-3 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-neutral-500" /> 系统检测违规
+                    系统检测违规
                   </h3>
                   <div className="space-y-2">
                     {systemViolations.map((sv, i) => (
