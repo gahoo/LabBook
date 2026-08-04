@@ -1728,11 +1728,20 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                       <button onClick={() => setChartMetric('revenue')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartMetric === 'revenue' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>收入</button>
                     </div>
                     <div className="flex bg-neutral-100 p-1 rounded-xl">
-                      <button onClick={() => setChartDimension('time')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'time' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按时间</button>
-                      <button onClick={() => setChartDimension('user')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按用户</button>
-                      <button onClick={() => setChartDimension('supervisor')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按导师</button>
-                      <button onClick={() => setChartDimension('equipment')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>按仪器</button>
+                      <button onClick={() => setChartDimension('time')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'time' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>时间</button>
+                      <button onClick={() => setChartDimension('user')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>用户</button>
+                      <button onClick={() => setChartDimension('supervisor')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>导师</button>
+                      <button onClick={() => setChartDimension('equipment')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${chartDimension === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>仪器</button>
                     </div>
+                    {chartDimension === 'time' && (
+                      <div className="flex bg-neutral-100 p-1 rounded-xl">
+                        <button onClick={() => setReportPeriod('day')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportPeriod === 'day' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>天</button>
+                        <button onClick={() => setReportPeriod('week')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportPeriod === 'week' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>周</button>
+                        <button onClick={() => setReportPeriod('month')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportPeriod === 'month' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>月</button>
+                        <button onClick={() => setReportPeriod('quarter')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportPeriod === 'quarter' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>季</button>
+                        <button onClick={() => setReportPeriod('year')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reportPeriod === 'year' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}>年</button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-4">
                     <div 
