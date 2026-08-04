@@ -77,7 +77,10 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
       
       const toUTC = (localStr: string) => {
         if (!localStr) return null;
-        return new Date(localStr).toISOString();
+        const [datePart, timePart] = localStr.split('T');
+        const [y, m, d] = datePart.split('-').map(Number);
+        const [h, min] = timePart.split(':').map(Number);
+        return new Date(y, m - 1, d, h, min).toISOString();
       };
 
       if (type === 'info') {
