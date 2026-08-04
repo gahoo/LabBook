@@ -1405,7 +1405,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                           statsType === 'user' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
                         }`}
                       >
-                        按用户
+                        用户
                       </button>
                       <button
                         onClick={() => setStatsType('supervisor')}
@@ -1413,7 +1413,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                           statsType === 'supervisor' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
                         }`}
                       >
-                        按导师
+                        导师
                       </button>
                       <button
                         onClick={() => setStatsType('equipment')}
@@ -1421,7 +1421,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                           statsType === 'equipment' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
                         }`}
                       >
-                        按仪器
+                        仪器
                       </button>
                     </div>
                   </div>
