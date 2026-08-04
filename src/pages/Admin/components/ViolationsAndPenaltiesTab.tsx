@@ -250,6 +250,7 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
         },
         body: JSON.stringify({
           ...standaloneForm,
+          violation_time: new Date(standaloneForm.violation_time).toISOString(),
           booking_code: standaloneForm.booking_code.trim() || undefined
         })
       });

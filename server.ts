@@ -3072,6 +3072,13 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       violationChanged = true;
       revokedViolationIds.push(existingLate.id);
     }
+  } else {
+    const existingLate = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'late' AND status = 'active'").get(id) as any;
+    if (existingLate) {
+      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Auto-revoked: actual_start_time cleared' WHERE id = ?").run(existingLate.id);
+      violationChanged = true;
+      revokedViolationIds.push(existingLate.id);
+    }
   }
 
   if (actual_end_time) {
@@ -3088,6 +3095,13 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       }
     } else if (existingOverdue) {
       db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingOverdue.id);
+      violationChanged = true;
+      revokedViolationIds.push(existingOverdue.id);
+    }
+  } else {
+    const existingOverdue = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'overdue' AND status = 'active'").get(id) as any;
+    if (existingOverdue) {
+      db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Auto-revoked: actual_end_time cleared' WHERE id = ?").run(existingOverdue.id);
       violationChanged = true;
       revokedViolationIds.push(existingOverdue.id);
     }
@@ -3479,9 +3493,13 @@ app.put('/api/admin/violations/:id', adminAuth, (req, res) => {
     return res.status(400).json({ error: '不支持的违规类型' });
   }
 
-  const existing = db.prepare('SELECT student_id, remark FROM violation_records WHERE id = ?').get(id) as any;
+  const existing = db.prepare('SELECT student_id, remark, violation_type FROM violation_records WHERE id = ?').get(id) as any;
   if (!existing) {
     return res.status(404).json({ error: '违规记录不存在' });
+  }
+  
+  if (!allowedTypes.includes(existing.violation_type)) {
+    return res.status(400).json({ error: '不允许修改系统自动生成的违规记录' });
   }
 
   let finalRemark = existing.remark;

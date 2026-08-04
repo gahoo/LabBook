@@ -127,6 +127,8 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
 
   useEffect(() => {
     if (initialBookingCode) {
+      setActiveSubTab('detailed');
+      setReportFilterCode(initialBookingCode);
       if (onClearInitialBookingCode) {
         onClearInitialBookingCode();
       }

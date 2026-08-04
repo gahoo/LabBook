@@ -19,7 +19,22 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
 
   useEffect(() => {
     if (reservation) {
-      setFormData({ ...reservation });
+      const toLocal = (isoStr: string | null) => {
+        if (!isoStr) return '';
+        // If it already doesn't have Z, and is just YYYY-MM-DDTHH:mm, we can use it directly, but let's parse it properly
+        const d = new Date(isoStr.includes('Z') ? isoStr : isoStr + 'Z');
+        if (isNaN(d.getTime())) return isoStr;
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      };
+
+      setFormData({ 
+        ...reservation,
+        start_time: toLocal(reservation.start_time),
+        end_time: toLocal(reservation.end_time),
+        actual_start_time: toLocal(reservation.actual_start_time),
+        actual_end_time: toLocal(reservation.actual_end_time)
+      });
       fetchViolations();
     }
   }, [reservation, isOpen]);
@@ -108,9 +123,8 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
   const handleSaveViolations = async () => {
     if (!token || !reservation) return;
     try {
-      for (const mv of manualViolations) {
+      const promises = manualViolations.map(async (mv) => {
         if (!mv.id) {
-          // create
           const res = await fetch('/api/admin/violations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -124,10 +138,9 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
           });
           if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.error || '保存失败');
+            throw new Error(err.error || '创建失败');
           }
         } else {
-          // update
           const res = await fetch(`/api/admin/violations/${mv.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -138,11 +151,20 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
           });
           if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.error || '保存失败');
+            throw new Error(err.error || '更新失败');
           }
         }
+      });
+      
+      const results = await Promise.allSettled(promises);
+      const errors = results.filter(r => r.status === 'rejected');
+      
+      if (errors.length > 0) {
+        toast.error(`部分保存成功，但有 ${errors.length} 条失败`);
+      } else {
+        toast.success('违规记录保存成功');
       }
-      toast.success('违规记录保存成功');
+      
       onUpdate();
       onClose();
     } catch (e) {
