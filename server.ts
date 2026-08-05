@@ -606,7 +606,7 @@ function endingReminderScan() {
       SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee 
       FROM reservations r
       JOIN equipment e ON r.equipment_id = e.id
-      WHERE r.status = 'approved'
+      WHERE r.status = 'active'
         AND r.end_time > ?
         AND r.end_time <= ?
     `).all(maxLookingBack.toISOString(), thresholdTime.toISOString()) as any[];
@@ -1547,14 +1547,16 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
 
   if (
     req.body['email.events.booking_upcoming.enabled'] !== undefined ||
-    req.body['webhook.events.booking_upcoming.enabled'] !== undefined
+    req.body['webhook.events.booking_upcoming.enabled'] !== undefined ||
+    req.body['booking_upcoming_advance_minutes'] !== undefined
   ) {
     startUpcomingReminderCron();
   }
 
   if (
     req.body['email.events.booking_ending.enabled'] !== undefined ||
-    req.body['webhook.events.booking_ending.enabled'] !== undefined
+    req.body['webhook.events.booking_ending.enabled'] !== undefined ||
+    req.body['booking_ending_advance_minutes'] !== undefined
   ) {
     startEndingReminderCron();
   }
