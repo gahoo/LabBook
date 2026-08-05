@@ -51,3 +51,4 @@
 - [x] 修复多处通知模板缺失变量渲染问题 (bugfix-notification-template-rendering)
 - [x] 增加 created_at / updated_at 字段迁移方案 (feature-timestamps)
 - [x] 后台预约、报表与白名单模块重构 (refactor-admin-reservations-reports-whitelist)
+- [x] 临近预约结束时间提醒 (feature-booking-ending-reminder)

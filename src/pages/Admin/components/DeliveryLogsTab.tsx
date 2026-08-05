@@ -35,6 +35,7 @@ export default function DeliveryLogsTab({ token }: DeliveryLogsTabProps) {
     whitelist_resolved: '白名单审批结果',
     penalty_triggered: '处罚触发',
     booking_upcoming: '上机前提醒',
+    booking_ending: '临近下机提醒',
     calendar_subscription: '日历订阅链接',
   };
 

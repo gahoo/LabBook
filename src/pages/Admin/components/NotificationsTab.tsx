@@ -34,6 +34,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     { id: 'booking_rejected', name: '预约审批驳回', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}' },
     { id: 'booking_cancelled', name: '预约取消', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}' },
     { id: 'booking_upcoming', name: '上机前提醒', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}, {{ advance_minutes }}' },
+    { id: 'booking_ending', name: '临近下机提醒', vars: '{{ student_id }}, {{ equipment_name }}, {{ booking_code }}, {{ start_time }}, {{ end_time }}, {{ advance_minutes }}' },
     { id: 'violation_created', name: '违规记录', vars: '{{ student_id }}, {{ violation_type }}, {{ equipment_name }}' },
     { id: 'appeal_resolved', name: '申诉结果通知', vars: '{{ student_id }}, {{ violation_id }}, {{ resolution }}, {{ reply }}' },
     { id: 'whitelist_resolved', name: '白名单审批结果', vars: '{{ student_id }}, {{ equipment_name }}, {{ resolution }}, {{ reason }}' },
@@ -47,6 +48,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
     booking_rejected: '需要审批的设备被管理员驳回申请',
     booking_cancelled: '用户或系统取消了该次预约',
     booking_upcoming: '上机前自动向用户发送提醒',
+    booking_ending: '临近预约结束时自动提醒用户下机',
     violation_created: '用户因过失（迟到/未上机等）产生了新的违规记录',
     appeal_resolved: '管理员对用户的违规申诉进行了判定处理',
     whitelist_resolved: '管理员对用户的白名单准入申请处理完毕',
@@ -57,7 +59,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
   const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string}> = {
     booking_created: {
       subject: '[通知] 预约成功：{{ equipment_name }}',
-      template: '## 预约成功\n\n您好，您已成功预约 **{{ equipment_name }}**。\n\n**预约详情：**\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n您可以使用预约码在网页端或设备端进行上机。\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+      template: '## 预约成功\n\n您好，您已成功预约 **{{ equipment_name }}**。\n\n**预约详情：**\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n您可以使用预约码在网页端或设备端进行上机。\n\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
     },
     booking_approved: {
       subject: '[通知] 您的预约已通过审批',
@@ -72,8 +74,12 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       template: '## 预约已取消\n\n您的预约已取消。\n\n- 设备：{{ equipment_name }}\n- 预约码：{{ booking_code }}'
     },
     booking_upcoming: {
-      subject: '[提醒] 您有即将开始的实验：{{ equipment_name }}',
-      template: '## 上机前提醒\n\n您好，您预约的设备 **{{ equipment_name }}** 还有 {{ advance_minutes }} 分钟即将开始。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n请准备好您的物品，准时到达实验室。'
+      subject: '[通知] 上机前提醒：{{ equipment_name }}',
+      template: '## 预约提醒\n\n您好，您对 **{{ equipment_name }}** 的预约即将开始。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n请您按时前往上机。\n\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+    },
+    booking_ending: {
+      subject: '[通知] 临近下机提醒：{{ equipment_name }}',
+      template: '## 下机提醒\n\n您好，您预约的仪器【{{ equipment_name }}】使用时间即将在{{ end_time }}结束，请及时下机。\n\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
     },
     violation_created: {
       subject: '[警告] 新的违规记录',
@@ -126,6 +132,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       setConfig({
         notification_interval_seconds: unflattened.notification_interval_seconds || '30',
         booking_upcoming_advance_minutes: unflattened.booking_upcoming_advance_minutes || '30',
+        booking_ending_advance_minutes: unflattened.booking_ending_advance_minutes || '15',
         calendar_subscription: unflattened.calendar_subscription || { enabled: 'false' },
         booking_code_delivery: unflattened.booking_code_delivery || { web: 'true' },
         smtp: unflattened.smtp || { enabled: false },
@@ -145,6 +152,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
       const payload = flattenObj({
         notification_interval_seconds: config.notification_interval_seconds,
         booking_upcoming_advance_minutes: config.booking_upcoming_advance_minutes,
+        booking_ending_advance_minutes: config.booking_ending_advance_minutes,
         calendar_subscription: config.calendar_subscription,
         booking_code_delivery: config.booking_code_delivery || { web: 'true' }
       });
@@ -461,7 +469,7 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                   {saving ? '保存中...' : '保存全局配置'}
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm text-neutral-600 mb-1">通知发送时间间隔(秒)</label>
                   <input
@@ -483,6 +491,17 @@ export default function NotificationsTab({ token }: NotificationsTabProps) {
                     className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
                   />
                   <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">当启用了“上机前提醒”事件后，系统将以此时间（在预约开始前多少分钟）触发通知和日历提醒。默认为 30 分钟。</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-600 mb-1">下机前提前提醒时间(分钟)</label>
+                  <input
+                    type="number"
+                    value={config.booking_ending_advance_minutes || '15'}
+                    onChange={(e) => updateConfig(['booking_ending_advance_minutes'], e.target.value)}
+                    placeholder="15"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                  />
+                  <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">当启用了“临近下机提醒”事件后，系统将以此时间（在预约结束前多少分钟）触发下机提醒。默认为 15 分钟。</p>
                 </div>
               </div>
               <div className="pt-4 border-t border-neutral-100">

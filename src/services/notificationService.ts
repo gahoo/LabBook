@@ -112,7 +112,11 @@ const DEFAULT_EMAIL_TEMPLATES: Record<string, {subject: string, template: string
   },
   booking_upcoming: {
     subject: '[通知] 上机前提醒：{{ equipment_name }}',
-    template: '## 预约提醒\n\n您好，您对 **{{ equipment_name }}** 的预约即将开始。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n请您按时前往上机。'
+    template: '## 预约提醒\n\n您好，您对 **{{ equipment_name }}** 的预约即将开始。\n\n- 预约码：{{ booking_code }}\n- 开始时间：{{ start_time }}\n- 结束时间：{{ end_time }}\n\n请您按时前往上机。\n\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
+  },
+  booking_ending: {
+    subject: '[通知] 临近下机提醒：{{ equipment_name }}',
+    template: '## 下机提醒\n\n您好，您预约的仪器【{{ equipment_name }}】使用时间即将在{{ end_time }}结束，请及时下机。\n\n[点击查看您的预约详情]({{ BASE_URL }}/my-reservations?code={{ booking_code }})'
   },
   calendar_subscription: {
     subject: '[通知] 个人日历订阅链接',
