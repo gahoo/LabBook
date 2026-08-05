@@ -21,8 +21,7 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
     if (reservation) {
       const toLocal = (isoStr: string | null) => {
         if (!isoStr) return '';
-        // If it already doesn't have Z, and is just YYYY-MM-DDTHH:mm, we can use it directly, but let's parse it properly
-        const d = new Date(isoStr.includes('Z') ? isoStr : isoStr + 'Z');
+        const d = new Date(isoStr);
         if (isNaN(d.getTime())) return isoStr;
         const pad = (n: number) => n.toString().padStart(2, '0');
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;

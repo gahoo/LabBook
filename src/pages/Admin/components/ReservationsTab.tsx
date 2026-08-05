@@ -1321,18 +1321,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                           <div className="flex justify-end md:justify-start gap-1">
                             <button 
                               onClick={() => {
-                                const toLocal = (utcStr: string) => {
-                                  if (!utcStr) return '';
-                                  const d = new Date(utcStr);
-                                  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                                };
-                                setEditingReportRecord({
-                                  ...res,
-                                  start_time: toLocal(res.start_time),
-                                  end_time: toLocal(res.end_time),
-                                  actual_start_time: toLocal(res.actual_start_time),
-                                  actual_end_time: toLocal(res.actual_end_time)
-                                });
+                                setEditingReportRecord(res);
                                 setManualViolations([]);
                                 fetchManualViolations(res.id);
                                 setIsDrawerOpen(true);

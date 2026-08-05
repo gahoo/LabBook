@@ -10,5 +10,9 @@ backups/
 changes/security_check/
 issues.md
 lab_equipment.db
+database.sqlite
 .agents
 agent
+.fallow
+fallow_output.json
+bun.lock
