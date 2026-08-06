@@ -7,7 +7,7 @@
 - [x] **步骤 1：提取 `src/config.ts`**  
   将 `dotenv` 引入与环境变量获取抽出。
 
-- [ ] **步骤 2：提取 `src/db/connection.ts` + `schema.ts` + `migrations.ts`**  
+- [x] **步骤 2：提取 `src/db/connection.ts` + `schema.ts` + `migrations.ts`**  
   分离 Database 实例化、DDL 和数据迁移语句。
 
 - [ ] **步骤 3：提取 `src/lib/errors.ts` + `crypto.ts`**  
