@@ -1,5 +1,7 @@
+import { adminAuth } from "./src/middleware/auth.js";
+import { authLimiter, mailLimiter, actionLimiter } from "./src/middleware/rateLimiter.js";
 import express from 'express';
-import rateLimit from 'express-rate-limit';
+
 import { config } from './src/config.js';
 
 import { OperationRejectError } from './src/lib/errors.js';
@@ -101,29 +103,6 @@ const app = express();
 app.set('trust proxy', config.trustProxy);
 app.use(express.json());
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: 20, 
-  message: { error: '登录请求过于频繁，请稍后再试' },
-  standardHeaders: true, 
-  legacyHeaders: false, 
-});
-
-const mailLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: '发送邮件请求过于频繁，请稍后再试' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const actionLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  message: { error: '操作请求过于频繁，请稍后再试' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 app.use((req, res, next) => {
   setBaseUrl(req.protocol + '://' + req.get('host'));
@@ -338,23 +317,6 @@ startEndingReminderCron();
 // Start the notification processor
 processNotificationQueue(db).catch(console.error);
 
-const adminAuth = (req: any, res: any, next: any) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, config.jwtSecret) as any;
-    if (decoded && decoded.role === 'admin') {
-      next();
-    } else {
-      res.status(401).json({ error: 'Unauthorized' });
-    }
-  } catch (err) {
-    res.status(401).json({ error: 'Unauthorized' });
-  }
-};
 
 function getNaturalPeriodStart(now: Date, periodType: string): Date {
   const year = now.getFullYear();

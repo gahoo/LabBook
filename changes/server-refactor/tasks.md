@@ -13,7 +13,7 @@
 - [x] **步骤 3：提取 `src/lib/errors.ts` + `crypto.ts`**  
   分离公共 Error 类与加解密工具函数。
 
-- [ ] **步骤 4：提取 `src/middleware/auth.ts` + `rateLimiter.ts`**  
+- [x] **步骤 4：提取 `src/middleware/auth.ts` + `rateLimiter.ts`**  
   *Tracer Bullet Test*: 编写 `01_auth.test.ts`（测登录接口与 401 拦截）。
   *Refactor*: 抽离 `adminAuth` 与限流器实例。
 
