@@ -2,6 +2,8 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { config } from './src/config.js';
 
+import { OperationRejectError } from './src/lib/errors.js';
+import { encryptID, decryptID } from './src/lib/crypto.js';
 import { createServer as createViteServer } from 'vite';
 import cronParser from 'cron-parser';
 import * as cron from 'node-cron';
@@ -11,40 +13,8 @@ import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } fr
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
-class OperationRejectError extends Error {
-  statusCode: number;
-  constructor(message: string, statusCode: number = 400) {
-    super(message);
-    this.name = 'OperationRejectError';
-    this.statusCode = statusCode;
-  }
-}
 
-// ICS Token helper functions
-function encryptID(id: string | number, secretHex: string): string {
-  const iv = crypto.randomBytes(16);
-  const key = Buffer.from(secretHex, 'hex');
-  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-  let encrypted = cipher.update(String(id), 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return iv.toString('hex') + ':' + encrypted;
-}
 
-function decryptID(token: string, secretHex: string): string | null {
-  try {
-    const parts = token.split(':');
-    if (parts.length !== 2) return null;
-    const iv = Buffer.from(parts[0], 'hex');
-    const key = Buffer.from(secretHex, 'hex');
-    const encryptedText = Buffer.from(parts[1], 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString('utf8');
-  } catch (e) {
-    return null;
-  }
-}
 
 import { marked } from 'marked';
 import { notifyEvent, processNotificationQueue, scheduleNextRun, setBaseUrl } from './src/services/notificationService';

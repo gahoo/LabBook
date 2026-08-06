@@ -10,7 +10,7 @@
 - [x] **步骤 2：提取 `src/db/connection.ts` + `schema.ts` + `migrations.ts`**  
   分离 Database 实例化、DDL 和数据迁移语句。
 
-- [ ] **步骤 3：提取 `src/lib/errors.ts` + `crypto.ts`**  
+- [x] **步骤 3：提取 `src/lib/errors.ts` + `crypto.ts`**  
   分离公共 Error 类与加解密工具函数。
 
 - [ ] **步骤 4：提取 `src/middleware/auth.ts` + `rateLimiter.ts`**  
