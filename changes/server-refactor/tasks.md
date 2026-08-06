@@ -4,7 +4,7 @@
 
 ## 分步实施计划
 
-- [ ] **步骤 1：提取 `src/config.ts`**  
+- [x] **步骤 1：提取 `src/config.ts`**  
   将 `dotenv` 引入与环境变量获取抽出。
 
 - [ ] **步骤 2：提取 `src/db/connection.ts` + `schema.ts` + `migrations.ts`**  

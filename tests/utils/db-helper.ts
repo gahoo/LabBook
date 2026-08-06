@@ -9,14 +9,20 @@ export function clearDatabase() {
     'whitelist',
     'whitelist_applications',
     'audit_logs',
-    'notification_logs'
+    'notification_logs',
+    'penalty_rules',
+    'settings',
+    'penalty_exemptions'
   ];
   
-  for (const table of tablesToClear) {
-    try {
-      db.prepare(`DELETE FROM ${table}`).run();
-    } catch (e) {
-      // ignore if table doesn't exist yet
+  // Wrap in a transaction for safety, though SQLite handles separate deletes fine
+  db.transaction(() => {
+    for (const table of tablesToClear) {
+      try {
+        db.prepare(`DELETE FROM ${table}`).run();
+      } catch (e) {
+        // ignore if table doesn't exist yet
+      }
     }
-  }
+  })();
 }

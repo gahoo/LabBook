@@ -1,7 +1,6 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
-dotenv.config();
+import { config } from './src/config.js';
 
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
@@ -130,7 +129,7 @@ function calculateReportStatus(res: any, prevRes: any, settings: any) {
 }
 
 const app = express();
-app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 0));
+app.set('trust proxy', config.trustProxy);
 app.use(express.json());
 
 const authLimiter = rateLimit({
@@ -162,19 +161,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const db = new Database(process.env.NODE_ENV === 'test' ? ':memory:' : 'lab_equipment.db');
-let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
-
-if (!ADMIN_PASSWORD) {
-  ADMIN_PASSWORD = crypto.randomBytes(16).toString('hex');
-  console.warn('\n===================================================================');
-  console.warn('WARNING: No ADMIN_PASSWORD provided in environment variables.');
-  console.warn('A resilient temporary password has been generated for this session:');
-  console.warn(`=> ${ADMIN_PASSWORD} <=`);
-  console.warn('Please set ADMIN_PASSWORD in your .env file for production use.');
-  console.warn('===================================================================\n');
-}
+const db = new Database(config.dbPath);
 
 // Initialize DB
 db.exec(`
@@ -673,7 +660,7 @@ const adminAuth = (req: any, res: any, next: any) => {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, config.jwtSecret) as any;
     if (decoded && decoded.role === 'admin') {
       next();
     } else {
@@ -1571,7 +1558,7 @@ app.get('/api/equipment', (req, res) => {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const decoded = jwt.verify(token, config.jwtSecret) as any;
       if (decoded && decoded.role === 'admin') {
         isAdmin = true;
       }
@@ -1594,10 +1581,10 @@ app.get('/api/equipment', (req, res) => {
 // Admin Login
 app.post('/api/admin/login', authLimiter, (req, res) => {
   const { password } = req.body;
-  if (password === ADMIN_PASSWORD) {
+  if (password === config.adminPassword) {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'jwt_expires_in_hours'").get() as any;
     const expiresHours = row && !isNaN(parseInt(row.value, 10)) ? parseInt(row.value, 10) : 168;
-    const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: `${expiresHours}h` });
+    const token = jwt.sign({ role: 'admin' }, config.jwtSecret, { expiresIn: `${expiresHours}h` });
     res.json({ success: true, token });
   } else {
     res.status(401).json({ error: '密码错误' });
@@ -4442,29 +4429,29 @@ function scanForNoShows() {
 }
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'test') {
+  if (!config.isTest) {
     startNoShowScanner();
   }
   
-  if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+  if (!config.isProduction && !config.isTest) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else if (process.env.NODE_ENV === 'production') {
+  } else if (config.isProduction) {
     app.use(express.static('dist'));
   }
 
   const PORT = 3000;
-  if (process.env.NODE_ENV !== 'test') {
+  if (!config.isTest) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   }
 }
 
-if (process.env.NODE_ENV !== 'test') {
+if (!config.isTest) {
   startServer();
 }
 
