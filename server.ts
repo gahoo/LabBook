@@ -162,7 +162,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const db = new Database('lab_equipment.db');
+const db = new Database(process.env.NODE_ENV === 'test' ? ':memory:' : 'lab_equipment.db');
 let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
@@ -4442,22 +4442,31 @@ function scanForNoShows() {
 }
 
 async function startServer() {
-  startNoShowScanner();
+  if (process.env.NODE_ENV !== 'test') {
+    startNoShowScanner();
+  }
   
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
   }
 
   const PORT = 3000;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+export { app, db };
+
