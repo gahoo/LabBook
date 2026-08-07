@@ -17,7 +17,7 @@
   *Tracer Bullet Test*: 编写 `01_auth.test.ts`（测登录接口与 401 拦截）。
   *Refactor*: 抽离 `adminAuth` 与限流器实例。
 
-- [ ] **步骤 5：提取 `src/modules/notification/`**  
+- [x] **步骤 5：提取 `src/modules/notification/`**  
   *Tracer Bullet Test*: 编写 `08_notification.test.ts`（验证投递日志路由，Webhook拦截是否生效）。
   *Refactor*: 抽离相关的通知测试与重试路由。
 
