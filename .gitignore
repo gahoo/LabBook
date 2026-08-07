@@ -19,3 +19,4 @@ fallow_output.json
 bun.lock
 patch_*.cjs
 *.bak
+test_eval*
