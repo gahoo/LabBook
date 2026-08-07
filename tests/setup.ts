@@ -16,13 +16,13 @@ process.env.NODE_ENV = 'test';
 
 // Mock external services like nodemailer and fetch globally
 vi.mock('nodemailer', () => {
+  const createTransport = vi.fn().mockReturnValue({
+    sendMail: vi.fn().mockResolvedValue({ messageId: 'test-msg-id' }),
+    verify: vi.fn().mockResolvedValue(true),
+  });
   return {
-    default: {
-      createTransport: vi.fn().mockReturnValue({
-        sendMail: vi.fn().mockResolvedValue({ messageId: 'test-msg-id' }),
-        verify: vi.fn().mockResolvedValue(true),
-      }),
-    }
+    default: { createTransport },
+    createTransport
   };
 });
 

@@ -18,3 +18,4 @@ agent
 fallow_output.json
 bun.lock
 patch_*.cjs
+*.bak
