@@ -20,3 +20,5 @@ bun.lock
 patch_*.cjs
 *.bak
 test_eval*
+extract_violation_routes.js
+rm_funcs.cjs

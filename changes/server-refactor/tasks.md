@@ -21,7 +21,7 @@
   *Tracer Bullet Test*: 编写 `08_notification.test.ts`（验证投递日志路由，Webhook拦截是否生效）。
   *Refactor*: 抽离相关的通知测试与重试路由。
 
-- [ ] **步骤 6：提取 `src/modules/violation/`（核心复杂逻辑）**  
+- [x] **步骤 6：提取 `src/modules/violation/`（核心复杂逻辑）**  
   *Tracer Bullet Test*: 编写 `04_violation_and_penalty.test.ts`（模拟违规上报、通过接口获取违规封禁状态）。
   *Refactor*: 剥离 `checkUserPenalty`、规则计算及申诉处理路由。
 
