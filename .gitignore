@@ -23,3 +23,5 @@ test_eval*
 extract_violation_routes.js
 rm_funcs.cjs
 get_schedulers.js
+fix_test.cjs
+test_payload.cjs
