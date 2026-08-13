@@ -1,3 +1,4 @@
+import os from 'os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { db } from '../src/db/index.js';
 import fs from 'fs';
@@ -242,27 +243,121 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
   });
 
   describe('executeBackup', () => {
-    it('should create a database backup file and maintain retention', async () => {
-      vi.useRealTimers();
-      
-      const backupDir = path.join(process.cwd(), 'backups');
-      if (!fs.existsSync(backupDir)) {
-         fs.mkdirSync(backupDir, { recursive: true });
+    const actualBackupDir = path.join(process.cwd(), 'backups');
+    let originalFiles = [];
+    
+    beforeAll(() => {
+      // 1. Backup any existing real files to memory to avoid pollution
+      if (fs.existsSync(actualBackupDir)) {
+         const files = fs.readdirSync(actualBackupDir);
+         for (const file of files) {
+             originalFiles.push({
+                 name: file,
+                 content: fs.readFileSync(path.join(actualBackupDir, file))
+             });
+         }
       } else {
-         const files = fs.readdirSync(backupDir);
-         for (const file of files) fs.unlinkSync(path.join(backupDir, file));
+         fs.mkdirSync(actualBackupDir, { recursive: true });
       }
+    });
+
+    afterAll(() => {
+      // 2. Restore original files
+      if (fs.existsSync(actualBackupDir)) {
+        const files = fs.readdirSync(actualBackupDir);
+        for (const file of files) fs.unlinkSync(path.join(actualBackupDir, file));
+      } else {
+        fs.mkdirSync(actualBackupDir, { recursive: true });
+      }
+      
+      for (const file of originalFiles) {
+        fs.writeFileSync(path.join(actualBackupDir, file.name), file.content);
+      }
+    });
+
+    beforeEach(() => {
+      // Clear folder before each test
+      if (fs.existsSync(actualBackupDir)) {
+        const files = fs.readdirSync(actualBackupDir);
+        for (const file of files) fs.unlinkSync(path.join(actualBackupDir, file));
+      }
+      db.prepare(`DELETE FROM settings WHERE key = 'auto_backup_retention'`).run();
+    });
+
+    it('should create a database backup file and maintain retention', async () => {
+      // 3. Freeze time to allow rapid generation of backups without delays
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-01T12:00:00Z'));
       
       db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', '2')`).run();
       
+      // Backup 1
       await executeBackup();
-      await new Promise(r => setTimeout(r, 1100));
+      vi.setSystemTime(new Date('2026-08-01T12:00:02Z')); // move forward 2 seconds
+      
+      // Backup 2
       await executeBackup();
-      await new Promise(r => setTimeout(r, 1100));
+      vi.setSystemTime(new Date('2026-08-01T12:00:04Z')); // move forward 2 seconds
+      
+      // Backup 3
       await executeBackup();
       
-      const files = fs.readdirSync(backupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      // We expect only 2 files because retention is 2
+      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
       expect(files.length).toBe(2);
-    }, 10000); // give it more timeout
+      
+      vi.useRealTimers();
+    });
+
+    it('should fallback to default retention (7) if setting is invalid string', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-01T12:00:00Z'));
+      
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', 'invalid')`).run();
+      
+      for (let i = 0; i < 8; i++) {
+        await executeBackup();
+        vi.setSystemTime(new Date(`2026-08-01T12:00:0${i+1}Z`));
+      }
+      
+      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      expect(files.length).toBe(7); // Falls back to 7
+      
+      vi.useRealTimers();
+    });
+
+    it('should keep 0 backups if retention is set to 0 (characterizing existing behavior)', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-01T12:00:00Z'));
+      
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', '0')`).run();
+      
+      for (let i = 0; i < 3; i++) {
+        await executeBackup();
+        vi.setSystemTime(new Date(`2026-08-01T12:00:0${i+1}Z`));
+      }
+      
+      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      expect(files.length).toBe(0); // The existing logic keeps 0 files if set to '0'
+      
+      vi.useRealTimers();
+    });
+    
+    it('should not delete any files if total count is under retention limit', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-01T12:00:00Z'));
+      
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', '5')`).run();
+      
+      for (let i = 0; i < 3; i++) {
+        await executeBackup();
+        vi.setSystemTime(new Date(`2026-08-01T12:00:0${i+1}Z`));
+      }
+      
+      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      expect(files.length).toBe(3); 
+      
+      vi.useRealTimers();
+    });
   });
 });

@@ -5,9 +5,9 @@ import { adminAuth } from "./src/middleware/auth.js";
 import { notificationRoutes } from "./src/modules/notification/routes.js";
 import { authLimiter, mailLimiter, actionLimiter } from "./src/middleware/rateLimiter.js";
 import express from 'express';
-
+ 
 import { config } from './src/config.js';
-
+ 
 import { OperationRejectError } from './src/lib/errors.js';
 import { encryptID, decryptID } from './src/lib/crypto.js';
 import { createServer as createViteServer } from 'vite';
@@ -18,13 +18,13 @@ import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-
-
-
-
+ 
+ 
+ 
+ 
 import { marked } from 'marked';
 import { notifyEvent, processNotificationQueue, scheduleNextRun, setBaseUrl } from './src/modules/notification/service.js';
-
+ 
 function getViolationSettings(db: any) {
   const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_minutes', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
   const settingsMap = settingsRows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
@@ -35,7 +35,7 @@ function getViolationSettings(db: any) {
     overtimeGraceMinutes: settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30,
   };
 }
-
+ 
 function calculateReportStatus(res: any, prevRes: any, settings: any) {
   if (res.status === 'cancelled') {
     if (res.actual_end_time) {
@@ -48,13 +48,13 @@ function calculateReportStatus(res: any, prevRes: any, settings: any) {
           }
         } catch(e){}
       }
-
+ 
       const cancelTime = new Date(res.actual_end_time).getTime();
       const startTime = new Date(res.start_time).getTime();
       
       const lateCancelThreshold = startTime - (lateCancelMinutes * 60 * 1000);
       const noShowThreshold = startTime + (settings.noShowGraceMinutes * 60 * 1000);
-
+ 
       if (cancelTime >= noShowThreshold) {
         return '爽约';
       } else if (cancelTime >= lateCancelThreshold) {
@@ -76,7 +76,7 @@ function calculateReportStatus(res: any, prevRes: any, settings: any) {
   const end = new Date(res.end_time);
   const actualStart = new Date(res.actual_start_time);
   const actualEnd = res.actual_end_time ? new Date(res.actual_end_time) : null;
-
+ 
   let isDelayCausedByPrev = false;
   if (prevRes && prevRes.actual_end_time) {
     const prevActualEnd = new Date(prevRes.actual_end_time);
@@ -84,10 +84,10 @@ function calculateReportStatus(res: any, prevRes: any, settings: any) {
       isDelayCausedByPrev = true;
     }
   }
-
+ 
   const lateThreshold = settings.lateGraceMinutes * 60 * 1000;
   const overtimeThreshold = settings.overtimeGraceMinutes * 60 * 1000;
-
+ 
   const statuses = [];
   if (actualStart.getTime() > start.getTime() + lateThreshold && !isDelayCausedByPrev) {
     statuses.push('迟到');
@@ -102,29 +102,29 @@ function calculateReportStatus(res: any, prevRes: any, settings: any) {
   
   return '正常';
 }
-
+ 
 const app = express();
 app.set('trust proxy', config.trustProxy);
 app.use(express.json());
-
-
+ 
+ 
 app.use((req, res, next) => {
   setBaseUrl(req.protocol + '://' + req.get('host'));
   next();
 });
-
+ 
 import { db } from './src/db/index.js';
+ 
+ 
+ 
 
-
-
+ 
 // Auto Backup Logic
 const backupDir = path.join(process.cwd(), 'backups');
 if (!fs.existsSync(backupDir)) {
   fs.mkdirSync(backupDir, { recursive: true });
 }
-
 let backupTask: cron.ScheduledTask | null = null;
-
 export async function executeBackup() {
   const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
   const backupPath = path.join(backupDir, `lab_equipment_backup_${timestamp}.db`);
@@ -137,10 +137,10 @@ export async function executeBackup() {
       .filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'))
       .sort()
       .reverse();
-      
+    
     const retentionRow = db.prepare("SELECT value FROM settings WHERE key = 'auto_backup_retention'").get() as any;
     const keepCount = retentionRow && !isNaN(parseInt(retentionRow.value, 10)) ? parseInt(retentionRow.value, 10) : 7;
-      
+    
     if (files.length > keepCount) {
       const filesToDelete = files.slice(keepCount);
       for (const file of filesToDelete) {
@@ -152,7 +152,6 @@ export async function executeBackup() {
     console.error('Database backup failed:', err);
   }
 }
-
 export function reloadBackupCron() {
   if (backupTask) {
     backupTask.stop();
@@ -174,21 +173,21 @@ export function reloadBackupCron() {
     console.log('Auto backup is disabled.');
   }
 }
-
+ 
 reloadBackupCron();
-
+ 
 let upcomingReminderTask: cron.ScheduledTask | null = null;
-
+ 
 export function upcomingReminderScan() {
   try {
-
+ 
     const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
     const advanceMins = parseInt(advanceRow?.value || '30', 10);
     
     const now = new Date();
     const thresholdTime = new Date(now.getTime() + advanceMins * 60000 + 5 * 60000); // add 5 mins buffer
     const maxLookingBack = new Date(now.getTime() - 24 * 60 * 60 * 1000); 
-
+ 
     const upcomingReservations = db.prepare(`
       SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee 
       FROM reservations r
@@ -197,7 +196,7 @@ export function upcomingReminderScan() {
         AND r.start_time > ?
         AND r.start_time <= ?
     `).all(maxLookingBack.toISOString(), thresholdTime.toISOString()) as any[];
-
+ 
     for (const resv of upcomingReservations) {
       const startTime = new Date(resv.start_time);
       const diffMins = (startTime.getTime() - now.getTime()) / 60000;
@@ -226,16 +225,16 @@ export function upcomingReminderScan() {
     console.error("Error scanning for upcoming reminders:", err);
   }
 }
-
+ 
 export function startUpcomingReminderCron() {
   if (upcomingReminderTask) {
     upcomingReminderTask.stop();
     upcomingReminderTask = null;
   }
-
+ 
   const emailRow = db.prepare("SELECT value FROM settings WHERE key = 'email.events.booking_upcoming.enabled'").get() as any;
   const webhookRow = db.prepare("SELECT value FROM settings WHERE key = 'webhook.events.booking_upcoming.enabled'").get() as any;
-
+ 
   if (emailRow?.value === 'true' || webhookRow?.value === 'true') {
     upcomingReminderTask = cron.schedule('*/5 * * * *', upcomingReminderScan);
     console.log('Upcoming reminder cron scheduled every 5 minutes.');
@@ -245,9 +244,9 @@ export function startUpcomingReminderCron() {
     console.log('Upcoming reminder cron is disabled.');
   }
 }
-
+ 
 let endingReminderTask: cron.ScheduledTask | null = null;
-
+ 
 export function endingReminderScan() {
   try {
     const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_ending_advance_minutes'").get() as any;
@@ -256,7 +255,7 @@ export function endingReminderScan() {
     const now = new Date();
     const thresholdTime = new Date(now.getTime() + advanceMins * 60000 + 5 * 60000); // add 5 mins buffer
     const maxLookingBack = new Date(now.getTime() - 24 * 60 * 60 * 1000); 
-
+ 
     const endingReservations = db.prepare(`
       SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee 
       FROM reservations r
@@ -265,7 +264,7 @@ export function endingReminderScan() {
         AND r.end_time > ?
         AND r.end_time <= ?
     `).all(maxLookingBack.toISOString(), thresholdTime.toISOString()) as any[];
-
+ 
     for (const resv of endingReservations) {
       const endTime = new Date(resv.end_time);
       const diffMins = (endTime.getTime() - now.getTime()) / 60000;
@@ -294,16 +293,16 @@ export function endingReminderScan() {
     console.error("Error scanning for ending reminders:", err);
   }
 }
-
+ 
 export function startEndingReminderCron() {
   if (endingReminderTask) {
     endingReminderTask.stop();
     endingReminderTask = null;
   }
-
+ 
   const emailRow = db.prepare("SELECT value FROM settings WHERE key = 'email.events.booking_ending.enabled'").get() as any;
   const webhookRow = db.prepare("SELECT value FROM settings WHERE key = 'webhook.events.booking_ending.enabled'").get() as any;
-
+ 
   if (emailRow?.value === 'true' || webhookRow?.value === 'true') {
     endingReminderTask = cron.schedule('*/5 * * * *', endingReminderScan);
     console.log('Ending reminder cron scheduled every 5 minutes.');
@@ -313,17 +312,17 @@ export function startEndingReminderCron() {
     console.log('Ending reminder cron is disabled.');
   }
 }
-
+ 
 startUpcomingReminderCron();
 startEndingReminderCron();
-
-
+ 
+ 
 // Start the notification processor
 processNotificationQueue(db).catch(console.error);
-
-
-
-
+ 
+ 
+ 
+ 
 function getNextNaturalPeriodStart(now: Date, periodType: string): Date {
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -349,33 +348,33 @@ function getNextNaturalPeriodStart(now: Date, periodType: string): Date {
       return new Date(year, month + 1, 1);
   }
 }
-
-
-
-
-
-
-
-
-
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 // API Routes
-
+ 
 // --- Penalty Rules API ---
 // --- Validation Helpers ---
-
-
-
-
-
-
-
-
-
-
-
-
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 import { generateICS } from './src/lib/ics';
-
+ 
 // Get settings
 app.get('/api/settings', (req, res) => {
   const settings = db.prepare('SELECT * FROM settings').all();
@@ -388,9 +387,9 @@ app.get('/api/settings', (req, res) => {
   }, {});
   res.json(settingsMap);
 });
-
+ 
 // --- Calendar API Routes ---
-
+ 
 app.get('/api/calendar/user/url', (req, res) => {
   try {
     const enabled = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription.enabled'").get() as any)?.value === 'true';
@@ -400,13 +399,13 @@ app.get('/api/calendar/user/url', (req, res) => {
     
     const { booking_code, protocol = 'webcal' } = req.query;
     if (!booking_code) return res.status(400).json({ error: 'booking_code is required to verify identity' });
-
+ 
     const reservation = db.prepare('SELECT student_id FROM reservations WHERE booking_code = ?').get(booking_code) as any;
     if (!reservation) return res.status(404).json({ error: 'Invalid booking code' });
-
+ 
     const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
     if (!secret) return res.status(500).json({ error: 'Secret not configured' });
-
+ 
     const token = encryptID(reservation.student_id, secret);
     const host = req.get('host');
     const url = `${protocol}://${host}/api/calendar/user/${token}.ics`;
@@ -416,17 +415,17 @@ app.get('/api/calendar/user/url', (req, res) => {
     res.status(500).json({ error: 'Failed to generate calendar URL' });
   }
 });
-
+ 
 app.post('/api/calendar/user/mail', mailLimiter, (req, res) => {
   try {
     const enabled = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription.enabled'").get() as any)?.value === 'true';
     if (!enabled) {
       return res.status(403).json({ error: 'Calendar subscription is disabled' });
     }
-
+ 
     const { booking_code } = req.body;
     if (!booking_code) return res.status(400).json({ error: 'booking_code is required' });
-
+ 
     const reservation = db.prepare('SELECT student_id, email FROM reservations WHERE booking_code = ?').get(booking_code) as any;
     if (!reservation) return res.status(404).json({ error: 'Invalid booking code' });
     
@@ -436,18 +435,18 @@ app.post('/api/calendar/user/mail', mailLimiter, (req, res) => {
     const url = `webcal://${host}/api/calendar/user/${token}.ics`;
     
     if (!reservation.email) return res.status(400).json({ error: 'No email associated with this booking' });
-
+ 
     notifyEvent(db, 'calendar_subscription', {
       student_id: reservation.student_id,
       calendar_url: url
     }, reservation.email);
-
+ 
     res.json({ success: true, email: reservation.email });
   } catch (error) {
     res.status(500).json({ error: 'Failed to send calendar email' });
   }
 });
-
+ 
 app.get('/api/calendar/user/:token.ics', (req, res) => {
   try {
     const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
@@ -462,10 +461,10 @@ app.get('/api/calendar/user/:token.ics', (req, res) => {
       WHERE r.student_id = ? AND r.status IN ('approved', 'cancelled')
       ORDER BY r.start_time ASC
     `).all(studentId) as any[];
-
+ 
     const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
     const advanceMins = parseInt(advanceRow?.value || '30', 10);
-
+ 
     const icsContent = generateICS(reservations, 'user', advanceMins);
     
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -475,14 +474,14 @@ app.get('/api/calendar/user/:token.ics', (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 });
-
+ 
 app.get('/api/calendar/equipment/:token.ics', (req, res) => {
   try {
     const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
     const equipmentId = decryptID(req.params.token, secret);
     
     if (!equipmentId) return res.status(400).send('Invalid token');
-
+ 
     const reservations = db.prepare(`
       SELECT r.*, e.name as equipment_name 
       FROM reservations r
@@ -490,10 +489,10 @@ app.get('/api/calendar/equipment/:token.ics', (req, res) => {
       WHERE r.equipment_id = ? AND r.status IN ('approved', 'cancelled')
       ORDER BY r.start_time ASC
     `).all(equipmentId) as any[];
-
+ 
     const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
     const advanceMins = parseInt(advanceRow?.value || '30', 10);
-
+ 
     const icsContent = generateICS(reservations, 'admin', advanceMins);
     
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -503,12 +502,12 @@ app.get('/api/calendar/equipment/:token.ics', (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 });
-
+ 
 app.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
   try {
     const secret = (db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any)?.value;
     if (!secret) return res.status(500).json({ error: 'Secret not configured' });
-
+ 
     const token = encryptID(req.params.id, secret);
     const host = req.get('host');
     const url = `webcal://${host}/api/calendar/equipment/${token}.ics`;
@@ -518,7 +517,7 @@ app.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
     res.status(500).json({ error: 'Failed to generate calendar URL' });
   }
 });
-
+ 
 app.get('/api/admin/settings', adminAuth, (req, res) => {
   const settings = db.prepare('SELECT * FROM settings').all();
   const settingsMap = settings.reduce((acc: any, curr: any) => {
@@ -527,7 +526,7 @@ app.get('/api/admin/settings', adminAuth, (req, res) => {
   }, {});
   res.json(settingsMap);
 });
-
+ 
 app.get('/api/admin/settings/violation-params', adminAuth, (req, res) => {
   const keys = ['violation_late_grace_minutes', 'violation_overtime_grace_minutes', 'violation_late_cancel_minutes', 'violation_no_show_grace_minutes'];
   const settingsRows = db.prepare(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => '?').join(',')})`).all(...keys) as any[];
@@ -548,7 +547,7 @@ app.get('/api/admin/settings/violation-params', adminAuth, (req, res) => {
   
   res.json(map);
 });
-
+ 
 // Update settings (Admin)
 app.post('/api/admin/settings', adminAuth, (req, res) => {
   const bodyKeys = Object.keys(req.body);
@@ -580,7 +579,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
       return res.status(400).json({ error: '必须至少保留一种有效的预约码获取途径。关闭网页展示时，需确保已全局开启并勾选了 Email 或 Webhook 相关的预约通知。' });
     }
   }
-
+ 
   const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
   const insertStmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   
@@ -591,7 +590,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
       stmt.run(stringValue, key);
     }
   };
-
+ 
   for (const key of bodyKeys) {
     updateSetting(key, req.body[key]);
   }
@@ -599,7 +598,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   if (req.body.cron_no_show_scan_interval_minutes !== undefined) {
     startNoShowScanner(); // Restart the scanner with new interval
   }
-
+ 
   let backupSettingsChanged = false;
   if (req.body.auto_backup_enabled !== undefined || req.body.auto_backup_cron !== undefined || req.body.auto_backup_retention !== undefined) {
     backupSettingsChanged = true;
@@ -608,7 +607,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   if (backupSettingsChanged) {
     reloadBackupCron();
   }
-
+ 
   if (
     req.body['email.events.booking_upcoming.enabled'] !== undefined ||
     req.body['webhook.events.booking_upcoming.enabled'] !== undefined ||
@@ -616,7 +615,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   ) {
     startUpcomingReminderCron();
   }
-
+ 
   if (
     req.body['email.events.booking_ending.enabled'] !== undefined ||
     req.body['webhook.events.booking_ending.enabled'] !== undefined ||
@@ -627,7 +626,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   
   res.json({ success: true });
 });
-
+ 
 // 1. Get all equipment
 app.get('/api/equipment', (req, res) => {
   let isAdmin = false;
@@ -654,7 +653,7 @@ app.get('/api/equipment', (req, res) => {
   
   res.json(equipment);
 });
-
+ 
 // Admin Login
 app.post('/api/admin/login', authLimiter, (req, res) => {
   const { password } = req.body;
@@ -667,7 +666,7 @@ app.post('/api/admin/login', authLimiter, (req, res) => {
     res.status(401).json({ error: '密码错误' });
   }
 });
-
+ 
 // 2. Add equipment (Admin)
 app.post('/api/admin/equipment', adminAuth, (req, res) => {
   const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots } = req.body;
@@ -680,7 +679,7 @@ app.post('/api/admin/equipment', adminAuth, (req, res) => {
   
   res.json({ id: info.lastInsertRowid });
 });
-
+ 
 // Update equipment (Admin)
 app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
   const { id } = req.params;
@@ -695,7 +694,7 @@ app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
   
   res.json({ success: true });
 });
-
+ 
 // Batch update equipment (Admin)
 app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
   const { ids, updates } = req.body;
@@ -703,18 +702,18 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: 'No equipment IDs provided' });
   }
-
+ 
   try {
     const updateEquipment = db.transaction((idsToUpdate: number[], updateData: any) => {
       for (const id of idsToUpdate) {
         const currentEq = db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as any;
         if (!currentEq) continue;
-
+ 
         let avail: any = {};
         try {
           avail = JSON.parse(currentEq.availability_json || '{}');
         } catch (e) {}
-
+ 
         let availChanged = false;
         if (updateData.advanceDays !== undefined) {
           avail.advanceDays = updateData.advanceDays;
@@ -744,40 +743,40 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
           avail.rules = updateData.rules;
           availChanged = true;
         }
-
+ 
         const updateFields = [];
         const updateValues = [];
-
+ 
         if (availChanged) {
           updateFields.push('availability_json = ?');
           updateValues.push(JSON.stringify(avail));
         }
-
+ 
         if (updateData.is_hidden !== undefined) {
           updateFields.push('is_hidden = ?');
           updateValues.push(updateData.is_hidden ? 1 : 0);
         }
-
+ 
         if (updateData.release_noshow_slots !== undefined) {
           updateFields.push('release_noshow_slots = ?');
           updateValues.push(updateData.release_noshow_slots ? 1 : 0);
         }
-
+ 
         if (updateData.whitelist_enabled !== undefined) {
           updateFields.push('whitelist_enabled = ?');
           updateValues.push(updateData.whitelist_enabled ? 1 : 0);
         }
-
+ 
         if (updateData.whitelist_data !== undefined) {
           updateFields.push('whitelist_data = ?');
           updateValues.push(updateData.whitelist_data);
         }
-
+ 
         if (updateData.auto_approve !== undefined) {
           updateFields.push('auto_approve = ?');
           updateValues.push(updateData.auto_approve ? 1 : 0);
         }
-
+ 
         if (updateFields.length > 0) {
           updateValues.push(id);
           const stmt = db.prepare(`
@@ -789,7 +788,7 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
         }
       }
     });
-
+ 
     updateEquipment(ids, updates);
     res.json({ success: true });
   } catch (error) {
@@ -797,12 +796,12 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
     res.status(500).json({ error: 'Failed to batch update equipment' });
   }
 });
-
+ 
 app.get('/api/equipment/availability/today', (req, res) => {
   const date = (req.query.date as string) || format(new Date(), 'yyyy-MM-dd');
   const targetDate = parseISO(date);
   const dayOfWeek = targetDate.getDay();
-
+ 
   const equipmentList = db.prepare('SELECT * FROM equipment').all() as any[];
   
   const results = equipmentList.map(eq => {
@@ -812,7 +811,7 @@ app.get('/api/equipment/availability/today', (req, res) => {
     } catch (e) {
       availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
     }
-
+ 
     const dayRules = availability.rules?.filter((r: any) => r.day === dayOfWeek) || [];
     
     const availableSlots = dayRules.map((rule: any) => {
@@ -821,19 +820,19 @@ app.get('/api/equipment/availability/today', (req, res) => {
         end: `${date}T${rule.end}:00`
       };
     });
-
+ 
     const windowStart = new Date(`${date}T00:00:00`);
     windowStart.setDate(windowStart.getDate() - 1);
     const windowEnd = new Date(`${date}T00:00:00`);
     windowEnd.setDate(windowEnd.getDate() + 2);
-
+ 
     const reservationsRaw = db.prepare(`
       SELECT start_time, end_time, actual_start_time FROM reservations 
       WHERE equipment_id = ? 
       AND status IN ('pending', 'approved', 'active')
       AND start_time < ? AND end_time > ?
     `).all(eq.id, windowEnd.toISOString(), windowStart.toISOString()) as any[];
-
+ 
     let reservations = reservationsRaw;
     if (eq.release_noshow_slots) {
       const now = new Date().getTime();
@@ -847,7 +846,7 @@ app.get('/api/equipment/availability/today', (req, res) => {
         return true;
       });
     }
-
+ 
     return {
       equipment_id: eq.id,
       equipment_name: eq.name,
@@ -857,33 +856,33 @@ app.get('/api/equipment/availability/today', (req, res) => {
       minDurationMinutes: availability.minDurationMinutes || 30
     };
   });
-
+ 
   res.json(results);
 });
-
+ 
 // 3. Get availability for an equipment on a specific date
 app.get('/api/equipment/:id/availability', (req, res) => {
   const { id } = req.params;
   const { date, start_date, end_date } = req.query as any;
   
   const isRange = !!(start_date && end_date);
-
+ 
   if (!date && !isRange) {
     return res.status(400).json({ error: '需要提供 date 或 start_date & end_date' });
   }
-
+ 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as any;
   if (!equipment) {
     return res.status(404).json({ error: '未找到该仪器' });
   }
-
+ 
   let availability;
   try {
     availability = JSON.parse(equipment.availability_json || '{"rules":[], "advanceDays": 7, "maxDurationMinutes": 60, "minDurationMinutes": 30}');
   } catch (e) {
     availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
   }
-
+ 
   const today = startOfDay(new Date());
   const maxDate = addDays(today, availability.advanceDays || 7);
   const now = new Date().getTime();
@@ -900,21 +899,21 @@ app.get('/api/equipment/:id/availability', (req, res) => {
   } else {
     datesToProcess.push(date);
   }
-
+ 
   const minDateStr = datesToProcess[0];
   const maxDateStr = datesToProcess[datesToProcess.length - 1];
-
+ 
   const windowStart = new Date(`${minDateStr}T00:00:00`);
   windowStart.setDate(windowStart.getDate() - 1);
   const windowEnd = new Date(`${maxDateStr}T00:00:00`);
   windowEnd.setDate(windowEnd.getDate() + 2);
-
+ 
   const reservationsRaw = db.prepare(`
     SELECT id, start_time, end_time, actual_start_time FROM reservations 
     WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
     AND start_time < ? AND end_time > ?
   `).all(id, windowEnd.toISOString(), windowStart.toISOString()) as any[];
-
+ 
   let rangeReservations = reservationsRaw;
   if (equipment.release_noshow_slots) {
     rangeReservations = reservationsRaw.filter((res: any) => {
@@ -927,11 +926,11 @@ app.get('/api/equipment/:id/availability', (req, res) => {
       return true;
     });
   }
-
+ 
   const results = datesToProcess.map(dStr => {
     const targetDate = parseISO(dStr);
     const dayOfWeek = targetDate.getDay();
-
+ 
     if (isAfter(targetDate, maxDate)) {
       return { 
         date: dStr,
@@ -942,7 +941,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
         message: `仅支持提前 ${availability.advanceDays} 天预约` 
       };
     }
-
+ 
     const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
     const availableSlots: { start: string, end: string }[] = [];
     rules.forEach((rule: any) => {
@@ -951,20 +950,20 @@ app.get('/api/equipment/:id/availability', (req, res) => {
         end: `${dStr}T${rule.end}:00`
       });
     });
-
+ 
     const dStrStart = new Date(`${dStr}T00:00:00`);
     const dStrStartMs = dStrStart.getTime();
-
+ 
     const dStrEnd = new Date(`${dStr}T00:00:00`);
     dStrEnd.setDate(dStrEnd.getDate() + 1);
     const dStrEndMs = dStrEnd.getTime();
-
+ 
     const localReservations = rangeReservations.filter((r: any) => {
       const sMs = new Date(r.start_time).getTime();
       const eMs = new Date(r.end_time).getTime();
       return sMs < dStrEndMs && eMs > dStrStartMs;
     });
-
+ 
     return {
       date: dStr,
       availableSlots,
@@ -977,7 +976,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
       peakHours: availability.peakHours || []
     };
   });
-
+ 
   if (isRange) {
     return res.json(results);
   } else {
@@ -990,7 +989,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
     });
   }
 });
-
+ 
 // Get all reservations for an equipment in a date range (for chart)
 app.get('/api/equipment/:id/reservations', (req, res) => {
   const { id } = req.params;
@@ -1004,18 +1003,18 @@ app.get('/api/equipment/:id/reservations', (req, res) => {
   
   res.json(reservations);
 });
-
+ 
 function validateOperatingHours(start: Date, end: Date, availability: any, tzOffset: number): { isValid: boolean, error?: string, isOutOfHours: boolean } {
   const allowOutOfHours = !!availability.allowOutOfHours;
-
+ 
   const startMs = start.getTime();
   const endMs = end.getTime();
   
   const localStartMs = startMs - tzOffset * 60000;
   const localEndMs = endMs - tzOffset * 60000;
-
+ 
   let currentMs = localStartMs;
-
+ 
   while (currentMs < localEndMs) {
     const currentLocal = new Date(currentMs);
     const nextMidnightLocal = new Date(currentLocal);
@@ -1046,7 +1045,7 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
       if (reMins === 1439) reMins = 1440; // 23:59 inclusive of midnight
       return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
     });
-
+ 
     if (!fallsWithinAnyRule) {
       if (allowOutOfHours) return { isValid: true, isOutOfHours: true };
       const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
@@ -1058,7 +1057,7 @@ function validateOperatingHours(start: Date, end: Date, availability: any, tzOff
   
   return { isValid: true, isOutOfHours: false };
 }
-
+ 
 function calculatePeakAccumulatedMinutes(start: Date, end: Date, peakHours: any[], tzOffset: number): number {
   if (!peakHours || peakHours.length === 0) return 0;
   
@@ -1104,11 +1103,11 @@ function calculatePeakAccumulatedMinutes(start: Date, end: Date, peakHours: any[
   
   return accumulated;
 }
-
+ 
 // 4. Create reservation
 app.post('/api/reservations', actionLimiter, (req, res) => {
   const { equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time } = req.body;
-
+ 
   // Input validation
   const stringFields = { student_id, student_name, supervisor, phone, email, start_time, end_time };
   for (const [key, val] of Object.entries(stringFields)) {
@@ -1143,7 +1142,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       }
     }
   }
-
+ 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到该仪器' });
   
@@ -1154,7 +1153,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
     console.error('Error in checkUserPenalty:', e);
     return res.status(500).json({ error: '检查用户惩罚状态时发生错误' });
   }
-
+ 
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
     return res.status(403).json({ 
       error: penaltyCheck.reason, 
@@ -1166,7 +1165,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   if (equipment.is_hidden) {
     return res.status(403).json({ error: '该仪器暂不开放预约' });
   }
-
+ 
   // Whitelist check
   if (equipment.whitelist_enabled) {
     const whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
@@ -1177,36 +1176,36 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       });
     }
   }
-
+ 
   // Check if slot is in the past
   const now = new Date();
   const start = new Date(start_time);
   const end = new Date(end_time);
-
+ 
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return res.status(400).json({ error: '无效的时间格式' });
   }
-
+ 
   if (isBefore(start, now)) {
     return res.status(400).json({ error: '不能预约已经开始或过去的时间' });
   }
-
+ 
   let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
   try {
     if (equipment.availability_json) {
       availability = JSON.parse(equipment.availability_json);
     }
   } catch (e) {}
-
+ 
   if (end <= start) {
     return res.status(400).json({ error: '结束时间必须晚于开始时间' });
   }
-
+ 
   const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
   const minDuration = availability.minDurationMinutes || 30;
-
+ 
   if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
-
+ 
   const originalAdvanceDays = availability.advanceDays || 7;
   let penalizedAdvanceDays = originalAdvanceDays;
   if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
@@ -1217,11 +1216,11 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
     }
   }
-
+ 
   const maxOriginalDate = new Date(now);
   maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
   maxOriginalDate.setHours(23, 59, 59, 999);
-
+ 
   const maxPenalizedDate = new Date(now);
   maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
   maxPenalizedDate.setHours(23, 59, 59, 999);
@@ -1234,22 +1233,22 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       structured_penalty: (penaltyCheck as any).structured_penalty || penaltyCheck
     });
   }
-
+ 
   const tz_offset = req.body.tz_offset || 0;
   const validResult = validateOperatingHours(start, end, availability, tz_offset);
   if (!validResult.isValid) {
     return res.status(400).json({ error: validResult.error });
   }
   let isOutOfHours = validResult.isOutOfHours;
-
+ 
   const maxDuration = availability.maxDurationMinutes || 60;
   const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
   const allowExceed = !!availability.allowExceedDuration;
   const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
   const peakHours = availability.peakHours || [];
-
+ 
   const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
-
+ 
   const userDailyUsedRow = db.prepare(`
     SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
     FROM reservations
@@ -1259,11 +1258,11 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       AND status IN ('pending', 'approved', 'active')
   `).get(equipment_id, student_id, offsetModifier, start_time, offsetModifier) as any;
   const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
-
+ 
   if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
     return res.status(400).json({ error: `超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)` });
   }
-
+ 
   const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
   let isPeakExceeded = false;
   
@@ -1277,7 +1276,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       return res.status(400).json({ error: `您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。` });
     }
   }
-
+ 
   const tx = db.transaction(() => {
     // Check if slot is already booked
     const existingRaw = db.prepare(`
@@ -1285,7 +1284,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
       WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
       AND start_time < ? AND end_time > ?
     `).all(equipment_id, end_time, start_time);
-
+ 
     let hasConflict = false;
     if (existingRaw.length > 0) {
       if (equipment.release_noshow_slots) {
@@ -1303,27 +1302,27 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
         hasConflict = true;
       }
     }
-
+ 
     if (hasConflict) {
       return { ok: false, error: '该时间段已被预约' };
     }
-
+ 
     const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
     let status = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
     
     if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
       status = 'pending';
     }
-
+ 
     const stmt = db.prepare(`
       INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `);
-
+ 
     const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
     return { ok: true, info, booking_code, status };
   });
-
+ 
   let txResult;
   try {
     txResult = tx();
@@ -1331,13 +1330,13 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
     console.error('Create reservation transaction error:', e);
     return res.status(500).json({ error: '预约失败：服务器内部数据库错误，请重试' });
   }
-
+ 
   if (!txResult.ok) {
     return res.status(400).json({ error: txResult.error });
   }
-
+ 
   const { info, booking_code, status } = txResult;
-
+ 
   notifyEvent(db, 'booking_created', {
     booking_id: info.lastInsertRowid,
     booking_code,
@@ -1348,27 +1347,27 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
     end_time,
     status
   }, email);
-
+ 
   const deliveryWeb = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.web') as any;
   const smtpEnabled = db.prepare('SELECT value FROM settings WHERE key = ?').get('smtp.enabled') as any;
   const smtpEventCreated = db.prepare('SELECT value FROM settings WHERE key = ?').get('email.events.booking_created.enabled') as any;
   const smtpEventApproved = db.prepare('SELECT value FROM settings WHERE key = ?').get('email.events.booking_approved.enabled') as any;
-
+ 
   const webhookEnabled = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.enabled') as any;
   const webhookEventCreated = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.events.booking_created.enabled') as any;
   const webhookEventApproved = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.events.booking_approved.enabled') as any;
-
+ 
   const hasSmtp = smtpEnabled?.value === 'true' && (smtpEventCreated?.value === 'true' || smtpEventApproved?.value === 'true');
   const hasWebhook = webhookEnabled?.value === 'true' && (webhookEventCreated?.value === 'true' || webhookEventApproved?.value === 'true');
-
+ 
   const booking_code_delivery = {
     web: deliveryWeb ? deliveryWeb.value : 'true',
     email: hasSmtp ? 'true' : 'false',
     webhook: hasWebhook ? 'true' : 'false',
   };
-
+ 
   const webhookAliasObj = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.alias') as any;
-
+ 
   res.json({ 
     id: info.lastInsertRowid, 
     booking_code: booking_code_delivery.web === 'false' ? undefined : booking_code, 
@@ -1379,7 +1378,7 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
     structured_penalty: (penaltyCheck as any).structured_penalty || penaltyCheck
   });
 });
-
+ 
 // Whitelist Application
 app.post('/api/whitelist/apply', (req, res) => {
   const { equipment_id, student_id, student_name, supervisor, phone, email } = req.body;
@@ -1399,7 +1398,7 @@ app.post('/api/whitelist/apply', (req, res) => {
   if (supervisor.includes('教授') || supervisor.includes('老师')) {
     return res.status(400).json({ error: '导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓' });
   }
-
+ 
   const stmt = db.prepare(`
     INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -1408,7 +1407,7 @@ app.post('/api/whitelist/apply', (req, res) => {
   
   res.json({ success: true });
 });
-
+ 
 // Admin get whitelist applications
 app.get('/api/admin/whitelist/applications', adminAuth, (req, res) => {
   const { status } = req.query;
@@ -1431,16 +1430,16 @@ app.get('/api/admin/whitelist/applications', adminAuth, (req, res) => {
   }
   res.json(apps);
 });
-
+ 
 // Admin approve whitelist application
 app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) => {
   const { id } = req.params;
   const app = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
   if (!app) return res.status(404).json({ error: '未找到申请' });
-
+ 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(app.equipment_id) as any;
   if (!equipment) return res.status(404).json({ error: '未找到仪器' });
-
+ 
   let whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
   if (!whitelist.includes(app.student_name.trim())) {
     whitelist.push(app.student_name.trim());
@@ -1448,7 +1447,7 @@ app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) 
   
   db.prepare('UPDATE equipment SET whitelist_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(whitelist.join('\n'), app.equipment_id);
   db.prepare("UPDATE whitelist_applications SET status = 'approved' WHERE id = ?").run(id);
-
+ 
   notifyEvent(db, 'whitelist_resolved', {
     student_id: app.student_id,
     student_name: app.student_name,
@@ -1459,16 +1458,16 @@ app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) 
   
   res.json({ success: true });
 });
-
+ 
 // Admin reject whitelist application
 app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) => {
   const { id } = req.params;
   const appRecord = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
   if (!appRecord) return res.status(404).json({ error: '未找到申请' });
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(appRecord.equipment_id) as any;
-
+ 
   db.prepare("UPDATE whitelist_applications SET status = 'rejected' WHERE id = ?").run(id);
-
+ 
   notifyEvent(db, 'whitelist_resolved', {
     student_id: appRecord.student_id,
     student_name: appRecord.student_name,
@@ -1476,26 +1475,26 @@ app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) =
     resolution: 'rejected',
     reason: appRecord.reason || ''
   }, appRecord.student_email || undefined);
-
+ 
   res.json({ success: true });
 });
-
+ 
 // 5. Get reservations by code (batch)
 app.post('/api/reservations/batch', (req, res) => {
   const codesArray = req.body.codes as string[];
   if (!Array.isArray(codesArray)) {
     return res.status(400).json({ error: 'codes must be an array' });
   }
-
+ 
   const validCodes = codesArray.map(c => String(c).trim()).filter(Boolean);
   if (validCodes.length === 0) {
     return res.json([]);
   }
-
+ 
   if (validCodes.length > 200) {
     return res.status(400).json({ error: 'Too many codes' });
   }
-
+ 
   const placeholders = validCodes.map(() => '?').join(',');
   const reservations = db.prepare(`
     SELECT 
@@ -1507,12 +1506,12 @@ app.post('/api/reservations/batch', (req, res) => {
     JOIN equipment e ON r.equipment_id = e.id
     WHERE r.booking_code IN (${placeholders})
   `).all(...validCodes);
-
+ 
   res.json(reservations);
 });
-
+ 
 // 5. Get reservation by code
-
+ 
 app.get('/api/reservations/:code', (req, res) => {
   const { code } = req.params;
   const reservation = db.prepare(`
@@ -1525,11 +1524,11 @@ app.get('/api/reservations/:code', (req, res) => {
     JOIN equipment e ON r.equipment_id = e.id
     WHERE r.booking_code = ?
   `).get(code);
-
+ 
   if (!reservation) return res.status(404).json({ error: '未找到该预约' });
   res.json(reservation);
 });
-
+ 
 // 6. Cancel reservation
 app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
   const { booking_code } = req.body;
@@ -1551,7 +1550,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
       if (now > startTime + maxLateMinutes * 60000) {
         throw new OperationRejectError(`超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改`);
       }
-
+ 
       const nowStr = new Date(now).toISOString();
       db.prepare("UPDATE reservations SET status = 'cancelled', actual_end_time = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_code = ?").run(nowStr, booking_code);
       
@@ -1596,7 +1595,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
       status: 'cancelled',
       is_late_cancel: result.isLateCancel
     }, result.reservation.email);
-
+ 
     res.json({ success: true });
   } catch (error: any) {
     if (error instanceof OperationRejectError) {
@@ -1607,7 +1606,7 @@ app.post('/api/reservations/cancel', actionLimiter, (req, res) => {
     }
   }
 });
-
+ 
 // Update reservation (User)
 app.post('/api/reservations/update', actionLimiter, (req, res) => {
   const { booking_code, start_time, end_time } = req.body;
@@ -1628,11 +1627,11 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   if (Date.now() > startTime + maxLateMinutes * 60000) {
     return res.status(400).json({ error: `超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改` });
   }
-
+ 
   if (reservation.modified_count >= 1) {
     return res.status(400).json({ error: '每个预约仅允许修改一次时间，请取消后重新预约' });
   }
-
+ 
   const penaltyCheck = checkUserPenalty(reservation.student_id, reservation.equipment_id);
   if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
     return res.status(403).json({ 
@@ -1640,18 +1639,18 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       structured_penalty: penaltyCheck.structured_penalty
     });
   }
-
+ 
   const start = new Date(start_time);
   const end = new Date(end_time);
   
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return res.status(400).json({ error: '无效的时间格式' });
   }
-
+ 
   if (end <= start) {
     return res.status(400).json({ error: '结束时间必须晚于开始时间' });
   }
-
+ 
   const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
   
   let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
@@ -1660,11 +1659,11 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       availability = JSON.parse(equipment.availability_json);
     }
   } catch (e) {}
-
+ 
   const minDuration = availability.minDurationMinutes || 30;
-
+ 
   if (durationMinutes < minDuration) return res.status(400).json({ error: `预约时长不能少于 ${minDuration} 分钟` });
-
+ 
   const now = new Date();
   const maxDate = new Date(now);
   
@@ -1678,11 +1677,11 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
     }
   }
-
+ 
   const maxOriginalDate = new Date(now);
   maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
   maxOriginalDate.setHours(23, 59, 59, 999);
-
+ 
   const maxPenalizedDate = new Date(now);
   maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
   maxPenalizedDate.setHours(23, 59, 59, 999);
@@ -1698,22 +1697,22 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
   if (start < now) {
     return res.status(400).json({ error: '不能预约过去的时间' });
   }
-
+ 
   const tz_offset = req.body.tz_offset || 0;
   const validResult = validateOperatingHours(start, end, availability, tz_offset);
   if (!validResult.isValid) {
     return res.status(400).json({ error: validResult.error });
   }
   let isOutOfHours = validResult.isOutOfHours;
-
+ 
   const maxDuration = availability.maxDurationMinutes || 60;
   const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
   const allowExceed = !!availability.allowExceedDuration;
   const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
   const peakHours = availability.peakHours || [];
-
+ 
   const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
-
+ 
   const userDailyUsedRow = db.prepare(`
     SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
     FROM reservations
@@ -1724,11 +1723,11 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       AND status IN ('pending', 'approved', 'active')
   `).get(reservation.equipment_id, reservation.student_id, reservation.id, offsetModifier, start_time, offsetModifier) as any;
   const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
-
+ 
   if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
     return res.status(400).json({ error: `超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)` });
   }
-
+ 
   const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
   let isPeakExceeded = false;
   
@@ -1742,7 +1741,7 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       return res.status(400).json({ error: `您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。` });
     }
   }
-
+ 
   const tx = db.transaction(() => {
     // Check conflicts (excluding self)
     const conflictRaw = db.prepare(`
@@ -1750,7 +1749,7 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
       WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
       AND start_time < ? AND end_time > ?
     `).all(reservation.equipment_id, reservation.id, end_time, start_time);
-
+ 
     let hasConflict = false;
     if (conflictRaw.length > 0) {
       if (equipment.release_noshow_slots) {
@@ -1768,17 +1767,17 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
         hasConflict = true;
       }
     }
-
+ 
     if (hasConflict) {
       return { ok: false, error: '所选时间段已有其他预约' };
     }
-
+ 
     let newStatus = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
     
     if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
       newStatus = 'pending';
     }
-
+ 
     const stmt = db.prepare(`
       UPDATE reservations 
       SET start_time = ?, end_time = ?, modified_count = modified_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP
@@ -1787,7 +1786,7 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
     stmt.run(start_time, end_time, newStatus, reservation.id);
     return { ok: true };
   });
-
+ 
   let txResult;
   try {
     txResult = tx();
@@ -1795,14 +1794,14 @@ app.post('/api/reservations/update', actionLimiter, (req, res) => {
     console.error('Update reservation transaction error:', e);
     return res.status(500).json({ error: '修改失败：服务器内部数据库错误，请重试' });
   }
-
+ 
   if (!txResult.ok) {
     return res.status(400).json({ error: txResult.error });
   }
   
   res.json({ success: true });
 });
-
+ 
 // 7. Check-in
 app.post('/api/reservations/checkin', (req, res) => {
   const { booking_code, consumable_quantity } = req.body;
@@ -1813,7 +1812,7 @@ app.post('/api/reservations/checkin', (req, res) => {
       
       if (!reservation) throw new OperationRejectError('未找到该预约', 404);
       if (reservation.status !== 'approved') throw new OperationRejectError('预约未通过审批或已开始');
-
+ 
       const now = new Date();
       const startTime = new Date(reservation.start_time);
       
@@ -1822,7 +1821,7 @@ app.post('/api/reservations/checkin', (req, res) => {
       if (now.getTime() < earliestCheckin.getTime()) {
         throw new OperationRejectError(`只能在预约开始前 30 分钟内上机。您的预约开始时间为 ${format(scheduledStart, 'HH:mm')}，请在 ${format(earliestCheckin, 'HH:mm')} 后重试。`);
       }
-
+ 
       const noShowGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_no_show_grace_minutes'").get() as any;
       const maxLateMinutes = noShowGraceRow ? parseInt(noShowGraceRow.value, 10) : 30;
       
@@ -1830,7 +1829,7 @@ app.post('/api/reservations/checkin', (req, res) => {
       if (diffMinutes > maxLateMinutes) {
         throw new OperationRejectError(`已超过预约开始时间${maxLateMinutes}分钟，不允许上机`);
       }
-
+ 
       const nowStr = now.toISOString();
       db.prepare("UPDATE reservations SET status = 'active', actual_start_time = ?, consumable_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_code = ?").run(nowStr, consumable_quantity || 0, booking_code);
       
@@ -1861,7 +1860,7 @@ app.post('/api/reservations/checkin', (req, res) => {
     }
   }
 });
-
+ 
 // 8. Check-out
 app.post('/api/reservations/checkout', (req, res) => {
   const { booking_code, consumable_quantity } = req.body;
@@ -1877,7 +1876,7 @@ app.post('/api/reservations/checkout', (req, res) => {
       
       if (!reservation) throw new OperationRejectError('未找到该预约', 404);
       if (reservation.status !== 'active') throw new OperationRejectError('预约未在进行中');
-
+ 
       const now = new Date();
       const nowStr = now.toISOString();
       const actualStart = new Date(reservation.actual_start_time);
@@ -1891,12 +1890,12 @@ app.post('/api/reservations/checkout', (req, res) => {
       } else {
         total_cost += reservation.price;
       }
-
+ 
       const penaltyCheck = checkUserPenalty(reservation.student_id, reservation.equipment_id);
       if (penaltyCheck.isPenalized && penaltyCheck.restrictions?.fee_multiplier > 1) {
         total_cost *= penaltyCheck.restrictions.fee_multiplier;
       }
-
+ 
       const overtimeGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_overtime_grace_minutes'").get() as any;
       const overtimeGraceMinutes = overtimeGraceRow ? parseInt(overtimeGraceRow.value, 10) : 15;
       const overtimeThreshold = overtimeGraceMinutes * 60 * 1000;
@@ -1910,7 +1909,7 @@ app.post('/api/reservations/checkout', (req, res) => {
         const durationMinutes = Math.round((now.getTime() - end.getTime()) / (1000 * 60));
         db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(reservation.student_id, reservation.id, 'overdue', nowStr, durationMinutes);
       }
-
+ 
       db.prepare("UPDATE reservations SET status = 'completed', actual_end_time = ?, total_cost = ?, consumable_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_code = ?").run(nowStr, total_cost, finalConsumableQty, booking_code);
       
       return { nowStr, total_cost, finalConsumableQty, isOvertime, student_id: reservation.student_id };
@@ -1930,10 +1929,10 @@ app.post('/api/reservations/checkout', (req, res) => {
     }
   }
 });
-
+ 
 // Admin get all reservations
-
-
+ 
+ 
 app.get('/api/admin/reservations', adminAuth, (req, res) => {
   const { student_name, supervisor, startDate, endDate } = req.query;
   
@@ -1956,7 +1955,7 @@ app.get('/api/admin/reservations', adminAuth, (req, res) => {
     whereClause += " AND r.start_time <= ?";
     params.push(`${endDate}T23:59:59.999Z`);
   }
-
+ 
   const reservations = db.prepare(`
     SELECT r.*, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee, e.availability_json as equipment_availability_json
     FROM reservations r
@@ -1964,9 +1963,9 @@ app.get('/api/admin/reservations', adminAuth, (req, res) => {
     ${whereClause}
     ORDER BY r.equipment_id, r.start_time ASC
   `).all(...params);
-
+ 
   const settings = getViolationSettings(db);
-
+ 
   const enrichedReservations = reservations.map((res: any, idx: number) => {
     const prevRes = idx > 0 && (reservations[idx-1] as any).equipment_id === res.equipment_id ? (reservations[idx-1] as any) : null;
     const reportStatus = calculateReportStatus(res, prevRes, settings);
@@ -1975,7 +1974,7 @@ app.get('/api/admin/reservations', adminAuth, (req, res) => {
     if (reportStatus.includes('爽约')) {
       finalCost = res.price;
     }
-
+ 
     let late_mins = 0;
     let overtime_mins = 0;
     if (reportStatus.includes('迟到') && res.actual_start_time) {
@@ -1984,19 +1983,19 @@ app.get('/api/admin/reservations', adminAuth, (req, res) => {
     if (reportStatus.includes('超时') && res.actual_end_time) {
       overtime_mins = Math.floor((new Date(res.actual_end_time).getTime() - new Date(res.end_time).getTime()) / 60000);
     }
-
+ 
     return { ...res, reportStatus, total_cost: finalCost, late_mins, overtime_mins };
   });
-
+ 
   // Sort back by start_time DESC for the list view
   enrichedReservations.sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-
+ 
   res.json(enrichedReservations);
 });
-
+ 
 app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
   if (!validateTimeRange(req, res)) return;
-
+ 
   const { period, student_name, supervisor, startDate, endDate } = req.query;
   
   let whereClause = "WHERE status IN ('approved', 'active', 'completed', 'cancelled')";
@@ -2018,7 +2017,7 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     whereClause += " AND start_time <= ?";
     params.push(`${endDate}T23:59:59.999Z`);
   }
-
+ 
   const allReservationsRaw = db.prepare(`
     SELECT r.*, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee, e.availability_json as equipment_availability_json
     FROM reservations r
@@ -2026,9 +2025,9 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     ${whereClause}
     ORDER BY r.equipment_id, r.start_time ASC
   `).all(...params);
-
+ 
   const settings = getViolationSettings(db);
-
+ 
   const allReservations = allReservationsRaw.map((res: any, idx: number) => {
     const prevRes = idx > 0 && (allReservationsRaw[idx-1] as any).equipment_id === res.equipment_id ? (allReservationsRaw[idx-1] as any) : null;
     const reportStatus = calculateReportStatus(res, prevRes, settings);
@@ -2039,15 +2038,15 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     }
     return { ...res, reportStatus, total_cost: finalCost };
   }).filter((res: any) => !res.reportStatus.includes('已取消'));
-
+ 
   const statsReservations = allReservations.filter(r => (r.actual_start_time && r.status === 'completed') || r.reportStatus.includes('爽约'));
-
+ 
   // Grouping by time
   const timeMap = new Map();
   const personMap = new Map();
   const supervisorMap = new Map();
   const equipmentMap = new Map();
-
+ 
   statsReservations.forEach(r => {
     let machine_hours = 0;
     if (r.actual_start_time && r.actual_end_time) {
@@ -2060,7 +2059,7 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     }
     
     const revenue = r.total_cost || 0;
-
+ 
     // Time grouping
     const dateToUse = r.actual_start_time ? new Date(r.actual_start_time) : new Date(r.start_time);
     let pStr = format(dateToUse, 'yyyy-MM-dd');
@@ -2068,7 +2067,7 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     if (period === 'month') pStr = format(dateToUse, 'yyyy-MM');
     if (period === 'quarter') pStr = format(dateToUse, "yyyy-'Q'Q");
     if (period === 'year') pStr = format(dateToUse, 'yyyy');
-
+ 
     if (!timeMap.has(pStr)) {
       timeMap.set(pStr, { period: pStr, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
     }
@@ -2077,7 +2076,7 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     t.machine_hours += machine_hours;
     t.booked_hours += booked_hours;
     t.total_revenue += revenue;
-
+ 
     // Person grouping
     const personKey = `${r.student_id}_${r.student_name}`;
     if (!personMap.has(personKey)) {
@@ -2088,7 +2087,7 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     p.machine_hours += machine_hours;
     p.booked_hours += booked_hours;
     p.total_revenue += revenue;
-
+ 
     // Supervisor grouping
     if (!supervisorMap.has(r.supervisor)) {
       supervisorMap.set(r.supervisor, { supervisor: r.supervisor, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
@@ -2098,7 +2097,7 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     s.machine_hours += machine_hours;
     s.booked_hours += booked_hours;
     s.total_revenue += revenue;
-
+ 
     // Equipment grouping
     if (!equipmentMap.has(r.equipment_id)) {
       equipmentMap.set(r.equipment_id, { equipment_id: r.equipment_id, equipment_name: r.equipment_name, total_hours: 0, machine_hours: 0, booked_hours: 0, total_revenue: 0 });
@@ -2109,15 +2108,15 @@ app.get('/api/admin/reservations/stats', adminAuth, (req, res) => {
     e.booked_hours += booked_hours;
     e.total_revenue += revenue;
   });
-
+ 
   const usageByTime = Array.from(timeMap.values()).sort((a, b) => a.period.localeCompare(b.period));
   const usageByPerson = Array.from(personMap.values()).sort((a, b) => b.total_hours - a.total_hours);
   const usageBySupervisor = Array.from(supervisorMap.values()).sort((a, b) => b.total_hours - a.total_hours);
   const usageByEquipment = Array.from(equipmentMap.values()).sort((a, b) => b.total_hours - a.total_hours);
-
+ 
   res.json({ usageByTime, usageByPerson, usageBySupervisor, usageByEquipment });
 });
-
+ 
 // Admin update reservation
 app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
@@ -2125,7 +2124,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   
   const oldRes = db.prepare('SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
   if (!oldRes) return res.status(404).json({ error: '未找到该预约' });
-
+ 
   // Merge old data with incoming data (PATCH style)
   const student_id = updates.student_id !== undefined ? updates.student_id : oldRes.student_id;
   const student_name = updates.student_name !== undefined ? updates.student_name : oldRes.student_name;
@@ -2147,7 +2146,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return res.status(400).json({ error: '无效的时间格式' });
   }
-
+ 
   // Cost and Violation Logic (from reports)
   let total_cost = oldRes.total_cost;
   if (actual_start_time && actual_end_time) {
@@ -2164,7 +2163,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       total_cost += oldRes.consumable_fee * consumable_quantity;
     }
   }
-
+ 
   let violationChanged = false;
   const revokedViolationIds: number[] = [];
   
@@ -2179,12 +2178,12 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   } else if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
     status = 'completed';
   }
-
+ 
   const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
   const settingsMap = settingsRows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
   const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
   const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
-
+ 
   if (actual_start_time) {
     const scheduledStart = new Date(start_time);
     const actualStart = new Date(actual_start_time);
@@ -2211,7 +2210,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       revokedViolationIds.push(existingLate.id);
     }
   }
-
+ 
   if (actual_end_time) {
     const scheduledEnd = new Date(end_time);
     const actualEnd = new Date(actual_end_time);
@@ -2237,7 +2236,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       revokedViolationIds.push(existingOverdue.id);
     }
   }
-
+ 
   const stmt = db.prepare(`
     UPDATE reservations 
     SET student_id = ?, student_name = ?, supervisor = ?, phone = ?, email = ?, 
@@ -2266,7 +2265,7 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
       end_time
     }, email || undefined);
   }
-
+ 
   if (revokedViolationIds.length > 0) {
     for (const rid of revokedViolationIds) {
       db.prepare(`
@@ -2280,52 +2279,52 @@ app.put('/api/admin/reservations/:id', adminAuth, (req, res) => {
   if (violationChanged) {
     evaluatePenaltiesOnViolation(student_id);
   }
-
+ 
   res.json({ success: true, total_cost });
 });
-
+ 
 // Admin delete reservation
 app.delete('/api/admin/reservations/:id', adminAuth, (req, res) => {
   const { id } = req.params;
   db.prepare("DELETE FROM reservations WHERE id = ?").run(id);
   res.json({ success: true });
 });
-
+ 
 // Admin delete equipment
 app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
   const { id } = req.params;
   db.prepare("DELETE FROM equipment WHERE id = ?").run(id);
   res.json({ success: true });
 });
-
+ 
 // Deprecated PUT /api/admin/reports/reservations/:id removed
-
+ 
 // Deprecated DELETE /api/admin/reports/reservations/:id removed
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
   const now = new Date();
   const nowStr = now.toISOString();
-
+ 
   // 1. Get fixed penalties
   const fixedPenalties = db.prepare(`
     SELECT p.*, pr.name as rule_name, 
@@ -2336,18 +2335,18 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
     WHERE p.status = 'active' AND p.end_time > ?
     ORDER BY p.start_time DESC
   `).all(nowStr) as any[];
-
+ 
   // 2. Calculate dynamic penalties
   const dynamicPenalties: any[] = [];
   const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
-
+ 
   for (const rule of activeRules) {
     const trigger = JSON.parse(rule.trigger_config);
     const action = JSON.parse(rule.action_config);
     
     // Skip fixed duration rules as they are handled by user_penalties table
     if (action.duration_type === 'fixed' && action.duration_days) continue;
-
+ 
     let windowStartStr = '';
     if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
       windowStartStr = getNaturalPeriodStart(now, trigger.period_type || 'month').toISOString();
@@ -2356,13 +2355,13 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
       windowStart.setDate(windowStart.getDate() - (trigger.period_days || 30));
       windowStartStr = windowStart.toISOString();
     }
-
+ 
     const violationTypes = trigger.violation_types || [trigger.violation_type || rule.violation_type];
     const typePlaceholders = violationTypes.map(() => '?').join(',');
-
+ 
     let scopeCondition = '';
     let queryParams: any[] = [...violationTypes, windowStartStr];
-
+ 
     if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
       const placeholders = trigger.scope.map(() => '?').join(',');
       scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
@@ -2370,7 +2369,7 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
     }
     
     queryParams.push(trigger.threshold);
-
+ 
     let query = '';
     if (trigger.metric === 'count') {
       if (trigger.count_strategy === 'by_reservation') {
@@ -2399,9 +2398,9 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
         HAVING metric_value >= ?
       `;
     }
-
+ 
     const affectedUsers = db.prepare(query).all(...queryParams) as any[];
-
+ 
     for (const user of affectedUsers) {
       const ids = user.contributing_ids.split(',').filter(Boolean).map(Number);
       const sortedIds = [...ids].sort((a, b) => a - b);
@@ -2411,24 +2410,24 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
       if (isWaived) {
         continue;
       }
-
+ 
       const records = db.prepare(`
         SELECT violation_time, duration_minutes 
         FROM violation_records 
         WHERE id IN (${ids.map(()=>'?').join(',')}) 
         ORDER BY violation_time ASC
       `).all(...ids) as any[];
-
+ 
       let unbanTime: Date | null = null;
       let currentMetric = user.metric_value;
-
+ 
       for (const rec of records) {
         if (trigger.metric === 'count') {
           currentMetric -= 1;
         } else {
           currentMetric -= (rec.duration_minutes || 0);
         }
-
+ 
         if (currentMetric < trigger.threshold) {
           if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
             unbanTime = getNextNaturalPeriodStart(now, trigger.period_type || 'month');
@@ -2440,9 +2439,9 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
           break;
         }
       }
-
+ 
       const studentInfoRow = db.prepare('SELECT student_name, supervisor FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(user.student_id) as any;
-
+ 
       dynamicPenalties.push({
         id: `dynamic_${rule.id}_${user.student_id}`,
         student_id: user.student_id,
@@ -2459,23 +2458,23 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
       });
     }
   }
-
+ 
   const allPenalties = [...fixedPenalties, ...dynamicPenalties].sort((a, b) => {
     return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
   });
-
+ 
   res.json(allPenalties);
 });
-
-
-
-
-
+ 
+ 
+ 
+ 
+ 
 // Removed /api/admin/reports
-
+ 
 app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
   if (!validateTimeRange(req, res, 'start_date', 'end_date')) return;
-
+ 
   const { start_date, end_date } = req.query;
   let query = `
     SELECT a.*, r.booking_code 
@@ -2499,16 +2498,16 @@ app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
   const logs = db.prepare(query).all(...params);
   res.json(logs);
 });
-
+ 
 app.use("/api/admin", notificationRoutes);
 app.use(violationRoutes);
 let noShowScannerInterval: NodeJS.Timeout | null = null;
-
+ 
 function startNoShowScanner() {
   if (noShowScannerInterval) {
     clearInterval(noShowScannerInterval);
   }
-
+ 
   const intervalRow = db.prepare("SELECT value FROM settings WHERE key = 'cron_no_show_scan_interval_minutes'").get() as any;
   const intervalMinutes = intervalRow ? parseInt(intervalRow.value, 10) : 15;
   
@@ -2519,7 +2518,7 @@ function startNoShowScanner() {
   // Run once immediately on start
   scanForNoShows();
 }
-
+ 
 function scanForNoShows() {
   try {
     const noShowGraceRow = db.prepare("SELECT value FROM settings WHERE key = 'violation_no_show_grace_minutes'").get() as any;
@@ -2553,7 +2552,7 @@ function scanForNoShows() {
     console.error("Error scanning for no-shows:", error);
   }
 }
-
+ 
 async function startServer() {
   if (!config.isTest) {
     startNoShowScanner();
@@ -2568,7 +2567,7 @@ async function startServer() {
   } else if (config.isProduction) {
     app.use(express.static('dist'));
   }
-
+ 
   const PORT = 3000;
   if (!config.isTest) {
     app.listen(PORT, '0.0.0.0', () => {
@@ -2576,10 +2575,11 @@ async function startServer() {
     });
   }
 }
-
+ 
 if (!config.isTest) {
   startServer();
 }
-
+ 
 export { app, db };
-
+ 
+ 
