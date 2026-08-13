@@ -125,7 +125,7 @@ if (!fs.existsSync(backupDir)) {
 
 let backupTask: cron.ScheduledTask | null = null;
 
-async function executeBackup() {
+export async function executeBackup() {
   const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
   const backupPath = path.join(backupDir, `lab_equipment_backup_${timestamp}.db`);
   try {
@@ -179,7 +179,7 @@ reloadBackupCron();
 
 let upcomingReminderTask: cron.ScheduledTask | null = null;
 
-function upcomingReminderScan() {
+export function upcomingReminderScan() {
   try {
 
     const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
@@ -248,7 +248,7 @@ export function startUpcomingReminderCron() {
 
 let endingReminderTask: cron.ScheduledTask | null = null;
 
-function endingReminderScan() {
+export function endingReminderScan() {
   try {
     const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_ending_advance_minutes'").get() as any;
     const advanceMins = parseInt(advanceRow?.value || '15', 10);
