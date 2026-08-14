@@ -347,14 +347,14 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       
       scanForNoShows();
       
-      const r1 = db.prepare("SELECT status FROM reservations WHERE id = 1").get();
-      const r2 = db.prepare("SELECT status FROM reservations WHERE id = 2").get();
+      const r1 = db.prepare("SELECT status FROM reservations WHERE id = 1").get() as any;
+      const r2 = db.prepare("SELECT status FROM reservations WHERE id = 2").get() as any;
       
       expect(r1.status).toBe('cancelled'); // Past grace period, so cancelled
       expect(r2.status).toBe('approved'); // Still within grace period
       
       // Check violation record
-      const violations = db.prepare("SELECT * FROM violation_records WHERE reservation_id = 1").all();
+      const violations = db.prepare("SELECT * FROM violation_records WHERE reservation_id = 1").all() as any[];
       expect(violations.length).toBe(1);
       expect(violations[0].violation_type).toBe('no-show');
     });

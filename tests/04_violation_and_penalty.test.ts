@@ -407,7 +407,7 @@ describe('Violation & Penalty Module (04_violation_and_penalty.test.ts)', () => 
       // First ensure the setting exists in the db
       db.prepare(`
         INSERT INTO settings (key, value) 
-        VALUES ('violation_late_grace_minutes', '15') 
+        VALUES ('violation_late_grace_minutes', '42') 
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `).run();
 
@@ -416,8 +416,27 @@ describe('Violation & Penalty Module (04_violation_and_penalty.test.ts)', () => 
         .set('Authorization', `Bearer ${token}`);
         
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('violation_late_grace_minutes');
+      expect(res.body).toHaveProperty('violation_late_grace_minutes', 42);
       expect(typeof res.body.violation_late_grace_minutes).toBe('number');
+    });
+
+    it('should fallback to defaults when records are missing', async () => {
+      // Delete specific keys
+      db.prepare(`DELETE FROM settings WHERE key IN ('violation_overtime_grace_minutes', 'violation_late_cancel_minutes', 'violation_no_show_grace_minutes')`).run();
+
+      const res = await request(app)
+        .get('/api/admin/settings/violation-params')
+        .set('Authorization', `Bearer ${token}`);
+        
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('violation_overtime_grace_minutes', 15);
+      expect(res.body).toHaveProperty('violation_late_cancel_minutes', 120);
+      expect(res.body).toHaveProperty('violation_no_show_grace_minutes', 30);
+    });
+
+    it('should block unauthorized access', async () => {
+      const res = await request(app).get('/api/admin/settings/violation-params');
+      expect(res.status).toBe(401);
     });
   });
 });

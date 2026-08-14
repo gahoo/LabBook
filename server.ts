@@ -419,6 +419,12 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
     updateSetting(key, req.body[key]);
   }
   
+  // Record audit log for settings update
+  db.prepare(`
+    INSERT INTO audit_logs (reservation_id, action, new_data, created_at)
+    VALUES (0, 'update_settings', ?, CURRENT_TIMESTAMP)
+  `).run(JSON.stringify(req.body));
+
   if (req.body.cron_no_show_scan_interval_minutes !== undefined) {
     startNoShowScanner(); // Restart the scanner with new interval
   }
@@ -2354,11 +2360,3 @@ if (!config.isTest) {
 }
  
 export { app, db };
- 
- 
-export { 
-  executeBackup, reloadBackupCron, 
-  upcomingReminderScan, startUpcomingReminderCron, 
-  endingReminderScan, startEndingReminderCron, 
-  scanForNoShows, startNoShowScanner 
-};

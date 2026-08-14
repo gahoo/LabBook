@@ -32,8 +32,9 @@
 - [x] **步骤 7.5：Scheduler 领域逻辑归位 (Domain Realignment)**
   *Refactor*: 纠正步骤 7 中的模块化坏味道。将 Scheduler 瘦身为纯粹的 Cron 编排层。将业务工作流（如 `executeBackup`, `upcomingReminderScan`, `scanForNoShows`）分别剥离并归位至 `backup/`, `notification/` 和 `violation/` 模块，确保高内聚和无循环依赖。
 
-- [ ] **步骤 8：提取 `src/modules/settings/routes.ts`**  
-  *Tracer Bullet Test*: 编写 `07_settings_and_audit.test.ts`（读写全局配置）。
+- [x] **步骤 8.1：编写测试 `07_settings_and_audit.test.ts`**
+  已完成 tracer bullet 测试。
+- [ ] **步骤 8.2：提取 `src/modules/settings/routes.ts`**  
   *Refactor*: 抽离系统设置相关路由。
 
 - [ ] **步骤 9：提取边缘模块 `calendar` + `whitelist` + `auth` + `audit`**  
