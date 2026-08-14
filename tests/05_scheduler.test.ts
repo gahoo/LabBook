@@ -12,7 +12,8 @@ import {
   startEndingReminderCron,
   reloadBackupCron,
   initSchedulers,
-  startNoShowScanner
+  startNoShowScanner,
+  scanForNoShows
 } from '../src/modules/scheduler/service.js';
 
 // 4. Mock node-cron lifecycle
@@ -283,6 +284,92 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       vi.clearAllMocks();
       reloadBackupCron();
       expect(cron.schedule).toHaveBeenCalledWith('0 3 * * *', expect.any(Function));
+    });
+  });
+
+    describe('No-Show Scanner (startNoShowScanner & scanForNoShows)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+      vi.spyOn(global, 'setInterval');
+      vi.spyOn(global, 'clearInterval');
+      
+      // Setup some basic data
+      db.prepare("DELETE FROM settings WHERE key IN ('violation_no_show_grace_minutes', 'cron_no_show_scan_interval_minutes')").run();
+      db.prepare("DELETE FROM reservations").run();
+      db.prepare("DELETE FROM violation_records").run();
+      db.prepare("DELETE FROM equipment").run();
+      
+      db.prepare("INSERT INTO equipment (id, name, price_type, price) VALUES (1, 'Test Equipment', 'hourly', 10)").run();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it('should start scanner and run immediately, using default interval', () => {
+      startNoShowScanner();
+      
+      expect(setInterval).toHaveBeenCalled();
+      // default is 15 mins -> 900000 ms
+      expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 900000);
+      
+      // Should clear existing interval if started again
+      startNoShowScanner();
+      expect(clearInterval).toHaveBeenCalled();
+    });
+
+    it('should use custom interval from settings', () => {
+      db.prepare("INSERT INTO settings (key, value) VALUES ('cron_no_show_scan_interval_minutes', '5')").run();
+      startNoShowScanner();
+      
+      expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 300000);
+    });
+
+    it('should cancel reservations and record no-show violations if grace period passed', () => {
+      // Set grace period to 10 mins
+      db.prepare("INSERT INTO settings (key, value) VALUES ('violation_no_show_grace_minutes', '10')").run();
+      
+      // Base time: 12:00
+      const baseTime = new Date('2026-08-01T12:00:00Z');
+      vi.setSystemTime(baseTime);
+      
+      // Create a reservation that started at 11:45 (15 mins ago, past the 10 min grace period)
+      db.prepare(`
+        INSERT INTO reservations (id, student_id, student_name, phone, email, booking_code, equipment_id, start_time, end_time, status, supervisor)
+        VALUES (1, 'u1', 'test_user', '123', 'test@test.com', 'B-1', 1, '2026-08-01T11:45:00Z', '2026-08-01T13:45:00Z', 'approved', 'SuperV')
+      `).run();
+      
+      // Create a reservation that started at 11:55 (5 mins ago, within grace period)
+      db.prepare(`
+        INSERT INTO reservations (id, student_id, student_name, phone, email, booking_code, equipment_id, start_time, end_time, status, supervisor)
+        VALUES (2, 'u1', 'test_user', '123', 'test@test.com', 'B-2', 1, '2026-08-01T11:55:00Z', '2026-08-01T13:55:00Z', 'approved', 'SuperV')
+      `).run();
+      
+      scanForNoShows();
+      
+      const r1 = db.prepare("SELECT status FROM reservations WHERE id = 1").get();
+      const r2 = db.prepare("SELECT status FROM reservations WHERE id = 2").get();
+      
+      expect(r1.status).toBe('cancelled'); // Past grace period, so cancelled
+      expect(r2.status).toBe('approved'); // Still within grace period
+      
+      // Check violation record
+      const violations = db.prepare("SELECT * FROM violation_records WHERE reservation_id = 1").all();
+      expect(violations.length).toBe(1);
+      expect(violations[0].violation_type).toBe('no-show');
+    });
+
+    it('should handle errors gracefully without throwing', () => {
+      const originalPrepare = db.prepare;
+      try {
+        db.prepare = vi.fn().mockImplementation(() => { throw new Error('DB Error'); });
+        // Should not throw
+        expect(() => scanForNoShows()).not.toThrow();
+      } finally {
+        // Restore
+        db.prepare = originalPrepare;
+      }
     });
   });
 
