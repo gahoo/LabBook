@@ -32,13 +32,14 @@ src/
     auth/routes.ts               
     equipment/routes.ts & service.ts                 
     reservation/routes.ts & service.ts                 
-    violation/routes.ts & service.ts                 
-    notification/routes.ts           
+    violation/routes.ts & service.ts & scanner.ts
+    notification/routes.ts & scanner.ts           
     calendar/routes.ts           
     whitelist/routes.ts          
     settings/routes.ts           
     audit/routes.ts              
-    scheduler/service.ts         
+    scheduler/service.ts
+    backup/service.ts
 ```
 
 ## 测试接缝（Seams）与 Mock 策略
