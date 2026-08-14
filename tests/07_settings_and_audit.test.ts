@@ -67,19 +67,6 @@ describe('Settings and Audit Module (07_settings_and_audit.test.ts)', () => {
     });
   });
 
-  describe('GET /api/admin/settings/violation-params', () => {
-    it('should return violation parameters', async () => {
-      const res = await request(app)
-        .get('/api/admin/settings/violation-params')
-        .set('Authorization', `Bearer ${adminToken}`);
-        
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('violation_late_grace_minutes');
-      // The endpoint returns them as numbers based on the mapping
-      expect(typeof res.body.violation_late_grace_minutes).toBe('number');
-    });
-  });
-
   describe('POST /api/admin/settings', () => {
     it('should update settings successfully', async () => {
       const res = await request(app)

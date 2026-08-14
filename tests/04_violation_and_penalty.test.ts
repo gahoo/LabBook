@@ -401,4 +401,23 @@ describe('Violation & Penalty Module (04_violation_and_penalty.test.ts)', () => 
       expect(record.remark).toContain('同意申诉');
     });
   });
+
+  describe('10. Admin Settings - Violation Params', () => {
+    it('should return violation parameters', async () => {
+      // First ensure the setting exists in the db
+      db.prepare(`
+        INSERT INTO settings (key, value) 
+        VALUES ('violation_late_grace_minutes', '15') 
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run();
+
+      const res = await request(app)
+        .get('/api/admin/settings/violation-params')
+        .set('Authorization', `Bearer ${token}`);
+        
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('violation_late_grace_minutes');
+      expect(typeof res.body.violation_late_grace_minutes).toBe('number');
+    });
+  });
 });
