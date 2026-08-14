@@ -25,7 +25,7 @@
   *Tracer Bullet Test*: 编写 `04_violation_and_penalty.test.ts`（模拟违规上报、通过接口获取违规封禁状态）。
   *Refactor*: 剥离 `checkUserPenalty`、规则计算及申诉处理路由。
 
-- [ ] **步骤 7：提取 `src/modules/scheduler/service.ts`**  
+- [x] **步骤 7：提取 `src/modules/scheduler/service.ts`**  
   *Tracer Bullet Test*: 测试中利用虚拟时钟触发定时任务（如验证扫码未到的爽约扫描）。
   *Refactor*: 转移 `node-cron` 调度逻辑与备份任务。
 

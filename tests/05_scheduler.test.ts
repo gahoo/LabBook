@@ -1,5 +1,5 @@
 import os from 'os';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { db } from '../src/db/index.js';
 import fs from 'fs';
 import path from 'path';
