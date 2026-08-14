@@ -5,16 +5,15 @@ import fs from 'fs';
 import path from 'path';
 import * as cron from 'node-cron';
 import { 
-  upcomingReminderScan, 
-  endingReminderScan, 
-  executeBackup,
   startUpcomingReminderCron,
   startEndingReminderCron,
   reloadBackupCron,
   initSchedulers,
-  startNoShowScanner,
-  scanForNoShows
+  startNoShowScanner
 } from '../src/modules/scheduler/service.js';
+import { executeBackup } from '../src/modules/backup/service.js';
+import { upcomingReminderScan, endingReminderScan } from '../src/modules/notification/scanner.js';
+import { scanForNoShows } from '../src/modules/violation/scanner.js';
 
 // 4. Mock node-cron lifecycle
 vi.mock('node-cron', () => {

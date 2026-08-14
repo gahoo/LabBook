@@ -19,10 +19,10 @@ import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } fr
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { 
-  executeBackup, reloadBackupCron, 
-  upcomingReminderScan, startUpcomingReminderCron, 
-  endingReminderScan, startEndingReminderCron, 
-  scanForNoShows, startNoShowScanner,
+  reloadBackupCron, 
+  startUpcomingReminderCron, 
+  startEndingReminderCron, 
+  startNoShowScanner,
   initSchedulers 
 } from './src/modules/scheduler/service.js';
 
