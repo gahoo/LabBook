@@ -11,7 +11,7 @@ import {
   startUpcomingReminderCron,
   startEndingReminderCron,
   reloadBackupCron
-} from '../src/modules/scheduler/service.js';
+} from '../server.js';
 
 // 4. Mock node-cron lifecycle
 vi.mock('node-cron', () => {
