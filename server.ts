@@ -18,13 +18,7 @@ import path from 'path';
 import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { 
-  executeBackup, reloadBackupCron, 
-  upcomingReminderScan, startUpcomingReminderCron, 
-  endingReminderScan, startEndingReminderCron, 
-  scanForNoShows, startNoShowScanner,
-  initSchedulers 
-} from './src/modules/scheduler/service.js';
+import { initSchedulers } from './src/modules/scheduler/service.js';
 
  
  
@@ -127,12 +121,6 @@ import { db } from './src/db/index.js';
  
 
  
-// Auto Backup Logic
-const backupDir = path.join(process.cwd(), 'backups');
-if (!fs.existsSync(backupDir)) {
-  fs.mkdirSync(backupDir, { recursive: true });
-}
-
  
  
 
@@ -2356,9 +2344,3 @@ if (!config.isTest) {
 export { app, db };
  
  
-export { 
-  executeBackup, reloadBackupCron, 
-  upcomingReminderScan, startUpcomingReminderCron, 
-  endingReminderScan, startEndingReminderCron, 
-  scanForNoShows, startNoShowScanner 
-};
