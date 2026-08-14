@@ -10,8 +10,10 @@ import {
   executeBackup,
   startUpcomingReminderCron,
   startEndingReminderCron,
-  reloadBackupCron
-} from '../server.js';
+  reloadBackupCron,
+  initSchedulers,
+  startNoShowScanner
+} from '../src/modules/scheduler/service.js';
 
 // 4. Mock node-cron lifecycle
 vi.mock('node-cron', () => {
@@ -230,6 +232,48 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       
       startUpcomingReminderCron(); // 第二次调用
       expect(mockTask.stop).toHaveBeenCalled();
+    });
+
+    it('should schedule ending reminder cron when enabled', () => {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook.events.booking_ending.enabled', 'true')").run();
+      vi.clearAllMocks();
+      startEndingReminderCron();
+      expect(cron.schedule).toHaveBeenCalledWith('*/5 * * * *', expect.any(Function));
+    });
+
+    it('should NOT schedule ending reminder cron when disabled', () => {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook.events.booking_ending.enabled', 'false')").run();
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('email.events.booking_ending.enabled', 'false')").run();
+      
+      vi.clearAllMocks();
+      startEndingReminderCron();
+      expect(cron.schedule).not.toHaveBeenCalled();
+    });
+
+    it('should stop old task when reloading ending reminder cron', () => {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook.events.booking_ending.enabled', 'true')").run();
+      startEndingReminderCron();
+      const mockTask = vi.mocked(cron.schedule).mock.results[0].value;
+      
+      startEndingReminderCron(); 
+      expect(mockTask.stop).toHaveBeenCalled();
+    });
+    
+    it('should not initialize schedulers in test environment', () => {
+      vi.clearAllMocks();
+      initSchedulers(true); // isTest = true
+      expect(cron.schedule).not.toHaveBeenCalled();
+    });
+    
+    it('should initialize all schedulers in non-test environment', () => {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook.events.booking_ending.enabled', 'true')").run();
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook.events.booking_upcoming.enabled', 'true')").run();
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_enabled', 'true')").run();
+      
+      vi.clearAllMocks();
+      initSchedulers(false); // isTest = false
+      // It should schedule backup, upcoming, ending, and setInterval for noShowScanner
+      expect(cron.schedule).toHaveBeenCalledTimes(3); 
     });
 
     it('should schedule backup cron with retention cleanup when enabled', () => {
