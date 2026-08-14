@@ -125,15 +125,20 @@ if (!fs.existsSync(backupDir)) {
   fs.mkdirSync(backupDir, { recursive: true });
 }
 let backupTask: cron.ScheduledTask | null = null;
-export async function executeBackup() {
+export async function executeBackup(targetDir?: string) {
+  const dirToUse = targetDir || backupDir;
+  if (!fs.existsSync(dirToUse)) {
+    fs.mkdirSync(dirToUse, { recursive: true });
+  }
+
   const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
-  const backupPath = path.join(backupDir, `lab_equipment_backup_${timestamp}.db`);
+  const backupPath = path.join(dirToUse, `lab_equipment_backup_${timestamp}.db`);
   try {
     await db.backup(backupPath);
     console.log(`Database backup successful: ${backupPath}`);
     
     // Clean up old backups
-    const files = fs.readdirSync(backupDir)
+    const files = fs.readdirSync(dirToUse)
       .filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'))
       .sort()
       .reverse();
@@ -144,7 +149,7 @@ export async function executeBackup() {
     if (files.length > keepCount) {
       const filesToDelete = files.slice(keepCount);
       for (const file of filesToDelete) {
-        fs.unlinkSync(path.join(backupDir, file));
+        fs.unlinkSync(path.join(dirToUse, file));
         console.log(`Deleted old backup: ${file}`);
       }
     }

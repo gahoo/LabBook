@@ -243,43 +243,25 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
   });
 
   describe('executeBackup', () => {
-    const actualBackupDir = path.join(process.cwd(), 'backups');
-    let originalFiles = [];
+    let testBackupDir;
     
     beforeAll(() => {
-      // 1. Backup any existing real files to memory to avoid pollution
-      if (fs.existsSync(actualBackupDir)) {
-         const files = fs.readdirSync(actualBackupDir);
-         for (const file of files) {
-             originalFiles.push({
-                 name: file,
-                 content: fs.readFileSync(path.join(actualBackupDir, file))
-             });
-         }
-      } else {
-         fs.mkdirSync(actualBackupDir, { recursive: true });
-      }
+      // 1. Create a dedicated OS-level sandbox
+      testBackupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-backup-test-'));
     });
 
     afterAll(() => {
-      // 2. Restore original files
-      if (fs.existsSync(actualBackupDir)) {
-        const files = fs.readdirSync(actualBackupDir);
-        for (const file of files) fs.unlinkSync(path.join(actualBackupDir, file));
-      } else {
-        fs.mkdirSync(actualBackupDir, { recursive: true });
-      }
-      
-      for (const file of originalFiles) {
-        fs.writeFileSync(path.join(actualBackupDir, file.name), file.content);
+      // 2. Tear down sandbox
+      if (testBackupDir && fs.existsSync(testBackupDir)) {
+        fs.rmSync(testBackupDir, { recursive: true, force: true });
       }
     });
 
     beforeEach(() => {
-      // Clear folder before each test
-      if (fs.existsSync(actualBackupDir)) {
-        const files = fs.readdirSync(actualBackupDir);
-        for (const file of files) fs.unlinkSync(path.join(actualBackupDir, file));
+      // Clear sandbox before each test
+      if (fs.existsSync(testBackupDir)) {
+        const files = fs.readdirSync(testBackupDir);
+        for (const file of files) fs.unlinkSync(path.join(testBackupDir, file));
       }
       db.prepare(`DELETE FROM settings WHERE key = 'auto_backup_retention'`).run();
     });
@@ -292,18 +274,18 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', '2')`).run();
       
       // Backup 1
-      await executeBackup();
-      vi.setSystemTime(new Date('2026-08-01T12:00:02Z')); // move forward 2 seconds
+      await executeBackup(testBackupDir);
+      vi.setSystemTime(new Date('2026-08-01T12:00:02Z'));
       
       // Backup 2
-      await executeBackup();
-      vi.setSystemTime(new Date('2026-08-01T12:00:04Z')); // move forward 2 seconds
+      await executeBackup(testBackupDir);
+      vi.setSystemTime(new Date('2026-08-01T12:00:04Z'));
       
       // Backup 3
-      await executeBackup();
+      await executeBackup(testBackupDir);
       
       // We expect only 2 files because retention is 2
-      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      const files = fs.readdirSync(testBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
       expect(files.length).toBe(2);
       
       vi.useRealTimers();
@@ -316,11 +298,11 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', 'invalid')`).run();
       
       for (let i = 0; i < 8; i++) {
-        await executeBackup();
+        await executeBackup(testBackupDir);
         vi.setSystemTime(new Date(`2026-08-01T12:00:0${i+1}Z`));
       }
       
-      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      const files = fs.readdirSync(testBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
       expect(files.length).toBe(7); // Falls back to 7
       
       vi.useRealTimers();
@@ -333,11 +315,11 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', '0')`).run();
       
       for (let i = 0; i < 3; i++) {
-        await executeBackup();
+        await executeBackup(testBackupDir);
         vi.setSystemTime(new Date(`2026-08-01T12:00:0${i+1}Z`));
       }
       
-      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      const files = fs.readdirSync(testBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
       expect(files.length).toBe(0); // The existing logic keeps 0 files if set to '0'
       
       vi.useRealTimers();
@@ -350,11 +332,11 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_backup_retention', '5')`).run();
       
       for (let i = 0; i < 3; i++) {
-        await executeBackup();
+        await executeBackup(testBackupDir);
         vi.setSystemTime(new Date(`2026-08-01T12:00:0${i+1}Z`));
       }
       
-      const files = fs.readdirSync(actualBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
+      const files = fs.readdirSync(testBackupDir).filter(f => f.startsWith('lab_equipment_backup_') && f.endsWith('.db'));
       expect(files.length).toBe(3); 
       
       vi.useRealTimers();

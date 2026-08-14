@@ -26,3 +26,4 @@ get_schedulers.js
 fix_*.cjs
 test_payload.cjs
 revert_server.cjs
+implement_di.cjs
