@@ -40,9 +40,17 @@
 - [x] **步骤 8.3：清理残留违规路由**  
   *Refactor*: 将 `server.ts` 中遗漏的 `GET /api/admin/penalties/active`，**以及在设置路由区段的 `GET /api/admin/settings/violation-params`**，统一归位至 `violation` 模块（保持 URL 不变以防前端中断）。
 
-- [ ] **步骤 9：提取边缘模块 `calendar` + `whitelist` + `auth`**  
-  *Tracer Bullet Test*: 补齐日历 ICS 订阅流与白名单审批流程测试。
-  *Refactor*: 分别建立独立路由并挂载。
+- [ ] **步骤 9.1：提取 `auth` 模块**
+  *Test Review*: 确认 `01_auth.test.ts` 已充分覆盖登录与 `adminAuth` 验证逻辑。
+  *Refactor*: 将 `POST /api/admin/login` 与 token 生成逻辑抽离至 `src/modules/auth/`。
+
+- [ ] **步骤 9.2：提取 `calendar` 模块**
+  *Tracer Bullet Test*: 编写 `09_calendar.test.ts`，覆盖用户/设备日历的 URL 生成、ICS 文件导出及邮件投递功能。
+  *Refactor*: 将日历订阅相关的 5 个路由与 ICS 生成逻辑抽离至 `src/modules/calendar/`。
+
+- [ ] **步骤 9.3：提取 `whitelist` 模块**
+  *Tracer Bullet Test*: 编写 `10_whitelist.test.ts`，覆盖学生申请防重复提交及管理员审核（通过/驳回）状态流转。
+  *Refactor*: 将白名单申请及审批相关的 4 个路由抽离至 `src/modules/whitelist/`。
 
 - [ ] **步骤 10：提取 `src/modules/equipment/` + `lib/validators.ts`**  
   *Tracer Bullet Test*: 编写 `02_equipment.test.ts`（设备可用性算法时间冲突验证）。
