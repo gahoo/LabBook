@@ -8,11 +8,13 @@ export function getCalendarConfig() {
   const enabledRow = db.prepare("SELECT value FROM settings WHERE key = 'calendar_subscription.enabled'").get() as any;
   const secretRow = db.prepare("SELECT value FROM settings WHERE key = 'calendar_sync_secret'").get() as any;
   const advanceRow = db.prepare("SELECT value FROM settings WHERE key = 'booking_upcoming_advance_minutes'").get() as any;
+  const smtpRow = db.prepare("SELECT value FROM settings WHERE key = 'smtp.enabled'").get() as any;
   
   return {
     enabled: enabledRow?.value === 'true',
     secret: secretRow?.value,
-    advanceMins: parseInt(advanceRow?.value || '30', 10)
+    advanceMins: parseInt(advanceRow?.value || '30', 10),
+    smtpEnabled: smtpRow?.value === 'true'
   };
 }
 
@@ -32,6 +34,7 @@ export function generateUserCalendarUrl(bookingCode: string, protocol: string, h
 export function processUserCalendarMail(bookingCode: string, host: string): string {
   const config = getCalendarConfig();
   if (!config.enabled) throw new OperationRejectError('Calendar subscription is disabled', 403);
+  if (!config.smtpEnabled) throw new OperationRejectError('SMTP email service is not configured', 400);
   if (!bookingCode) throw new OperationRejectError('booking_code is required', 400);
 
   const reservation = db.prepare('SELECT student_id, email FROM reservations WHERE booking_code = ?').get(bookingCode) as any;
