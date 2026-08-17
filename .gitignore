@@ -31,3 +31,4 @@ add_scheduler_tests.cjs
 update_whitelist_test.js
 patch.cjs
 patch2.cjs
+debug.js
