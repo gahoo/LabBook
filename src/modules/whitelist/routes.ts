@@ -9,6 +9,7 @@ whitelistRouter.post('/apply', (req, res, next) => {
     applyWhitelist(req.body);
     res.json({ success: true });
   } catch (err) {
+    console.error(err);
     
     if (err instanceof OperationRejectError) {
       res.status((err as any).statusCode || 400).json({ error: err.message });
@@ -26,6 +27,7 @@ whitelistAdminRouter.get('/applications', (req, res, next) => {
     const apps = listApplications(req.query.status as string);
     res.json(apps);
   } catch (err) {
+    console.error(err);
     
     if (err instanceof OperationRejectError) {
       res.status((err as any).statusCode || 400).json({ error: err.message });
@@ -41,6 +43,7 @@ whitelistAdminRouter.post('/applications/:id/approve', (req, res, next) => {
     approveApplication(req.params.id);
     res.json({ success: true });
   } catch (err) {
+    console.error(err);
     
     if (err instanceof OperationRejectError) {
       res.status((err as any).statusCode || 400).json({ error: err.message });
@@ -56,6 +59,7 @@ whitelistAdminRouter.post('/applications/:id/reject', (req, res, next) => {
     rejectApplication(req.params.id);
     res.json({ success: true });
   } catch (err) {
+    console.error(err);
     
     if (err instanceof OperationRejectError) {
       res.status((err as any).statusCode || 400).json({ error: err.message });

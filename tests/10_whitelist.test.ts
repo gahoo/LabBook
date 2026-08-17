@@ -33,8 +33,10 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
       };
 
       const res = await request(app).post('/api/whitelist/apply').send(payload);
-      expect(res.status).toBe(200);
+      if (res.status !== 200) console.log(res.body); expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+
+
 
       const apps = db.prepare('SELECT * FROM whitelist_applications').all() as any[];
       expect(apps.length).toBe(1);
@@ -63,7 +65,7 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
       expect(res2.body.error).toContain('导师姓名请直接填写真实姓名');
     });
 
-    it.skip('POST /api/whitelist/apply - should prevent duplicate pending applications', async () => {
+    it('POST /api/whitelist/apply - should prevent duplicate pending applications', async () => {
       const payload = {
         equipment_id: equipmentId,
         student_id: 'S555',
@@ -75,10 +77,12 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
 
       // First request should succeed
       const res1 = await request(app).post('/api/whitelist/apply').send(payload);
-      expect(res1.status).toBe(200);
+      if (res1.status !== 200) console.log(res1.body); expect(res1.status).toBe(200);
 
       // Second request should fail
       const res2 = await request(app).post('/api/whitelist/apply').send(payload);
+      expect(res2.status).toBe(400);
+      expect(res2.body.error).toContain('已经');
       expect(res2.status).toBe(400);
       expect(res2.body.error).toContain('已经');
     });
@@ -89,6 +93,14 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
     let token: string;
 
     beforeEach(async () => {
+      // Enable SMTP
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('smtp.enabled', 'true')`).run();
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('email.events.whitelist_resolved.enabled', 'true')`).run();
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('smtp.host', 'smtp.example.com')`).run();
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('smtp.user', 'user')`).run();
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('smtp.pass', 'pass')`).run();
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('smtp.from_email', 'no-reply@example.com')`).run();
+
       // Login admin to get token
       const loginRes = await request(app)
         .post('/api/admin/login')
@@ -159,30 +171,49 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
     });
 
     it('POST /api/admin/whitelist/applications/:id/approve - should approve and update equipment', async () => {
+      // Let's create an application first
+      db.prepare(`
+        INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+      `).run(equipmentId, 'S_APP_001', 'Approve Test', 'Dr. Smith', '111', 'approve@test.com');
+      const newApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('S_APP_001') as any;
+
       const res = await request(app)
-        .post(`/api/admin/whitelist/applications/${appId}/approve`)
+        .post(`/api/admin/whitelist/applications/${newApp.id}/approve`)
         .set('Authorization', `Bearer ${token}`);
       
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
 
-      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(appId) as any;
+      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(newApp.id) as any;
       expect(dbApp.status).toBe('approved');
+      const notifs = db.prepare("SELECT * FROM notifications WHERE event = 'whitelist_resolved' AND target = ?").all('approve@test.com') as any;
+      expect(notifs.length).toBeGreaterThan(0);
+      expect(notifs[0].payload).toContain('approved');
 
       const eq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId) as any;
-      expect(eq.whitelist_data).toContain('Jane Doe');
+      expect(eq.whitelist_data).toContain('Approve Test');
     });
 
     it('POST /api/admin/whitelist/applications/:id/reject - should reject', async () => {
+      db.prepare(`
+        INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+      `).run(equipmentId, 'S_REJ_001', 'Reject Test', 'Dr. Smith', '111', 'reject@test.com');
+      const newApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('S_REJ_001') as any;
+
       const res = await request(app)
-        .post(`/api/admin/whitelist/applications/${appId}/reject`)
+        .post(`/api/admin/whitelist/applications/${newApp.id}/reject`)
         .set('Authorization', `Bearer ${token}`);
       
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
 
-      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(appId) as any;
+      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(newApp.id) as any;
       expect(dbApp.status).toBe('rejected');
+      const notifs = db.prepare("SELECT * FROM notifications WHERE event = 'whitelist_resolved' AND target = ?").all('reject@test.com') as any;
+      expect(notifs.length).toBeGreaterThan(0);
+      expect(notifs[0].payload).toContain('rejected');
     });
   });
 
@@ -215,7 +246,7 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
         phone: e2ePayload.phone,
         email: e2ePayload.email
       });
-      expect(applyRes.status).toBe(200);
+      if (applyRes.status !== 200) console.log(applyRes.body); expect(applyRes.status).toBe(200);
 
       const dbApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('E2E_001') as any;
       expect(dbApp).toBeDefined();

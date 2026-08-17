@@ -48,7 +48,7 @@
   *Tracer Bullet Test*: 编写 `09_calendar.test.ts`，覆盖用户/设备日历的 URL 生成、ICS 文件导出及邮件投递功能。（✅ 已完成）
   *Refactor*: 将日历订阅相关的 5 个路由与 ICS 生成逻辑抽离至 `src/modules/calendar/`。
 
-- [ ] **步骤 9.3：提取 `whitelist` 模块**
+- [x] **步骤 9.3：提取 `whitelist` 模块**
   *Tracer Bullet Test*: 编写 `10_whitelist.test.ts`，覆盖学生申请防重复提交及管理员审核（通过/驳回）状态流转。
   *Refactor*: 将白名单申请及审批相关的 4 个路由抽离至 `src/modules/whitelist/`。
 

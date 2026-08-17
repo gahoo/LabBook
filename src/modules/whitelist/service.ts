@@ -21,6 +21,12 @@ export function applyWhitelist(payload: any) {
     throw new OperationRejectError('导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓', 400);
   }
 
+  
+  const existing = db.prepare(`SELECT status FROM whitelist_applications WHERE student_id = ? AND equipment_id = ? AND status IN ('pending', 'approved')`).get(student_id, equipment_id) as any;
+  if (existing) {
+    throw new OperationRejectError(`您已经申请过该仪器的白名单，且当前状态为${existing.status === 'pending' ? '待审批' : '已通过'}`, 400);
+  }
+
   const stmt = db.prepare(`
     INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -52,6 +58,7 @@ export function listApplications(status?: string) {
 export function approveApplication(id: string | number) {
   const app = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
   if (!app) throw new OperationRejectError('未找到申请');
+  if (app.status !== 'pending') throw new OperationRejectError('只能对待审批的申请进行操作');
 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(app.equipment_id) as any;
   if (!equipment) throw new OperationRejectError('未找到仪器');
@@ -70,12 +77,13 @@ export function approveApplication(id: string | number) {
     equipment_name: equipment.name,
     resolution: 'approved',
     reason: app.reason || ''
-  }, app.student_email || undefined);
+  }, app.email || undefined);
 }
 
 export function rejectApplication(id: string | number) {
   const appRecord = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
   if (!appRecord) throw new OperationRejectError('未找到申请');
+  if (appRecord.status !== 'pending') throw new OperationRejectError('只能对待审批的申请进行操作');
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(appRecord.equipment_id) as any;
 
   db.prepare("UPDATE whitelist_applications SET status = 'rejected' WHERE id = ?").run(id);
@@ -86,5 +94,5 @@ export function rejectApplication(id: string | number) {
     equipment_name: equipment ? equipment.name : '未知仪器',
     resolution: 'rejected',
     reason: appRecord.reason || ''
-  }, appRecord.student_email || undefined);
+  }, appRecord.email || undefined);
 }
