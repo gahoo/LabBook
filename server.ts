@@ -1,4 +1,5 @@
 import { validateTimeRange } from './src/lib/validators.js';
+import settingsRoutes from "./src/modules/settings/routes.js";
 import auditRoutes from './src/modules/audit/routes.js';
 import { recordAuditLog } from './src/modules/audit/service.js';
 import violationRoutes from './src/modules/violation/routes.js';
@@ -202,17 +203,6 @@ function getNextNaturalPeriodStart(now: Date, periodType: string): Date {
 import { generateICS } from './src/lib/ics';
  
 // Get settings
-app.get('/api/settings', (req, res) => {
-  const settings = db.prepare('SELECT * FROM settings').all();
-  const sensitivePrefixes = ['smtp.', 'webhook.', 'calendar_sync_secret'];
-  const settingsMap = settings.reduce((acc: any, curr: any) => {
-    if (!sensitivePrefixes.some(prefix => curr.key.startsWith(prefix))) {
-      acc[curr.key] = curr.value;
-    }
-    return acc;
-  }, {});
-  res.json(settingsMap);
-});
  
 // --- Calendar API Routes ---
  
@@ -344,117 +334,6 @@ app.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
   }
 });
  
-app.get('/api/admin/settings', adminAuth, (req, res) => {
-  const settings = db.prepare('SELECT * FROM settings').all();
-  const settingsMap = settings.reduce((acc: any, curr: any) => {
-    acc[curr.key] = curr.value;
-    return acc;
-  }, {});
-  res.json(settingsMap);
-});
- 
-app.get('/api/admin/settings/violation-params', adminAuth, (req, res) => {
-  const keys = ['violation_late_grace_minutes', 'violation_overtime_grace_minutes', 'violation_late_cancel_minutes', 'violation_no_show_grace_minutes'];
-  const settingsRows = db.prepare(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => '?').join(',')})`).all(...keys) as any[];
-  
-  const map = {
-    violation_late_grace_minutes: 15,
-    violation_overtime_grace_minutes: 15,
-    violation_late_cancel_minutes: 120,
-    violation_no_show_grace_minutes: 30
-  };
-  
-  for (const row of settingsRows) {
-    const parsed = parseInt(row.value, 10);
-    if (!isNaN(parsed)) {
-      (map as any)[row.key] = parsed;
-    }
-  }
-  
-  res.json(map);
-});
- 
-// Update settings (Admin)
-app.post('/api/admin/settings', adminAuth, (req, res) => {
-  const bodyKeys = Object.keys(req.body);
-  
-  // Validation for booking_code_delivery.web
-  // Create a simulated next state for settings involved
-  const getCurrent = (k: string) => {
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(k) as any;
-    return row ? row.value : null;
-  };
-  
-  const getNext = (k: string) => req.body[k] !== undefined ? req.body[k] : getCurrent(k);
-  
-  const webDelivery = getNext('booking_code_delivery.web') !== 'false';
-  
-  if (!webDelivery) {
-    const smtpEnabled = getNext('smtp.enabled') === 'true';
-    const smtpEventCreated = getNext('email.events.booking_created.enabled') === 'true';
-    const smtpEventApproved = getNext('email.events.booking_approved.enabled') === 'true';
-    
-    const webhookEnabled = getNext('webhook.enabled') === 'true';
-    const webhookEventCreated = getNext('webhook.events.booking_created.enabled') === 'true';
-    const webhookEventApproved = getNext('webhook.events.booking_approved.enabled') === 'true';
-    
-    const validSmtp = smtpEnabled && (smtpEventCreated || smtpEventApproved);
-    const validWebhook = webhookEnabled && (webhookEventCreated || webhookEventApproved);
-    
-    if (!validSmtp && !validWebhook) {
-      return res.status(400).json({ error: '必须至少保留一种有效的预约码获取途径。关闭网页展示时，需确保已全局开启并勾选了 Email 或 Webhook 相关的预约通知。' });
-    }
-  }
- 
-  const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
-  const insertStmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
-  
-  const updateSetting = (key: string, value: any) => {
-    if (value !== undefined) {
-      const stringValue = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
-      insertStmt.run(key, stringValue);
-      stmt.run(stringValue, key);
-    }
-  };
- 
-  for (const key of bodyKeys) {
-    updateSetting(key, req.body[key]);
-  }
-  
-  // Record audit log for settings update
-  recordAuditLog('update_settings', req.body);
-
-  if (req.body.cron_no_show_scan_interval_minutes !== undefined) {
-    startNoShowScanner(); // Restart the scanner with new interval
-  }
- 
-  let backupSettingsChanged = false;
-  if (req.body.auto_backup_enabled !== undefined || req.body.auto_backup_cron !== undefined || req.body.auto_backup_retention !== undefined) {
-    backupSettingsChanged = true;
-  }
-  
-  if (backupSettingsChanged) {
-    reloadBackupCron();
-  }
- 
-  if (
-    req.body['email.events.booking_upcoming.enabled'] !== undefined ||
-    req.body['webhook.events.booking_upcoming.enabled'] !== undefined ||
-    req.body['booking_upcoming_advance_minutes'] !== undefined
-  ) {
-    startUpcomingReminderCron();
-  }
- 
-  if (
-    req.body['email.events.booking_ending.enabled'] !== undefined ||
-    req.body['webhook.events.booking_ending.enabled'] !== undefined ||
-    req.body['booking_ending_advance_minutes'] !== undefined
-  ) {
-    startEndingReminderCron();
-  }
-  
-  res.json({ success: true });
-});
  
 // 1. Get all equipment
 app.get('/api/equipment', (req, res) => {
@@ -2150,150 +2029,6 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
  
  
  
-app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
-  const now = new Date();
-  const nowStr = now.toISOString();
- 
-  // 1. Get fixed penalties
-  const fixedPenalties = db.prepare(`
-    SELECT p.*, pr.name as rule_name, 
-      (SELECT student_name FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as student_name,
-      (SELECT supervisor FROM reservations r WHERE r.student_id = p.student_id ORDER BY id DESC LIMIT 1) as supervisor
-    FROM user_penalties p
-    LEFT JOIN penalty_rules pr ON p.rule_id = pr.id
-    WHERE p.status = 'active' AND p.end_time > ?
-    ORDER BY p.start_time DESC
-  `).all(nowStr) as any[];
- 
-  // 2. Calculate dynamic penalties
-  const dynamicPenalties: any[] = [];
-  const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
- 
-  for (const rule of activeRules) {
-    const trigger = JSON.parse(rule.trigger_config);
-    const action = JSON.parse(rule.action_config);
-    
-    // Skip fixed duration rules as they are handled by user_penalties table
-    if (action.duration_type === 'fixed' && action.duration_days) continue;
- 
-    let windowStartStr = '';
-    if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
-      windowStartStr = getNaturalPeriodStart(now, trigger.period_type || 'month').toISOString();
-    } else {
-      let windowStart = new Date(now);
-      windowStart.setDate(windowStart.getDate() - (trigger.period_days || 30));
-      windowStartStr = windowStart.toISOString();
-    }
- 
-    const violationTypes = trigger.violation_types || [trigger.violation_type || rule.violation_type];
-    const typePlaceholders = violationTypes.map(() => '?').join(',');
- 
-    let scopeCondition = '';
-    let queryParams: any[] = [...violationTypes, windowStartStr];
- 
-    if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
-      const placeholders = trigger.scope.map(() => '?').join(',');
-      scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
-      queryParams.push(...trigger.scope);
-    }
-    
-    queryParams.push(trigger.threshold);
- 
-    let query = '';
-    if (trigger.metric === 'count') {
-      if (trigger.count_strategy === 'by_reservation') {
-        query = `
-          SELECT student_id, COUNT(DISTINCT reservation_id) as metric_value, GROUP_CONCAT(id) as contributing_ids 
-          FROM violation_records 
-          WHERE status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ? ${scopeCondition} 
-          GROUP BY student_id 
-          HAVING metric_value >= ?
-        `;
-      } else {
-        query = `
-          SELECT student_id, COUNT(id) as metric_value, GROUP_CONCAT(id) as contributing_ids 
-          FROM violation_records 
-          WHERE status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ? ${scopeCondition} 
-          GROUP BY student_id 
-          HAVING metric_value >= ?
-        `;
-      }
-    } else if (trigger.metric === 'duration') {
-      query = `
-        SELECT student_id, SUM(duration_minutes) as metric_value, GROUP_CONCAT(id) as contributing_ids 
-        FROM violation_records 
-        WHERE status = 'active' AND violation_type IN (${typePlaceholders}) AND violation_time >= ? ${scopeCondition} 
-        GROUP BY student_id 
-        HAVING metric_value >= ?
-      `;
-    }
- 
-    const affectedUsers = db.prepare(query).all(...queryParams) as any[];
- 
-    for (const user of affectedUsers) {
-      const ids = user.contributing_ids.split(',').filter(Boolean).map(Number);
-      const sortedIds = [...ids].sort((a, b) => a - b);
-      const snapshot = `,${sortedIds.join(',')},`;
-      
-      const isWaived = db.prepare('SELECT id FROM penalty_waivers WHERE student_id = ? AND rule_id = ? AND violation_ids = ?').get(user.student_id, rule.id, snapshot);
-      if (isWaived) {
-        continue;
-      }
- 
-      const records = db.prepare(`
-        SELECT violation_time, duration_minutes 
-        FROM violation_records 
-        WHERE id IN (${ids.map(()=>'?').join(',')}) 
-        ORDER BY violation_time ASC
-      `).all(...ids) as any[];
- 
-      let unbanTime: Date | null = null;
-      let currentMetric = user.metric_value;
- 
-      for (const rec of records) {
-        if (trigger.metric === 'count') {
-          currentMetric -= 1;
-        } else {
-          currentMetric -= (rec.duration_minutes || 0);
-        }
- 
-        if (currentMetric < trigger.threshold) {
-          if (trigger.window_type === 'natural_period' || trigger.window_type === 'current_month') {
-            unbanTime = getNextNaturalPeriodStart(now, trigger.period_type || 'month');
-          } else {
-            const vTime = new Date(rec.violation_time);
-            vTime.setDate(vTime.getDate() + (trigger.period_days || 30));
-            unbanTime = vTime;
-          }
-          break;
-        }
-      }
- 
-      const studentInfoRow = db.prepare('SELECT student_name, supervisor FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(user.student_id) as any;
- 
-      dynamicPenalties.push({
-        id: `dynamic_${rule.id}_${user.student_id}`,
-        student_id: user.student_id,
-        student_name: studentInfoRow ? studentInfoRow.student_name : user.student_id,
-        supervisor: studentInfoRow ? studentInfoRow.supervisor : null,
-        rule_name: rule.name,
-        penalty_method: action.type,
-        start_time: records[records.length - 1].violation_time,
-        end_time: unbanTime ? unbanTime.toISOString() : null,
-        status: 'active',
-        is_dynamic: true,
-        contributing_violation_ids: snapshot,
-        rule_id: rule.id
-      });
-    }
-  }
- 
-  const allPenalties = [...fixedPenalties, ...dynamicPenalties].sort((a, b) => {
-    return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
-  });
- 
-  res.json(allPenalties);
-});
  
  
  
@@ -2301,6 +2036,7 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
  
 // Removed /api/admin/reports
  
+app.use(settingsRoutes);
 app.use(auditRoutes);
 app.use("/api/admin", notificationRoutes);
 app.use(violationRoutes);
