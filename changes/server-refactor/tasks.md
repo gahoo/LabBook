@@ -34,10 +34,13 @@
 
 - [x] **步骤 8.1：编写测试 `07_settings_and_audit.test.ts`**
   已完成 tracer bullet 测试。
-- [ ] **步骤 8.2：提取 `src/modules/settings/routes.ts`**  
-  *Refactor*: 抽离系统设置相关路由。
+- [ ] **步骤 8.2：提取 `src/modules/settings/` 与 `src/modules/audit/`**  
+  *Refactor*: 抽离系统设置及审计日志相关路由，**并建立 `service.ts` 封装核心逻辑**（如 `updateSettings` 触发的 Cron 重载，以及全局可用的 `recordAuditLog` 写入函数）。迁移路由：`/api/settings`, `/api/admin/settings`, `POST /api/admin/settings`, `/api/admin/audit-logs`。
 
-- [ ] **步骤 9：提取边缘模块 `calendar` + `whitelist` + `auth` + `audit`**  
+- [ ] **步骤 8.3：清理残留违规路由**  
+  *Refactor*: 将 `server.ts` 中遗漏的 `GET /api/admin/penalties/active`，**以及在设置路由区段的 `GET /api/admin/settings/violation-params`**，统一归位至 `violation` 模块（保持 URL 不变以防前端中断）。
+
+- [ ] **步骤 9：提取边缘模块 `calendar` + `whitelist` + `auth`**  
   *Tracer Bullet Test*: 补齐日历 ICS 订阅流与白名单审批流程测试。
   *Refactor*: 分别建立独立路由并挂载。
 

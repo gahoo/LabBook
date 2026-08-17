@@ -1,4 +1,6 @@
 import { validateTimeRange } from './src/lib/validators.js';
+import auditRoutes from './src/modules/audit/routes.js';
+import { recordAuditLog } from './src/modules/audit/service.js';
 import violationRoutes from './src/modules/violation/routes.js';
 import { checkUserPenalty, evaluatePenaltiesOnViolation, getNaturalPeriodStart } from './src/modules/violation/service.js';
 import { adminAuth } from "./src/middleware/auth.js";
@@ -420,10 +422,7 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   }
   
   // Record audit log for settings update
-  db.prepare(`
-    INSERT INTO audit_logs (reservation_id, action, new_data, created_at)
-    VALUES (0, 'update_settings', ?, CURRENT_TIMESTAMP)
-  `).run(JSON.stringify(req.body));
+  recordAuditLog('update_settings', req.body);
 
   if (req.body.cron_no_show_scan_interval_minutes !== undefined) {
     startNoShowScanner(); // Restart the scanner with new interval
@@ -2302,33 +2301,7 @@ app.get('/api/admin/penalties/active', adminAuth, (req, res) => {
  
 // Removed /api/admin/reports
  
-app.get('/api/admin/audit-logs', adminAuth, (req, res) => {
-  if (!validateTimeRange(req, res, 'start_date', 'end_date')) return;
- 
-  const { start_date, end_date } = req.query;
-  let query = `
-    SELECT a.*, r.booking_code 
-    FROM audit_logs a
-    LEFT JOIN reservations r ON a.reservation_id = r.id
-    WHERE 1=1
-  `;
-  const params: any[] = [];
-  
-  if (start_date) {
-    query += ` AND a.created_at >= ?`;
-    params.push(start_date);
-  }
-  if (end_date) {
-    query += ` AND a.created_at <= ?`;
-    params.push(end_date);
-  }
-  
-  query += ` ORDER BY a.created_at DESC`;
-  
-  const logs = db.prepare(query).all(...params);
-  res.json(logs);
-});
- 
+app.use(auditRoutes);
 app.use("/api/admin", notificationRoutes);
 app.use(violationRoutes);
 
