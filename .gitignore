@@ -28,3 +28,4 @@ test_payload.cjs
 revert_server.cjs
 implement_di.cjs
 add_scheduler_tests.cjs
+update_whitelist_test.js

@@ -61,6 +61,26 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
       expect(res2.status).toBe(400);
       expect(res2.body.error).toContain('导师姓名请直接填写真实姓名');
     });
+
+    it('POST /api/whitelist/apply - should prevent duplicate pending applications', async () => {
+      const payload = {
+        equipment_id: equipmentId,
+        student_id: 'S555',
+        student_name: 'Duplicate Student',
+        supervisor: 'Dr. No',
+        phone: '1111111',
+        email: 'dup@example.com'
+      };
+
+      // First request should succeed
+      const res1 = await request(app).post('/api/whitelist/apply').send(payload);
+      expect(res1.status).toBe(200);
+
+      // Second request should fail
+      const res2 = await request(app).post('/api/whitelist/apply').send(payload);
+      expect(res2.status).toBe(400);
+      expect(res2.body.error).toContain('已经');
+    });
   });
 
   describe('Admin Manage Whitelist', () => {
