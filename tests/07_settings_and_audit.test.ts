@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../server.js';
 import { getAdminToken } from './utils/auth-helper.js';

@@ -32,3 +32,5 @@ update_whitelist_test.js
 patch.cjs
 patch2.cjs
 debug.js
+update_tasks.cjs
+update_tasks2.cjs

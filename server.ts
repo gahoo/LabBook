@@ -5,6 +5,7 @@ import settingsRoutes from "./src/modules/settings/routes.js";
 import auditRoutes from './src/modules/audit/routes.js';
 import { recordAuditLog } from './src/modules/audit/service.js';
 import violationRoutes from './src/modules/violation/routes.js';
+import { whitelistRouter, whitelistAdminRouter } from './src/modules/whitelist/routes.js';
 import { checkUserPenalty, evaluatePenaltiesOnViolation, getNaturalPeriodStart } from './src/modules/violation/service.js';
 import { adminAuth } from "./src/middleware/auth.js";
 import { notificationRoutes } from "./src/modules/notification/routes.js";
@@ -944,106 +945,6 @@ app.post('/api/reservations', actionLimiter, (req, res) => {
   });
 });
  
-// Whitelist Application
-app.post('/api/whitelist/apply', (req, res) => {
-  const { equipment_id, student_id, student_name, supervisor, phone, email } = req.body;
-  
-  const stringFields = { student_id, student_name, supervisor, phone, email };
-  for (const [key, val] of Object.entries(stringFields)) {
-    if (typeof val !== 'string' || val.trim() === '') {
-      return res.status(400).json({ error: `${key} 不能为空且必须为字符串` });
-    }
-  }
-  if (equipment_id === undefined || equipment_id === null || isNaN(Number(equipment_id)) || !Number.isInteger(Number(equipment_id))) {
-    return res.status(400).json({ error: 'equipment_id 必须为有效的整数' });
-  }
-  if (student_name.length > 100 || supervisor.length > 100) {
-    return res.status(400).json({ error: '姓名或导师名称过长（上限100字符）' });
-  }
-  if (supervisor.includes('教授') || supervisor.includes('老师')) {
-    return res.status(400).json({ error: '导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓' });
-  }
- 
-  const stmt = db.prepare(`
-    INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(equipment_id, student_id, student_name, supervisor, phone, email);
-  
-  res.json({ success: true });
-});
- 
-// Admin get whitelist applications
-app.get('/api/admin/whitelist/applications', adminAuth, (req, res) => {
-  const { status } = req.query;
-  let apps;
-  if (status) {
-    apps = db.prepare(`
-      SELECT wa.*, e.name as equipment_name 
-      FROM whitelist_applications wa
-      JOIN equipment e ON wa.equipment_id = e.id
-      WHERE wa.status = ?
-      ORDER BY wa.created_at DESC
-    `).all(status);
-  } else {
-    apps = db.prepare(`
-      SELECT wa.*, e.name as equipment_name 
-      FROM whitelist_applications wa
-      JOIN equipment e ON wa.equipment_id = e.id
-      ORDER BY wa.created_at DESC
-    `).all();
-  }
-  res.json(apps);
-});
- 
-// Admin approve whitelist application
-app.post('/api/admin/whitelist/applications/:id/approve', adminAuth, (req, res) => {
-  const { id } = req.params;
-  const app = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
-  if (!app) return res.status(404).json({ error: '未找到申请' });
- 
-  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(app.equipment_id) as any;
-  if (!equipment) return res.status(404).json({ error: '未找到仪器' });
- 
-  let whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
-  if (!whitelist.includes(app.student_name.trim())) {
-    whitelist.push(app.student_name.trim());
-  }
-  
-  db.prepare('UPDATE equipment SET whitelist_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(whitelist.join('\n'), app.equipment_id);
-  db.prepare("UPDATE whitelist_applications SET status = 'approved' WHERE id = ?").run(id);
- 
-  notifyEvent(db, 'whitelist_resolved', {
-    student_id: app.student_id,
-    student_name: app.student_name,
-    equipment_name: equipment.name,
-    resolution: 'approved',
-    reason: app.reason || ''
-  }, app.student_email || undefined);
-  
-  res.json({ success: true });
-});
- 
-// Admin reject whitelist application
-app.post('/api/admin/whitelist/applications/:id/reject', adminAuth, (req, res) => {
-  const { id } = req.params;
-  const appRecord = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
-  if (!appRecord) return res.status(404).json({ error: '未找到申请' });
-  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(appRecord.equipment_id) as any;
- 
-  db.prepare("UPDATE whitelist_applications SET status = 'rejected' WHERE id = ?").run(id);
- 
-  notifyEvent(db, 'whitelist_resolved', {
-    student_id: appRecord.student_id,
-    student_name: appRecord.student_name,
-    equipment_name: equipment ? equipment.name : '未知仪器',
-    resolution: 'rejected',
-    reason: appRecord.reason || ''
-  }, appRecord.student_email || undefined);
- 
-  res.json({ success: true });
-});
- 
 // 5. Get reservations by code (batch)
 app.post('/api/reservations/batch', (req, res) => {
   const codesArray = req.body.codes as string[];
@@ -1899,6 +1800,8 @@ app.use(settingsRoutes);
 app.use(auditRoutes);
 app.use("/api/admin", notificationRoutes);
 app.use(violationRoutes);
+app.use('/api/whitelist', whitelistRouter);
+app.use('/api/admin/whitelist', adminAuth, whitelistAdminRouter);
 
  
 async function startServer() {
