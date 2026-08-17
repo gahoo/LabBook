@@ -44,7 +44,7 @@
   *Test Review*: 确认 `01_auth.test.ts` 已充分覆盖登录与 `adminAuth` 验证逻辑。
   *Refactor*: 将 `POST /api/admin/login` 与 token 生成逻辑抽离至 `src/modules/auth/`。
 
-- [ ] **步骤 9.2：提取 `calendar` 模块**
+- [x] **步骤 9.2：提取 `calendar` 模块**
   *Tracer Bullet Test*: 编写 `09_calendar.test.ts`，覆盖用户/设备日历的 URL 生成、ICS 文件导出及邮件投递功能。（✅ 已完成）
   *Refactor*: 将日历订阅相关的 5 个路由与 ICS 生成逻辑抽离至 `src/modules/calendar/`。
 
