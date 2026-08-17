@@ -1,4 +1,5 @@
 import { validateTimeRange } from './src/lib/validators.js';
+import authRoutes from "./src/modules/auth/routes.js";
 import settingsRoutes from "./src/modules/settings/routes.js";
 import auditRoutes from './src/modules/audit/routes.js';
 import { recordAuditLog } from './src/modules/audit/service.js';
@@ -360,19 +361,6 @@ app.get('/api/equipment', (req, res) => {
   }
   
   res.json(equipment);
-});
- 
-// Admin Login
-app.post('/api/admin/login', authLimiter, (req, res) => {
-  const { password } = req.body;
-  if (password === config.adminPassword) {
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'jwt_expires_in_hours'").get() as any;
-    const expiresHours = row && !isNaN(parseInt(row.value, 10)) ? parseInt(row.value, 10) : 168;
-    const token = jwt.sign({ role: 'admin' }, config.jwtSecret, { expiresIn: `${expiresHours}h` });
-    res.json({ success: true, token });
-  } else {
-    res.status(401).json({ error: '密码错误' });
-  }
 });
  
 // 2. Add equipment (Admin)
@@ -2036,6 +2024,7 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
  
 // Removed /api/admin/reports
  
+app.use(authRoutes);
 app.use(settingsRoutes);
 app.use(auditRoutes);
 app.use("/api/admin", notificationRoutes);

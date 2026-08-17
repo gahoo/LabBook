@@ -40,7 +40,7 @@
 - [x] **步骤 8.3：清理残留违规路由**  
   *Refactor*: 将 `server.ts` 中遗漏的 `GET /api/admin/penalties/active`，**以及在设置路由区段的 `GET /api/admin/settings/violation-params`**，统一归位至 `violation` 模块（保持 URL 不变以防前端中断）。
 
-- [ ] **步骤 9.1：提取 `auth` 模块**
+- [x] **步骤 9.1：提取 `auth` 模块**
   *Test Review*: 确认 `01_auth.test.ts` 已充分覆盖登录与 `adminAuth` 验证逻辑。
   *Refactor*: 将 `POST /api/admin/login` 与 token 生成逻辑抽离至 `src/modules/auth/`。
 
