@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+vi.unmock('express-rate-limit');
 import request from 'supertest';
 import { app } from '../server.js';
 import { db } from '../src/db/index.js';
@@ -78,6 +79,26 @@ describe('Calendar Module (09_calendar.test.ts)', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('No email');
     });
+
+    it('POST /api/calendar/user/mail - should trigger rate limiter on excessive requests', async () => {
+      // Restore email so it returns 200 on success
+      db.prepare("UPDATE reservations SET email = 'caluser@example.com' WHERE booking_code = ?").run(bookingCode);
+      
+      let lastStatus = 200;
+      let lastError = '';
+      for (let i = 0; i < 15; i++) {
+        const res = await request(app)
+          .post('/api/calendar/user/mail')
+          .send({ booking_code: bookingCode });
+        if (res.status === 429) {
+          lastStatus = 429;
+          lastError = res.body?.error || '';
+          break;
+        }
+      }
+      expect(lastStatus).toBe(429);
+      expect(lastError).toContain('频繁');
+    });
   });
 
   describe('ICS File Generation', () => {
@@ -88,6 +109,14 @@ describe('Calendar Module (09_calendar.test.ts)', () => {
       expect(res.headers['content-type']).toContain('text/calendar');
       expect(res.text).toContain('BEGIN:VCALENDAR');
       expect(res.text).toContain('SUMMARY:[仪器预约] Cal Equipment');
+      
+      // VALARM Assertion: verify 30 minutes advance reminder
+      expect(res.text).toContain('BEGIN:VALARM');
+      expect(res.text).toContain('TRIGGER:-PT30M');
+      
+      // Timezone Defense: verify ICS uses strict UTC Z timezone format
+      expect(res.text).toMatch(/DTSTART:\d{8}T\d{6}Z/);
+      expect(res.text).toMatch(/DTEND:\d{8}T\d{6}Z/);
     });
 
     it('GET /api/calendar/user/:token.ics - should return 400 for invalid token', async () => {
