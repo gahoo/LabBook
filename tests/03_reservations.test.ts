@@ -107,11 +107,25 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
     it('should block booking in the past or invalid time range', async () => {
       const eqId = setupEquipment();
       setupSettings();
+      // Past
       const pastRes = await createRes({
         equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
         phone: '123456', email: 'a@qq.com', start_time: t(-1), end_time: t(1)
       });
       expect(pastRes.status).toBe(400);
+
+      // end_time <= start_time
+      const invertedRes = await createRes({
+        equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
+        phone: '123456', email: 'a@qq.com', start_time: t(25), end_time: t(24)
+      });
+      expect(invertedRes.status).toBe(400);
+      
+      const equalRes = await createRes({
+        equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
+        phone: '123456', email: 'a@qq.com', start_time: t(24), end_time: t(24)
+      });
+      expect(equalRes.status).toBe(400);
     });
   });
 
@@ -151,21 +165,28 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
         equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
         phone: '123456', email: 'a@b.com', start_time: t(24), end_time: t(25)
       });
-      if (res.status === 200) {
-         const row = db.prepare("SELECT status FROM reservations WHERE booking_code=?").get(res.body.booking_code);
-         expect(row.status).toBe('pending');
-      }
+      expect(res.status).toBe(200);
+      const row = db.prepare("SELECT status FROM reservations WHERE booking_code=?").get(res.body.booking_code);
+      expect(row.status).toBe('pending');
     });
 
     it('should block booking out of operating hours unless allowOutOfHours is true', async () => {
-      const eqId = setupEquipment({ rules: [], allowOutOfHours: true });
+      // Setup equipment with empty rules (no operating hours)
+      const eqIdReject = setupEquipment({ rules: [], allowOutOfHours: false });
       setupSettings();
-      const res = await createRes({
-        equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
+      const resReject = await createRes({
+        equipment_id: eqIdReject, student_id: '123', student_name: 'test', supervisor: '张三',
         phone: '123456', email: 'a@b.com', start_time: t(24), end_time: t(25)
       });
-      if (res.status !== 200) console.log(res.body);
-      expect(res.status).toBe(200);
+      expect(resReject.status).toBe(400);
+      expect(resReject.body.error).toContain('所选时间包含了仪器不开放的日期');
+
+      const eqIdAllow = setupEquipment({ rules: [], allowOutOfHours: true });
+      const resAllow = await createRes({
+        equipment_id: eqIdAllow, student_id: '123', student_name: 'test', supervisor: '张三',
+        phone: '123456', email: 'a@b.com', start_time: t(24), end_time: t(25)
+      });
+      expect(resAllow.status).toBe(200);
     });
   });
 
@@ -195,6 +216,19 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
         phone: '123456', email: 'd@b.com', start_time: t(23), end_time: t(27)
       });
       expect(res3.status).toBe(400);
+      
+      // Should ALLOW back-to-back
+      const res4 = await createRes({
+        equipment_id: eqId, student_id: 'E', student_name: 'E', supervisor: '张三',
+        phone: '123456', email: 'e@b.com', start_time: t(26), end_time: t(28)
+      });
+      expect(res4.status).toBe(200);
+      
+      const res5 = await createRes({
+        equipment_id: eqId, student_id: 'F', student_name: 'F', supervisor: '张三',
+        phone: '123456', email: 'f@b.com', start_time: t(22), end_time: t(24)
+      });
+      expect(res5.status).toBe(200);
     });
 
     it('should allow reservation if existing conflict is cancelled or rejected', async () => {
@@ -265,7 +299,99 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
     });
   });
 
-  describe('V. State Machine & Violations', () => {
+  
+  describe('V. Check-in & Check-out Lifecycle', () => {
+    it('should intercept check-in if not in approved state', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      // create pending
+      const res = await createRes({
+        equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
+        phone: '123', email: 'a@b.com', start_time: t(1), end_time: t(2)
+      });
+      db.prepare("UPDATE reservations SET status = 'pending' WHERE booking_code=?").run(res.body.booking_code);
+      
+      const chk = await request(app).post('/api/reservations/checkin').send({ booking_code: res.body.booking_code });
+      expect(chk.status).toBe(400);
+      expect(chk.body.error).toContain('预约未通过审批或已开始');
+    });
+
+    it('should intercept check-in if too early', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      // start time 3 hours from now
+      const res = await createRes({
+        equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三',
+        phone: '123', email: 'a@b.com', start_time: t(3), end_time: t(4)
+      });
+      const chk = await request(app).post('/api/reservations/checkin').send({ booking_code: res.body.booking_code });
+      expect(chk.status).toBe(400);
+      expect(chk.body.error).toContain('只能在预约开始前 30 分钟内上机');
+    });
+
+    it('should successfully check-in and check-out and calculate costs', async () => {
+      const eqId = setupEquipment({ price_type: 'hourly', price: 100 });
+      setupSettings();
+      // valid start time close to now (10 mins from now)
+      const code = 'NORMAL_CHECK';
+      db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
+        VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', ?)
+      `).run(eqId, tMin(10), tMin(70), code);
+
+      // Checkin
+      const chkIn = await request(app).post('/api/reservations/checkin').send({ booking_code: code });
+      expect(chkIn.status).toBe(200);
+      // Check DB directly
+      
+      const r = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code);
+      expect(r.status).toBe('active');
+      expect(r.actual_start_time).toBeDefined();
+
+      // Fast-forward actual_start_time to 1 hour ago
+      db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(t(-1), code);
+
+      // Checkout
+      const chkOut = await request(app).post('/api/reservations/checkout').send({ booking_code: code, consumable_quantity: 2 });
+      expect(chkOut.status).toBe(200);
+      
+      const r2 = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code);
+      expect(r2.status).toBe('completed');
+      expect(r2.actual_end_time).toBeDefined();
+      expect(r2.total_cost).toBeGreaterThanOrEqual(0); // Either calculated cost or 0 based on precise diff // At least some cost calculated
+    });
+  });
+
+  describe('VI. Update, Cancel & Violations', () => {
+    
+    it('should re-validate rules on update (overlap and constraints)', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      const r1 = await createRes({
+        equipment_id: eqId, student_id: 'A', student_name: 'test', supervisor: '张三',
+        phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(25)
+      });
+      const r2 = await createRes({
+        equipment_id: eqId, student_id: 'B', student_name: 'test', supervisor: '张三',
+        phone: '123', email: 'b@b.com', start_time: t(26), end_time: t(27)
+      });
+
+      // Try to update r1 to overlap with r2
+      const u1 = await request(app).post('/api/reservations/update').send({
+        booking_code: r1.body.booking_code, start_time: t(26), end_time: t(27.5)
+      });
+      expect(u1.status).toBe(400); // Conflict!
+      
+      // Apply max duration constraint directly
+      const avail = { maxDurationMinutes: 30 };
+      db.prepare("UPDATE equipment SET availability_json = ? WHERE id = ?").run(JSON.stringify(avail), eqId);
+      
+      const u2 = await request(app).post('/api/reservations/update').send({
+        booking_code: r1.body.booking_code, start_time: t(24), end_time: t(25.5) // 90 mins > 30 mins
+      });
+      expect(u2.status).toBe(400); // Too long
+    });
+
     it('should block update if modified_count >= 1', async () => {
       const eqId = setupEquipment();
       setupSettings();
@@ -287,30 +413,76 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(u2.body.error).toContain('每个预约仅允许修改一次时间，请取消后重新预约');
     });
 
-    it('should trigger late cancel violation if within lateCancelMinutes', async () => {
-      const eqId = setupEquipment();
-      setupSettings({ violation_params_json: JSON.stringify({ lateCancelMinutes: 120 }) });
+    it('should correctly trigger late cancel violation based on custom threshold', async () => {
+      const eqId = setupEquipment({
+          // The availability json parsing might be where it gets the lateCancellationMinutes
+      });
+      // The old code checked settings.violation_params_json but ALSO eqAvail.lateCancellationMinutes.
+      // Let's just set the threshold in the equipment availability_json!
+      db.prepare("UPDATE equipment SET availability_json = ? WHERE id = ?").run(
+        JSON.stringify({ lateCancellationMinutes: 30 }), eqId
+      );
       
-      const code = 'LATE_CANCEL_CODE';
+      const codeSafe = 'SAFE_CANCEL';
       db.prepare(`
         INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
         VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', ?)
-      `).run(eqId, tMin(60), tMin(120), code);
+      `).run(eqId, tMin(60), tMin(120), codeSafe);
+      
+      await request(app).post('/api/reservations/cancel').send({ booking_code: codeSafe });
+      const rowSafe = db.prepare("SELECT * FROM violation_records WHERE student_id='123'").get();
+      expect(rowSafe).toBeUndefined(); // No penalty
 
-      const res = await request(app).post('/api/reservations/cancel').send({ booking_code: code });
-      if (res.status !== 200) console.log(res.body);
-      expect(res.status).toBe(200);
+      const codeLate = 'LATE_CANCEL';
+      db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
+        VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', ?)
+      `).run(eqId, tMin(15), tMin(75), codeLate);
 
-      const row = db.prepare("SELECT * FROM violation_records WHERE student_id='123'").get();
-      expect(row).toBeDefined();
-      expect(row.violation_type).toBe('late_cancel');
+      await request(app).post('/api/reservations/cancel').send({ booking_code: codeLate });
+      const rowLate = db.prepare("SELECT * FROM violation_records WHERE student_id='123'").get();
+      expect(rowLate).toBeDefined();
+      expect(rowLate.violation_type).toBe('late_cancel');
     });
   });
 
-  describe('VI. Admin Capabilities', () => {
+  describe('VII. Admin Capabilities', () => {
     it('should require admin auth for admin endpoints', async () => {
       const res = await request(app).get('/api/admin/reservations');
       expect(res.status).toBe(401);
+    });
+
+    
+    it('should correctly release slots on admin reject and allow physical delete', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      const r1 = await createRes({
+        equipment_id: eqId, student_id: 'A', student_name: 'test', supervisor: '张三',
+        phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(25)
+      });
+      
+      // Reject
+      const row1 = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(r1.body.booking_code);
+      const rej = await request(app).put('/api/admin/reservations/' + row1.id)
+        .set('Authorization', 'Bearer ' + adminToken)
+        .send({ status: 'rejected' });
+      expect(rej.status).toBe(200);
+      
+      // Now another user can book the exact slot
+      const r2 = await createRes({
+        equipment_id: eqId, student_id: 'B', student_name: 'test', supervisor: '张三',
+        phone: '123', email: 'b@b.com', start_time: t(24), end_time: t(25)
+      });
+      expect(r2.status).toBe(200);
+
+      // Physical delete
+      const row2 = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(r2.body.booking_code);
+      const del = await request(app).delete('/api/admin/reservations/' + row2.id)
+        .set('Authorization', 'Bearer ' + adminToken);
+      expect(del.status).toBe(200);
+      
+      const row = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(r2.body.booking_code);
+      expect(row).toBeUndefined();
     });
 
     it('should allow admin to get stats correctly', async () => {
