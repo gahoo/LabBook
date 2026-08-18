@@ -39,8 +39,8 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       ...availParams
     };
     const info = db.prepare(`
-      INSERT INTO equipment (name, availability_json, auto_approve, release_noshow_slots, is_hidden, whitelist_enabled, price_type, price)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO equipment (name, availability_json, auto_approve, release_noshow_slots, is_hidden, whitelist_enabled, price_type, price, consumable_fee)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       overrides.name || 'Test Eq',
       JSON.stringify(defaultAvail),
@@ -48,8 +48,9 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       overrides.release_noshow_slots ? 1 : 0,
       overrides.is_hidden ? 1 : 0,
       overrides.whitelist_enabled ? 1 : 0,
-      overrides.price_type || 'hourly',
-      overrides.price || 0
+      overrides.price_type || 'hour',
+      overrides.price || 0,
+      overrides.consumable_fee || 0
     );
     return info.lastInsertRowid;
   };
@@ -228,6 +229,23 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       const r5 = await createRes({ equipment_id: eqId, student_id: 'F', student_name: 'F', supervisor: '张三', phone: '123', email: 'f@b.com', start_time: t(22), end_time: t(24) });
       expect(r5.status).toBe(200);
     });
+    it('should allow preempting noshow slots if release_noshow_slots is true', async () => {
+      const eqId = setupEquipment({}, { release_noshow_slots: true });
+      setupSettings();
+      
+      // 40 mins ago -> 20 mins from now. The noshow boundary is 30 mins.
+      // So since it started 40 mins ago and has no actual_start_time, it is considered a forfeited no-show slot by the conflict checker.
+      db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
+        VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', 'CODE123')
+      `).run(eqId, tMin(-40), tMin(20));
+
+      const res = await createRes({
+        equipment_id: eqId, student_id: 'B', student_name: 'B', supervisor: '张三',
+        phone: '123', email: 'b@b.com', start_time: tMin(5), end_time: tMin(35)
+      });
+      expect(res.status).toBe(200);
+    });
   });
 
   describe('IV. Query & Batch', () => {
@@ -257,6 +275,21 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
   });
 
   describe('V. Check-in & Check-out Lifecycle', () => {
+    it('should successfully check in a reservation and set actual_start_time', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      const code = 'HAPPY_CHECKIN';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', ?)`).run(eqId, tMin(-10), tMin(50), code);
+      
+      const chk = await request(app).post('/api/reservations/checkin').send({ booking_code: code });
+      expect(chk.status).toBe(200);
+
+      const r = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code) as any;
+      expect(r.status).toBe('active');
+      expect(r.actual_start_time).toBeDefined();
+      expect(r.actual_start_time).not.toBeNull();
+    });
+
     it('should handle invalid checkin attempts (unknown code, double checkin)', async () => {
       const eqId = setupEquipment();
       setupSettings();
@@ -271,8 +304,8 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(chk.status).toBe(400); // already active
     });
 
-    it('should precisely calculate exact cost based on actual duration and price_type hourly', async () => {
-      const eqId = setupEquipment({}, { price_type: 'hourly', price: 120 });
+    it('should precisely calculate exact cost based on actual duration and price_type hour', async () => {
+      const eqId = setupEquipment({}, { price_type: 'hour', price: 120, consumable_fee: 10 });
       setupSettings();
       const code = 'COST_CHECK';
       db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-60), tMin(60), code);
@@ -280,17 +313,20 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       // Force actual_start_time to exactly 2.5 hours ago
       db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(tMin(-150), code);
 
-      const chkOut = await request(app).post('/api/reservations/checkout').send({ booking_code: code });
+      const chkOut = await request(app).post('/api/reservations/checkout').send({ booking_code: code, consumable_quantity: 2 });
       expect(chkOut.status).toBe(200);
 
       const r = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code);
       expect(r.status).toBe('completed');
-      // 2.5 hours * 120 = 300
-      expect(r.total_cost).toBeGreaterThan(0); // Assuming the cost is calculated accurately by the server logic. 
+      
+      // 2.5 hours -> ceil(2.5) = 3 hours. 3 * 120 = 360
+      // 2 consumables * 10 = 20
+      // Total = 380
+      expect(r.total_cost).toBe(380);
     });
 
     it('should accurately calculate session-based and fixed fees', async () => {
-      const eqId = setupEquipment({}, { price_type: 'session', price: 50 });
+      const eqId = setupEquipment({}, { price_type: 'session', price: 50, consumable_fee: 5 });
       setupSettings();
       const code = 'SESS_CHECK';
       db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-60), tMin(60), code);
@@ -298,8 +334,8 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
 
       await request(app).post('/api/reservations/checkout').send({ booking_code: code, consumable_quantity: 3 });
       const r = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code);
-      // Session price 50, even if 2.5 hours. Consumables not priced in equipment, so just 50.
-      expect(r.total_cost).toBe(50);
+      // Session price 50, even if 2.5 hours. Consumables 3 * 5 = 15. Total = 65.
+      expect(r.total_cost).toBe(65);
     });
   });
 
@@ -323,11 +359,19 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
     it('should block cancelling active or completed reservations', async () => {
       const eqId = setupEquipment();
       setupSettings();
-      const code = 'NO_CANCEL';
-      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, t(1), t(2), code);
+      const codeActive = 'NO_CANCEL_ACTIVE';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, t(1), t(2), codeActive);
       
-      const can = await request(app).post('/api/reservations/cancel').send({ booking_code: code });
-      expect(can.status).toBe(400);
+      const canActive = await request(app).post('/api/reservations/cancel').send({ booking_code: codeActive });
+      expect(canActive.status).toBe(400);
+      expect(canActive.body.error).toContain('进行中');
+
+      const codeCompleted = 'NO_CANCEL_COMPLETED';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'completed', ?)`).run(eqId, t(1), t(2), codeCompleted);
+      
+      const canCompleted = await request(app).post('/api/reservations/cancel').send({ booking_code: codeCompleted });
+      expect(canCompleted.status).toBe(400);
+      expect(canCompleted.body.error).toMatch(/无法取消进行中或已完成的预约/);
     });
 
     it('should correctly trigger late cancel based on availability_json threshold', async () => {
@@ -365,6 +409,41 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       const u2 = await request(app).post('/api/reservations/update').send({ booking_code: code, start_time: t(24), end_time: t(26) });
       expect(u2.status).toBe(400);
     });
+    it('should handle update failure branches (conflict, over duration, past time, invalid status, transaction rollback)', async () => {
+      const eqId = setupEquipment({}, { maxDurationMinutes: 120 });
+      setupSettings();
+      // Setup initial reservation
+      const r1 = await createRes({ equipment_id: eqId, student_id: 'A', student_name: 'test', supervisor: '张三', phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(25) });
+      const code1 = r1.body.booking_code;
+
+      // Setup another reservation to cause conflict
+      const r2 = await createRes({ equipment_id: eqId, student_id: 'B', student_name: 'test', supervisor: '李四', phone: '123', email: 'a@b.com', start_time: t(26), end_time: t(27) });
+
+      // 1. Conflict
+      const uConf = await request(app).post('/api/reservations/update').send({ booking_code: code1, start_time: t(26), end_time: t(27) });
+      expect(uConf.status).toBe(400);
+      expect(uConf.body.error).toContain('其他预约');
+
+      // 2. Over duration limit
+      const uDur = await request(app).post('/api/reservations/update').send({ booking_code: code1, start_time: t(24), end_time: t(27) }); // 3 hours > 120 mins
+      expect(uDur.status).toBe(400);
+
+      // 3. Past time
+      const uPast = await request(app).post('/api/reservations/update').send({ booking_code: code1, start_time: t(-1), end_time: t(1) });
+      expect(uPast.status).toBe(400);
+
+      // 4. Invalid status (e.g. active)
+      const codeActive = 'UPDATE_ACTIVE';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, t(10), t(11), codeActive);
+      const uActive = await request(app).post('/api/reservations/update').send({ booking_code: codeActive, start_time: t(10), end_time: t(11.5) });
+      expect(uActive.status).toBe(400);
+      expect(uActive.body.error).toMatch(/无法修改进行中或已完成的预约/);
+
+      // Verify transaction rollback (modified_count remains 0)
+      const row1 = db.prepare("SELECT modified_count FROM reservations WHERE booking_code=?").get(code1) as any;
+      expect(row1.modified_count).toBe(0);
+    });
+
   });
 
   describe('VII. Admin Capabilities', () => {
@@ -378,17 +457,68 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       setupSettings();
       const r1 = await createRes({ equipment_id: eqId, student_id: 'A', student_name: 'test', supervisor: '张三', phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(25) });
       
-      const row1 = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(r1.body.booking_code);
+      const row1 = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(r1.body.booking_code) as any;
       const rej = await request(app).put('/api/admin/reservations/' + row1.id).set('Authorization', 'Bearer ' + adminToken).send({ status: 'rejected' });
       expect(rej.status).toBe(200);
       
       const r2 = await createRes({ equipment_id: eqId, student_id: 'B', student_name: 'test', supervisor: '张三', phone: '123', email: 'b@b.com', start_time: t(24), end_time: t(25) });
       expect(r2.status).toBe(200);
 
-      const row2 = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(r2.body.booking_code);
+      const row2 = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(r2.body.booking_code) as any;
       const del = await request(app).delete('/api/admin/reservations/' + row2.id).set('Authorization', 'Bearer ' + adminToken);
       expect(del.status).toBe(200);
       expect(db.prepare("SELECT * FROM reservations WHERE id=?").get(row2.id)).toBeUndefined();
+    });
+
+    it('should filter admin reservations and handle empty stats boundaries', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      const res1 = await createRes({ equipment_id: eqId, student_id: 'S1', student_name: 'Alice', supervisor: 'Dr. Smith', phone: '123', email: 'a@b.com', start_time: t(48), end_time: t(49) });
+      expect(res1.status).toBe(200);
+      const res2 = await createRes({ equipment_id: eqId, student_id: 'S2', student_name: 'Bob', supervisor: 'Dr. Jones', phone: '123', email: 'a@b.com', start_time: t(50), end_time: t(51) });
+      expect(res2.status).toBe(200);
+
+      // 1. List Filtering
+      const listAlice = await request(app).get('/api/admin/reservations?student_name=Alice').set('Authorization', 'Bearer ' + adminToken);
+      expect(listAlice.status).toBe(200);
+      expect(listAlice.body.length).toBeGreaterThanOrEqual(1);
+      expect(listAlice.body.some((r: any) => r.student_name === 'Alice')).toBe(true);
+
+      const listSmith = await request(app).get('/api/admin/reservations?supervisor=Smith').set('Authorization', 'Bearer ' + adminToken);
+      expect(listSmith.body.some((r: any) => r.supervisor === 'Dr. Smith')).toBe(true);
+      expect(listSmith.body.some((r: any) => r.supervisor === 'Dr. Jones')).toBe(false);
+
+      // 2. Stats Empty Boundaries
+      const emptyStats = await request(app).get(`/api/admin/reservations/stats?student_name=Nobody&startDate=${t(-100)}&endDate=${t(100)}`).set('Authorization', 'Bearer ' + adminToken);
+      expect(emptyStats.status).toBe(200);
+      expect(emptyStats.body.usageByPerson.length).toBe(0);
+      expect(emptyStats.body.usageBySupervisor.length).toBe(0);
+      expect(emptyStats.body.usageByTime.length).toBe(0);
+      expect(emptyStats.body.usageByEquipment.length).toBe(0);
+    });
+
+    it('should fallback gracefully for 404 unknown code and invalid params', async () => {
+      setupSettings();
+      
+      // Update invalid code
+      const updateRes = await request(app).post('/api/reservations/update').send({ booking_code: 'NON_EXISTENT_CODE', start_time: t(10), end_time: t(11) });
+      expect(updateRes.status).toBe(404);
+
+      // Cancel invalid code
+      const cancelRes = await request(app).post('/api/reservations/cancel').send({ booking_code: 'NON_EXISTENT_CODE' });
+      expect(cancelRes.status).toBe(404);
+
+      // Checkout invalid code
+      const checkoutRes = await request(app).post('/api/reservations/checkout').send({ booking_code: 'NON_EXISTENT_CODE' });
+      expect(checkoutRes.status).toBe(404);
+      
+      // Admin update unknown ID
+      const adminUpdateRes = await request(app).put('/api/admin/reservations/999999').set('Authorization', 'Bearer ' + adminToken).send({ status: 'approved' });
+      expect(adminUpdateRes.status).toBe(404);
+
+      // Update with invalid params types
+      const badParamsRes = await request(app).post('/api/reservations/update').send({ booking_code: 123, start_time: 100, end_time: [] });
+      expect(badParamsRes.status).toBe(400);
     });
   });
 });
