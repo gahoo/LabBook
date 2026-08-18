@@ -508,7 +508,7 @@ app.get('/api/equipment/:id/availability', (req, res) => {
       };
     }
  
-    const rules = availability.rules.filter((r: any) => r.day === dayOfWeek);
+    const rules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
     const availableSlots: { start: string, end: string }[] = [];
     rules.forEach((rule: any) => {
       availableSlots.push({
