@@ -42,4 +42,4 @@ dummy.cjs
 update_step1.cjs
 delete_batch.cjs
 clean_server.cjs
-
+generate_tests.cjs
