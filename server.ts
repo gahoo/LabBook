@@ -1,8 +1,9 @@
-import { validateTimeRange } from './src/lib/validators.js';
+import { validateTimeRange, validateOperatingHours, calculatePeakAccumulatedMinutes } from './src/lib/validators.js';
 import authRoutes from "./src/modules/auth/routes.js";
 import { calendarRoutes } from "./src/modules/calendar/routes.js";
 import settingsRoutes from "./src/modules/settings/routes.js";
 import auditRoutes from './src/modules/audit/routes.js';
+import { equipmentRouter, equipmentAdminRouter } from './src/modules/equipment/routes.js';
 import { recordAuditLog } from './src/modules/audit/service.js';
 import violationRoutes from './src/modules/violation/routes.js';
 import { whitelistRouter, whitelistAdminRouter } from './src/modules/whitelist/routes.js';
@@ -207,60 +208,8 @@ import { generateICS } from './src/lib/ics';
 // Get settings
  
 // 1. Get all equipment
-app.get('/api/equipment', (req, res) => {
-  let isAdmin = false;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, config.jwtSecret) as any;
-      if (decoded && decoded.role === 'admin') {
-        isAdmin = true;
-      }
-    } catch (e) {}
-  }
-  let equipment = db.prepare('SELECT * FROM equipment').all() as any[];
-  
-  if (!isAdmin) {
-    equipment = equipment
-      .filter((eq) => !eq.is_hidden)
-      .map((eq) => {
-        const { whitelist_data, ...rest } = eq;
-        return rest;
-      });
-  }
-  
-  res.json(equipment);
-});
- 
 // 2. Add equipment (Admin)
-app.post('/api/admin/equipment', adminAuth, (req, res) => {
-  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots } = req.body;
-  
-  const stmt = db.prepare(`
-    INSERT INTO equipment (name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `);
-  const info = stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', is_hidden ? 1 : 0, release_noshow_slots ? 1 : 0);
-  
-  res.json({ id: info.lastInsertRowid });
-});
- 
 // Update equipment (Admin)
-app.put('/api/admin/equipment/:id', adminAuth, (req, res) => {
-  const { id } = req.params;
-  const { name, description, image_url, location, availability_json, auto_approve, price_type, price, consumable_fee, whitelist_enabled, whitelist_data, is_hidden, release_noshow_slots } = req.body;
-  
-  const stmt = db.prepare(`
-    UPDATE equipment 
-    SET name = ?, description = ?, image_url = ?, location = ?, availability_json = ?, auto_approve = ?, price_type = ?, price = ?, consumable_fee = ?, whitelist_enabled = ?, whitelist_data = ?, is_hidden = ?, release_noshow_slots = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `);
-  stmt.run(name, description, image_url, location, availability_json, auto_approve ? 1 : 0, price_type, price, consumable_fee || 0, whitelist_enabled ? 1 : 0, whitelist_data || '', is_hidden ? 1 : 0, release_noshow_slots ? 1 : 0, id);
-  
-  res.json({ success: true });
-});
- 
 // Batch update equipment (Admin)
 app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
   const { ids, updates } = req.body;
@@ -363,312 +312,13 @@ app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
   }
 });
  
-app.get('/api/equipment/availability/today', (req, res) => {
-  const date = (req.query.date as string) || format(new Date(), 'yyyy-MM-dd');
-  const targetDate = parseISO(date);
-  const dayOfWeek = targetDate.getDay();
- 
-  const equipmentList = db.prepare('SELECT * FROM equipment').all() as any[];
-  
-  const results = equipmentList.map(eq => {
-    let availability;
-    try {
-      availability = JSON.parse(eq.availability_json || '{"rules":[], "advanceDays": 7, "maxDurationMinutes": 60, "minDurationMinutes": 30}');
-    } catch (e) {
-      availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
-    }
- 
-    const dayRules = availability.rules?.filter((r: any) => r.day === dayOfWeek) || [];
-    
-    const availableSlots = dayRules.map((rule: any) => {
-      return {
-        start: `${date}T${rule.start}:00`,
-        end: `${date}T${rule.end}:00`
-      };
-    });
- 
-    const windowStart = new Date(`${date}T00:00:00`);
-    windowStart.setDate(windowStart.getDate() - 1);
-    const windowEnd = new Date(`${date}T00:00:00`);
-    windowEnd.setDate(windowEnd.getDate() + 2);
- 
-    const reservationsRaw = db.prepare(`
-      SELECT start_time, end_time, actual_start_time FROM reservations 
-      WHERE equipment_id = ? 
-      AND status IN ('pending', 'approved', 'active')
-      AND start_time < ? AND end_time > ?
-    `).all(eq.id, windowEnd.toISOString(), windowStart.toISOString()) as any[];
- 
-    let reservations = reservationsRaw;
-    if (eq.release_noshow_slots) {
-      const now = new Date().getTime();
-      reservations = reservationsRaw.filter((res: any) => {
-        if (!res.actual_start_time) {
-          const startTime = new Date(res.start_time).getTime();
-          if (now > startTime + 30 * 60 * 1000) {
-            return false; // Filter out no-shows
-          }
-        }
-        return true;
-      });
-    }
- 
-    return {
-      equipment_id: eq.id,
-      equipment_name: eq.name,
-      availableSlots,
-      reservations: reservations.map(r => ({ start_time: r.start_time, end_time: r.end_time })),
-      maxDurationMinutes: availability.maxDurationMinutes || 60,
-      minDurationMinutes: availability.minDurationMinutes || 30
-    };
-  });
- 
-  res.json(results);
-});
- 
 // 3. Get availability for an equipment on a specific date
-app.get('/api/equipment/:id/availability', (req, res) => {
-  const { id } = req.params;
-  const { date, start_date, end_date } = req.query as any;
-  
-  const isRange = !!(start_date && end_date);
- 
-  if (!date && !isRange) {
-    return res.status(400).json({ error: '需要提供 date 或 start_date & end_date' });
-  }
- 
-  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as any;
-  if (!equipment) {
-    return res.status(404).json({ error: '未找到该仪器' });
-  }
- 
-  let availability;
-  try {
-    availability = JSON.parse(equipment.availability_json || '{"rules":[], "advanceDays": 7, "maxDurationMinutes": 60, "minDurationMinutes": 30}');
-  } catch (e) {
-    availability = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
-  }
- 
-  const today = startOfDay(new Date());
-  const maxDate = addDays(today, availability.advanceDays || 7);
-  const now = new Date().getTime();
-  
-  const datesToProcess = [];
-  if (isRange) {
-    const s = parseISO(start_date);
-    const e = parseISO(end_date);
-    let curr = s;
-    while (curr <= e && datesToProcess.length < 100) {
-      datesToProcess.push(format(curr, 'yyyy-MM-dd'));
-      curr = addDays(curr, 1);
-    }
-  } else {
-    datesToProcess.push(date);
-  }
- 
-  const minDateStr = datesToProcess[0];
-  const maxDateStr = datesToProcess[datesToProcess.length - 1];
- 
-  const windowStart = new Date(`${minDateStr}T00:00:00`);
-  windowStart.setDate(windowStart.getDate() - 1);
-  const windowEnd = new Date(`${maxDateStr}T00:00:00`);
-  windowEnd.setDate(windowEnd.getDate() + 2);
- 
-  const reservationsRaw = db.prepare(`
-    SELECT id, start_time, end_time, actual_start_time FROM reservations 
-    WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-    AND start_time < ? AND end_time > ?
-  `).all(id, windowEnd.toISOString(), windowStart.toISOString()) as any[];
- 
-  let rangeReservations = reservationsRaw;
-  if (equipment.release_noshow_slots) {
-    rangeReservations = reservationsRaw.filter((res: any) => {
-      if (!res.actual_start_time) {
-        const startTime = new Date(res.start_time).getTime();
-        if (now > startTime + 30 * 60 * 1000) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }
- 
-  const results = datesToProcess.map(dStr => {
-    const targetDate = parseISO(dStr);
-    const dayOfWeek = targetDate.getDay();
- 
-    if (isAfter(targetDate, maxDate)) {
-      return { 
-        date: dStr,
-        availableSlots: [], 
-        reservations: [], 
-        maxDurationMinutes: availability.maxDurationMinutes, 
-        minDurationMinutes: availability.minDurationMinutes || 30,
-        message: `仅支持提前 ${availability.advanceDays} 天预约` 
-      };
-    }
- 
-    const rules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
-    const availableSlots: { start: string, end: string }[] = [];
-    rules.forEach((rule: any) => {
-      availableSlots.push({
-        start: `${dStr}T${rule.start}:00`,
-        end: `${dStr}T${rule.end}:00`
-      });
-    });
- 
-    const dStrStart = new Date(`${dStr}T00:00:00`);
-    const dStrStartMs = dStrStart.getTime();
- 
-    const dStrEnd = new Date(`${dStr}T00:00:00`);
-    dStrEnd.setDate(dStrEnd.getDate() + 1);
-    const dStrEndMs = dStrEnd.getTime();
- 
-    const localReservations = rangeReservations.filter((r: any) => {
-      const sMs = new Date(r.start_time).getTime();
-      const eMs = new Date(r.end_time).getTime();
-      return sMs < dStrEndMs && eMs > dStrStartMs;
-    });
- 
-    return {
-      date: dStr,
-      availableSlots,
-      reservations: localReservations,
-      maxDurationMinutes: availability.maxDurationMinutes,
-      minDurationMinutes: availability.minDurationMinutes || 30,
-      dailyMaxDurationMinutes: availability.dailyMaxDurationMinutes,
-      allowExceedDuration: availability.allowExceedDuration,
-      allowExceedDurationOffPeak: availability.allowExceedDurationOffPeak || false,
-      peakHours: availability.peakHours || []
-    };
-  });
- 
-  if (isRange) {
-    return res.json(results);
-  } else {
-    return res.json({ 
-      availableSlots: results[0].availableSlots, 
-      reservations: results[0].reservations, 
-      maxDurationMinutes: results[0].maxDurationMinutes,
-      minDurationMinutes: results[0].minDurationMinutes,
-      message: (results[0] as any).message
-    });
-  }
-});
- 
 // Get all reservations for an equipment in a date range (for chart)
-app.get('/api/equipment/:id/reservations', (req, res) => {
-  const { id } = req.params;
-  const { start, end } = req.query;
-  
-  const reservations = db.prepare(`
-    SELECT start_time, end_time, student_name, status FROM reservations 
-    WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active', 'completed')
-    AND start_time >= ? AND end_time <= ?
-  `).all(id, start, end);
-  
-  res.json(reservations);
-});
+
  
-function validateOperatingHours(start: Date, end: Date, availability: any, tzOffset: number): { isValid: boolean, error?: string, isOutOfHours: boolean } {
-  const allowOutOfHours = !!availability.allowOutOfHours;
+
  
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  
-  const localStartMs = startMs - tzOffset * 60000;
-  const localEndMs = endMs - tzOffset * 60000;
- 
-  let currentMs = localStartMs;
- 
-  while (currentMs < localEndMs) {
-    const currentLocal = new Date(currentMs);
-    const nextMidnightLocal = new Date(currentLocal);
-    nextMidnightLocal.setUTCHours(24, 0, 0, 0); 
-    
-    const chunkEndMs = Math.min(localEndMs, nextMidnightLocal.getTime());
-    
-    const dayOfWeek = currentLocal.getUTCDay();
-    
-    const dayRules = (availability.rules || []).filter((r: any) => r.day === dayOfWeek);
-    
-    if (dayRules.length === 0) {
-      if (allowOutOfHours) return { isValid: true, isOutOfHours: true };
-      return { isValid: false, error: '所选时间包含了仪器不开放的日期', isOutOfHours: true };
-    }
-    
-    const startLocalMinutes = currentLocal.getUTCHours() * 60 + currentLocal.getUTCMinutes();
-    
-    const endDatesLocal = new Date(chunkEndMs);
-    let endLocalMinutes = endDatesLocal.getUTCHours() * 60 + endDatesLocal.getUTCMinutes();
-    if (endLocalMinutes === 0 && chunkEndMs > currentMs) {
-       endLocalMinutes = 24 * 60;
-    }
-    
-    const fallsWithinAnyRule = dayRules.some((rule: any) => {
-      const rsMins = parseInt(rule.start.split(':')[0]) * 60 + parseInt(rule.start.split(':')[1]);
-      let reMins = parseInt(rule.end.split(':')[0]) * 60 + parseInt(rule.end.split(':')[1]);
-      if (reMins === 1439) reMins = 1440; // 23:59 inclusive of midnight
-      return startLocalMinutes >= rsMins && endLocalMinutes <= reMins;
-    });
- 
-    if (!fallsWithinAnyRule) {
-      if (allowOutOfHours) return { isValid: true, isOutOfHours: true };
-      const validRanges = dayRules.map((r: any) => `${r.start}-${r.end}`).join(', ');
-      return { isValid: false, error: `部分所选时间不在仪器开放范围内 (该日开放: ${validRanges})`, isOutOfHours: true };
-    }
-    
-    currentMs = chunkEndMs;
-  }
-  
-  return { isValid: true, isOutOfHours: false };
-}
- 
-function calculatePeakAccumulatedMinutes(start: Date, end: Date, peakHours: any[], tzOffset: number): number {
-  if (!peakHours || peakHours.length === 0) return 0;
-  
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  
-  const localStartMs = startMs - tzOffset * 60000;
-  const localEndMs = endMs - tzOffset * 60000;
-  
-  let currentMs = localStartMs;
-  let accumulated = 0;
-  
-  while (currentMs < localEndMs) {
-    const currentLocal = new Date(currentMs);
-    const nextMidnightLocal = new Date(currentLocal);
-    nextMidnightLocal.setUTCHours(24, 0, 0, 0); 
-    
-    const chunkEndMs = Math.min(localEndMs, nextMidnightLocal.getTime());
-    
-    const startLocalMinutes = currentLocal.getUTCHours() * 60 + currentLocal.getUTCMinutes();
-    
-    const endDatesLocal = new Date(chunkEndMs);
-    let endLocalMinutes = endDatesLocal.getUTCHours() * 60 + endDatesLocal.getUTCMinutes();
-    if (endLocalMinutes === 0 && chunkEndMs > currentMs) {
-       endLocalMinutes = 24 * 60;
-    }
-    
-    for (const peak of peakHours) {
-      const psMins = parseInt(peak.start.split(':')[0]) * 60 + parseInt(peak.start.split(':')[1]);
-      let peMins = parseInt(peak.end.split(':')[0]) * 60 + parseInt(peak.end.split(':')[1]);
-      if (peMins === 1439) peMins = 1440;
-      
-      const overlapStart = Math.max(startLocalMinutes, psMins);
-      const overlapEnd = Math.min(endLocalMinutes, peMins);
-      
-      if (overlapEnd > overlapStart) {
-        accumulated += overlapEnd - overlapStart;
-      }
-    }
-    
-    currentMs = chunkEndMs;
-  }
-  
-  return accumulated;
-}
+
  
 // 4. Create reservation
 app.post('/api/reservations', actionLimiter, (req, res) => {
@@ -1796,6 +1446,8 @@ app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
  
 app.use(authRoutes);
 app.use(calendarRoutes);
+app.use(equipmentRouter);
+app.use(equipmentAdminRouter);
 app.use(settingsRoutes);
 app.use(auditRoutes);
 app.use("/api/admin", notificationRoutes);

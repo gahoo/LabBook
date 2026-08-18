@@ -52,10 +52,9 @@
   *Tracer Bullet Test*: 编写 `10_whitelist.test.ts`，覆盖学生申请防重复提交及管理员审核（通过/驳回）状态流转。
   *Refactor*: 将白名单申请及审批相关的 4 个路由抽离至 `src/modules/whitelist/`。
 
-- [ ] **步骤 10：提取 `src/modules/equipment/` + `lib/validators.ts`**  
+- [x] **步骤 10：提取 `src/modules/equipment/` + `lib/validators.ts`**
   *Tracer Bullet Test*: 编写 `02_equipment.test.ts`（设备可用性算法时间冲突验证）。
   *Refactor*: 剥离设备 CRUD 逻辑及公共验证器。
-
 - [ ] **步骤 11：提取 `src/modules/reservation/`**  
   *Tracer Bullet Test*: 编写 `03_reservation_lifecycle.test.ts`（重点测试越权拦截与状态流转）。
   *Refactor*: 抽离预约新建、修改、签到等最大块逻辑，优化克隆重复代码。
