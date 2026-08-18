@@ -207,118 +207,6 @@ import { generateICS } from './src/lib/ics';
  
 // Get settings
  
-// 1. Get all equipment
-// 2. Add equipment (Admin)
-// Update equipment (Admin)
-// Batch update equipment (Admin)
-app.put('/api/admin/equipment-batch', adminAuth, (req, res) => {
-  const { ids, updates } = req.body;
-  
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'No equipment IDs provided' });
-  }
- 
-  try {
-    const updateEquipment = db.transaction((idsToUpdate: number[], updateData: any) => {
-      for (const id of idsToUpdate) {
-        const currentEq = db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as any;
-        if (!currentEq) continue;
- 
-        let avail: any = {};
-        try {
-          avail = JSON.parse(currentEq.availability_json || '{}');
-        } catch (e) {}
- 
-        let availChanged = false;
-        if (updateData.advanceDays !== undefined) {
-          avail.advanceDays = updateData.advanceDays;
-          availChanged = true;
-        }
-        if (updateData.allowOutOfHours !== undefined) {
-          avail.allowOutOfHours = updateData.allowOutOfHours;
-          availChanged = true;
-        }
-        if (updateData.minDurationMinutes !== undefined) {
-          avail.minDurationMinutes = updateData.minDurationMinutes;
-          availChanged = true;
-        }
-        if (updateData.maxDurationMinutes !== undefined) {
-          avail.maxDurationMinutes = updateData.maxDurationMinutes;
-          availChanged = true;
-        }
-        if (updateData.lateCancellationMinutes !== undefined) {
-          if (updateData.lateCancellationMinutes === null) {
-            delete avail.lateCancellationMinutes;
-          } else {
-            avail.lateCancellationMinutes = updateData.lateCancellationMinutes;
-          }
-          availChanged = true;
-        }
-        if (updateData.rules !== undefined) {
-          avail.rules = updateData.rules;
-          availChanged = true;
-        }
- 
-        const updateFields = [];
-        const updateValues = [];
- 
-        if (availChanged) {
-          updateFields.push('availability_json = ?');
-          updateValues.push(JSON.stringify(avail));
-        }
- 
-        if (updateData.is_hidden !== undefined) {
-          updateFields.push('is_hidden = ?');
-          updateValues.push(updateData.is_hidden ? 1 : 0);
-        }
- 
-        if (updateData.release_noshow_slots !== undefined) {
-          updateFields.push('release_noshow_slots = ?');
-          updateValues.push(updateData.release_noshow_slots ? 1 : 0);
-        }
- 
-        if (updateData.whitelist_enabled !== undefined) {
-          updateFields.push('whitelist_enabled = ?');
-          updateValues.push(updateData.whitelist_enabled ? 1 : 0);
-        }
- 
-        if (updateData.whitelist_data !== undefined) {
-          updateFields.push('whitelist_data = ?');
-          updateValues.push(updateData.whitelist_data);
-        }
- 
-        if (updateData.auto_approve !== undefined) {
-          updateFields.push('auto_approve = ?');
-          updateValues.push(updateData.auto_approve ? 1 : 0);
-        }
- 
-        if (updateFields.length > 0) {
-          updateValues.push(id);
-          const stmt = db.prepare(`
-            UPDATE equipment 
-            SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `);
-          stmt.run(...updateValues);
-        }
-      }
-    });
- 
-    updateEquipment(ids, updates);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Batch update error:', error);
-    res.status(500).json({ error: 'Failed to batch update equipment' });
-  }
-});
- 
-// 3. Get availability for an equipment on a specific date
-// Get all reservations for an equipment in a date range (for chart)
-
- 
-
- 
-
  
 // 4. Create reservation
 app.post('/api/reservations', actionLimiter, (req, res) => {
@@ -1406,12 +1294,7 @@ app.delete('/api/admin/reservations/:id', adminAuth, (req, res) => {
   res.json({ success: true });
 });
  
-// Admin delete equipment
-app.delete('/api/admin/equipment/:id', adminAuth, (req, res) => {
-  const { id } = req.params;
-  db.prepare("DELETE FROM equipment WHERE id = ?").run(id);
-  res.json({ success: true });
-});
+
  
 // Deprecated PUT /api/admin/reports/reservations/:id removed
  
