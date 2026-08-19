@@ -5,13 +5,19 @@
   - [x] **1.2 补全生命周期与状态机测试**
   - [x] **1.3 补全修改与管理端副作用测试**
   - [x] **1.4 TDD安全网极致强化 (初步)**
-  - [ ] **1.5 TDD安全网最终硬化 (The Last Mile)**:
+  - [x] **1.5 TDD安全网最终硬化 (The Last Mile)**:
     - [x] 费用“精确计算”绝对断言 (包含小时向上取整、按次计费、耗材费叠加)。
     - [x] 补齐 Happy Path 成功签到路径断言 (状态落库、`actual_start_time` 写入)。
     - [x] 补全 Cancel 操作对 `completed` 终态的拦截。
     - [x] 补齐 Update 操作的失败分支 (冲突、超时长、过去时间、非法状态、事务回滚验证)。
     - [x] 恢复 `release_noshow_slots` 临界点释放测试。
     - [x] 补充 Admin 列表筛选、统计空结果边界、非法输入兜底测试 (404 未知 Code, 异常参数)。
+  - [ ] **1.6 测试基建与高置信度加固 (High-Confidence Hardening)**:
+    - [ ] **P0 测试隔离与配置限制**: 在 `vitest.config.ts` 中禁用文件并行，引入 `resetTestDatabase()` 封装清库与初始化逻辑。
+    - [ ] **P1 全局时钟冻结**: 使用 `vi.useFakeTimers()` 固定系统时间，消除运行延迟导致的时间窗口 (如签到30分钟边界) 测试假阴性。
+    - [ ] **P1 完善冲突真值表**: 补充重叠测试场景 (完全相同、内部子集区间)，验证“取消/驳回的订单不阻塞”及“无到场开关关闭时保持阻塞”。
+    - [ ] **P1 计费拆分与真实事务回滚**: 分离 Session 与 Fixed fee 测试并补充状态断言；确保 Update 回滚有明确验证。
+    - [ ] **P2 前置工厂断言加固**: 封装 `createApproved`，强制断言创建结果 (HTTP 200 及 booking_code 返回)，防止错误级联污染。
 - [ ] **2. 抽离 Service 层**：将预约的创建、校验、更新、取消、状态流转逻辑从 `server.ts` 抽离到 `src/modules/reservation/service.ts`。
 - [ ] **3. 抽离 Routes 层**：建立 `src/modules/reservation/routes.ts`，接管 `/api/reservations` 和 `/api/admin/reservations` 相关路由。
 - [ ] **4. 收尾清理**：删除 `server.ts` 中的旧代码，并运行全量测试验证。
