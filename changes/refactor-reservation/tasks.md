@@ -19,6 +19,13 @@
     - [x] **P1 签退边界与精确计费**: 测试 Checkout 耗材的非法输入(负数/字符)拦截；测试超时签退产生违约记录；精确验证小时计费的向上取整(60分钟与61分钟边界)。验证 Update 的真实事务回滚。
     - [x] **P1 查询与管理端加固**: 补充 `/batch` 传入重复 code 的去重或顺应测试；测试管理端列表多参数查询时的严格 AND 匹配。
     - [x] **P2 前置工厂断言加固**: 封装 `createApproved`，强制断言创建结果 (HTTP 200 及 booking_code 返回)，防止错误级联污染。
-- [ ] **2. 抽离 Service 层**：将预约的创建、校验、更新、取消、状态流转逻辑从 `server.ts` 抽离到 `src/modules/reservation/service.ts`。
-- [ ] **3. 抽离 Routes 层**：建立 `src/modules/reservation/routes.ts`，接管 `/api/reservations` 和 `/api/admin/reservations` 相关路由。
-- [ ] **4. 收尾清理**：删除 `server.ts` 中的旧代码，并运行全量测试验证。
+- [ ] **2. Phase 1: 纯物理路由剥离 (Pure Physical Extraction)**：
+  - [x] **2.1 建立路由壳子**: 创建 `src/modules/reservation/routes.ts`，导出 `reservationRouter` 和 `reservationAdminRouter`。
+  - [x] **2.2 搬运 User 侧端点**: 物理迁移 `/api/reservations` 下的 POST (`/`, `/batch`, `/cancel`, `/update`, `/checkin`, `/checkout`) 路由。
+  - [ ] **2.3 搬运 Admin 侧端点**: 物理迁移 `/api/admin/reservations` 下的 GET (`/`, `/stats`), PUT (`/:id`), DELETE (`/:id`) 路由。
+  - [ ] **2.4 在 server.ts 挂载并测试**: 挂载路由，运行 `npm test` 确保 100% 通过。
+- [ ] **3. Phase 2: 渐进式 Service 层抽离 (Progressive Service Extraction)**：
+  - [ ] **3.1 Batch 2.1 - 查询与统计 (低风险)**: 抽离 `/batch`, 管理端列表, `stats` 的逻辑到 `ReservationService`，运行测试验证。
+  - [ ] **3.2 Batch 2.2 - 生命周期与状态 (中风险)**: 抽离 `checkin`, `checkout`, `cancel`, `update` 到 `ReservationService`，运行测试验证。
+  - [ ] **3.3 Batch 2.3 - 核心规则引擎 (最高风险)**: 抽离 `POST /` 创建预约，以及管理端审批驳回 (`PUT /:id`, `DELETE /:id`) 到 `ReservationService`，运行测试验证。
+- [ ] **4. 收尾清理**：清理 `server.ts` 和 `routes.ts` 中废弃的 import 引入，并运行全量测试确保系统稳固。
