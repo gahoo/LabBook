@@ -71,7 +71,7 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
   const createRes = async (data: any) => request(app).post('/api/reservations').send(data);
 
   // P2: Front-loaded factory assertion
-  const createApproved = async (equipmentId: number, overrides = {}) => {
+  const createReservationOrFail = async (equipmentId: number, overrides = {}) => {
     const randomId = 'STU_' + Math.random().toString(36).substring(2, 8);
     const res = await createRes({
       equipment_id: equipmentId,
@@ -83,7 +83,7 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       ...overrides
     });
     if (res.status !== 200) {
-      console.error('createApproved failed:', res.status, res.body);
+      console.error('createReservationOrFail failed:', res.status, res.body);
     }
     expect(res.status).toBe(200);
     expect(res.body.booking_code).toBeDefined();
@@ -211,7 +211,7 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
   });
 
   describe('III. Concurrency & Conflict Detection', () => {
-    it('should handle real concurrent requests safely (Promise.all)', async () => {
+    it('should handle same-tick concurrent requests safely (Promise.all)', async () => {
       const eqId = setupEquipment();
       setupSettings();
 
@@ -238,7 +238,7 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       setupSettings();
 
       // Base reservation: [24, 26]
-      await createApproved(eqId1, { start_time: t(24), end_time: t(26) });
+      await createReservationOrFail(eqId1, { start_time: t(24), end_time: t(26) });
 
       const overlapCases = [
         { name: 'exact match', start: 24, end: 26, expectStatus: 400 },
@@ -259,15 +259,18 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       }
 
       // Different equipment allows overlap
-      const resDiffEq = await createApproved(eqId2, { start_time: t(24), end_time: t(26) });
+      const resDiffEq = await createReservationOrFail(eqId2, { start_time: t(24), end_time: t(26) });
       expect(resDiffEq.status).toBe(200);
 
       // Canceled or rejected reservations do not block
       db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'cancelled', 'CODE_CANCEL')`).run(eqId1, t(30), t(32));
       db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'rejected', 'CODE_REJECT')`).run(eqId1, t(32), t(34));
 
-      const resCancelOverlap = await createApproved(eqId1, { start_time: t(30), end_time: t(32) });
+      const resCancelOverlap = await createReservationOrFail(eqId1, { start_time: t(30), end_time: t(32) });
       expect(resCancelOverlap.status).toBe(200);
+      
+      const resRejectOverlap = await createReservationOrFail(eqId1, { start_time: t(32), end_time: t(34) });
+      expect(resRejectOverlap.status).toBe(200);
     });
     it('should strictly manage no-show preemption based on settings and actual_start_time', async () => {
       const eqId = setupEquipment({}, { release_noshow_slots: true });
@@ -279,7 +282,7 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
         INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
         VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', 'CODE1')
       `).run(eqId, tMin(-40), tMin(20));
-      const r1 = await createApproved(eqId, { start_time: tMin(0), end_time: tMin(60) });
+      const r1 = await createReservationOrFail(eqId, { start_time: tMin(0), end_time: tMin(60) });
       expect(r1.status).toBe(200);
 
       // Scenario 2: Preemption blocked if release_noshow_slots is false
@@ -443,7 +446,8 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       // Verify violation record created
       const violation = db.prepare("SELECT * FROM violation_records WHERE student_id = 'TEST1' AND violation_type = 'overdue'").get();
       expect(violation).toBeDefined();
-      expect(violation.duration_minutes).toBeGreaterThanOrEqual(19); // ~20 min
+      expect(violation.duration_minutes).toBe(20); // strictly 20 minutes
+      expect(violation.status).toBe('active');
     });
   });
 
@@ -547,9 +551,29 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(uActive.status).toBe(400);
       expect(uActive.body.error).toMatch(/无法修改进行中或已完成的预约/);
 
-      // Verify transaction rollback (modified_count remains 0)
-      const row1 = db.prepare("SELECT modified_count FROM reservations WHERE booking_code=?").get(code1) as any;
-      expect(row1.modified_count).toBe(0);
+      // 5. Verify transaction rollback
+      const beforeRollback = db.prepare("SELECT start_time, end_time, modified_count, status FROM reservations WHERE booking_code=?").get(code1) as any;
+      db.exec(`
+        CREATE TRIGGER abort_reservation_update
+        BEFORE UPDATE ON reservations
+        BEGIN
+          SELECT RAISE(ABORT, 'forced rollback');
+        END;
+      `);
+      
+      try {
+        const rollbackRes = await request(app).post('/api/reservations/update').send({
+          booking_code: code1,
+          start_time: t(24),
+          end_time: t(25.5),
+        });
+        expect(rollbackRes.status).toBe(500);
+        
+        const afterRollback = db.prepare("SELECT start_time, end_time, modified_count, status FROM reservations WHERE booking_code=?").get(code1) as any;
+        expect(afterRollback).toEqual(beforeRollback);
+      } finally {
+        db.exec('DROP TRIGGER IF EXISTS abort_reservation_update');
+      }
     });
 
   });
