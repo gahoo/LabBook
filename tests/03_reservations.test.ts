@@ -1,32 +1,35 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../server.js';
 import { db } from '../src/db/index.js';
 import { addHours, subHours, subMinutes, addMinutes, format } from 'date-fns';
+import { resetTestDatabase } from './utils/db-helper.js';
 
-const toIso = (d) => d.toISOString().split('.')[0] + 'Z';
-const now = new Date();
-const t = (h) => toIso(addHours(now, h));
-const tMin = (m) => toIso(addMinutes(now, m));
+const toIso = (d: Date) => d.toISOString().split('.')[0] + 'Z';
+const fixedNow = new Date('2030-01-15T10:00:00.000Z');
+const t = (h: number) => toIso(addHours(fixedNow, h));
+const tMin = (m: number) => toIso(addMinutes(fixedNow, m));
 
 describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
-  let adminToken;
+  let adminToken: string;
 
   beforeAll(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+
     const pwd = process.env.ADMIN_PASSWORD || 'admin';
     const res = await request(app).post('/api/admin/login').send({ password: pwd });
     adminToken = res.body.token;
   });
 
   beforeEach(() => {
-    db.prepare('DELETE FROM reservations').run();
-    db.prepare('DELETE FROM equipment').run();
-    db.prepare('DELETE FROM violation_records').run();
-    db.prepare('DELETE FROM whitelist_applications').run();
-    db.prepare('DELETE FROM penalty_rules').run();
-    db.prepare('DELETE FROM user_penalties').run();
-    db.prepare("DELETE FROM settings").run();
+    resetTestDatabase();
   });
+
+  afterAll(() => {
+    vi.useRealTimers();
+  });
+
 
   const setupEquipment = (availParams = {}, overrides = {}) => {
     const defaultAvail = {
@@ -168,8 +171,8 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
     it('should force pending status for auto_approve equipment if user has REQUIRE_APPROVAL penalty', async () => {
       const eqId = setupEquipment({}, { auto_approve: true });
       setupSettings();
-      db.prepare("INSERT INTO penalty_rules (id, name, violation_type, trigger_config, action_config, is_active) VALUES (1, 'T1', 'any', '{}', '{}', 1)").run();
-      db.prepare("INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time) VALUES ('123', 1, 'REQUIRE_APPROVAL', '{}', datetime('now', '-1 day'), datetime('now', '+10 days'))").run();
+      const info = db.prepare("INSERT INTO penalty_rules (name, violation_type, trigger_config, action_config, is_active) VALUES ('T1', 'any', '{}', '{}', 1)").run();
+      db.prepare("INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time) VALUES ('123', ?, 'REQUIRE_APPROVAL', '{}', ?, ?)").run(info.lastInsertRowid, t(-24), t(24 * 10));
       const res = await createRes({ equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三', phone: '123456', email: 'a@b.com', start_time: t(24), end_time: t(25) });
       expect(res.status).toBe(200);
       expect(db.prepare("SELECT status FROM reservations WHERE booking_code=?").get(res.body.booking_code).status).toBe('pending');

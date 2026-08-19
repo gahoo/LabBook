@@ -1,4 +1,6 @@
 import { db } from '../../server.js';
+import { initializeSchema } from '../../src/db/schema.js';
+import { runMigrations } from '../../src/db/migrations.js';
 
 export function clearDatabase() {
   const tablesToClear = [
@@ -10,19 +12,29 @@ export function clearDatabase() {
     'whitelist_applications',
     'audit_logs',
     'notification_logs',
+    'notifications',
     'penalty_rules',
+    'penalty_rules_old',
     'settings',
-    'penalty_exemptions'
+    'penalty_exemptions',
+    'penalty_waivers'
   ];
   
-  // Wrap in a transaction for safety, though SQLite handles separate deletes fine
   db.transaction(() => {
+    // 1. Drop all tables to ensure a clean slate
     for (const table of tablesToClear) {
       try {
-        db.prepare(`DELETE FROM ${table}`).run();
+        db.prepare(`DROP TABLE IF EXISTS ${table}`).run();
       } catch (e) {
-        // ignore if table doesn't exist yet
+        // ignore
       }
     }
   })();
 }
+
+export function resetTestDatabase() {
+  clearDatabase();
+  initializeSchema(db);
+  runMigrations(db);
+}
+
