@@ -373,27 +373,6 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(chk.status).toBe(400); // already active
     });
 
-    it('should precisely calculate exact cost based on actual duration and price_type hour', async () => {
-      const eqId = setupEquipment({}, { price_type: 'hour', price: 120, consumable_fee: 10 });
-      setupSettings();
-      const code = 'COST_CHECK';
-      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-60), tMin(60), code);
-      
-      // Force actual_start_time to exactly 2.5 hours ago
-      db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(tMin(-150), code);
-
-      const chkOut = await request(app).post('/api/reservations/checkout').send({ booking_code: code, consumable_quantity: 2 });
-      expect(chkOut.status).toBe(200);
-
-      const r = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code);
-      expect(r.status).toBe('completed');
-      
-      // 2.5 hours -> ceil(2.5) = 3 hours. 3 * 120 = 360
-      // 2 consumables * 10 = 20
-      // Total = 380
-      expect(r.total_cost).toBe(380);
-    });
-
     it('should accurately calculate session-based and fixed fees', async () => {
       const eqId = setupEquipment({}, { price_type: 'session', price: 50, consumable_fee: 5 });
       setupSettings();
@@ -405,6 +384,61 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       const r = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(code);
       // Session price 50, even if 2.5 hours. Consumables 3 * 5 = 15. Total = 65.
       expect(r.total_cost).toBe(65);
+    });
+
+    it('should precisely calculate exact cost based on actual duration and price_type hour (60m vs 61m boundary)', async () => {
+      const eqId = setupEquipment({}, { price_type: 'hour', price: 100, consumable_fee: 10 });
+      setupSettings();
+      
+      // Case 1: Exactly 60 minutes
+      const c1 = 'COST_60M';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-60), tMin(60), c1);
+      db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(tMin(-60), c1);
+      
+      const chk1 = await request(app).post('/api/reservations/checkout').send({ booking_code: c1 });
+      expect(chk1.status).toBe(200);
+      const r1 = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(c1);
+      expect(r1.total_cost).toBe(100); // 60 mins -> exactly 1 hour
+
+      // Case 2: Exactly 61 minutes (should round up to 2 hours)
+      const c2 = 'COST_61M';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-61), tMin(60), c2);
+      db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(tMin(-61), c2);
+      
+      const chk2 = await request(app).post('/api/reservations/checkout').send({ booking_code: c2 });
+      expect(chk2.status).toBe(200);
+      const r2 = db.prepare("SELECT * FROM reservations WHERE booking_code=?").get(c2);
+      expect(r2.total_cost).toBe(200); // ceil(61/60) = 2 hours -> 200
+
+      // Case 3: Invalid consumable quantities
+      const c3 = 'COST_INV';
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, '123', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-30), tMin(60), c3);
+      db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(tMin(-30), c3);
+
+      const rejNeg = await request(app).post('/api/reservations/checkout').send({ booking_code: c3, consumable_quantity: -1 });
+      expect(rejNeg.status).toBe(400);
+
+      const rejChar = await request(app).post('/api/reservations/checkout').send({ booking_code: c3, consumable_quantity: 'abc' });
+      expect(rejChar.status).toBe(400);
+    });
+
+    it('should generate an overdue violation if checkout time exceeds grace period', async () => {
+      const eqId = setupEquipment();
+      setupSettings();
+      db.prepare("UPDATE settings SET value = '15' WHERE key = 'violation_overtime_grace_minutes'").run();
+      
+      const cCode = 'OVERDUE_CHK';
+      // Reservation ended 20 minutes ago. User is checking out now.
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, 'TEST1', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', ?)`).run(eqId, tMin(-120), tMin(-20), cCode);
+      db.prepare("UPDATE reservations SET actual_start_time = ? WHERE booking_code = ?").run(tMin(-120), cCode);
+      
+      const res = await request(app).post('/api/reservations/checkout').send({ booking_code: cCode });
+      expect(res.status).toBe(200);
+
+      // Verify violation record created
+      const violation = db.prepare("SELECT * FROM violation_records WHERE student_id = 'TEST1' AND violation_type = 'overdue'").get();
+      expect(violation).toBeDefined();
+      expect(violation.duration_minutes).toBeGreaterThanOrEqual(19); // ~20 min
     });
   });
 

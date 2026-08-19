@@ -870,6 +870,13 @@ app.post('/api/reservations/checkout', (req, res) => {
   const { booking_code, consumable_quantity } = req.body;
   
   try {
+    if (consumable_quantity !== undefined) {
+      const qty = Number(consumable_quantity);
+      if (!Number.isInteger(qty) || qty < 0) {
+        return res.status(400).json({ error: '耗材数量必须是大于等于0的整数' });
+      }
+    }
+
     const result = db.transaction(() => {
       const reservation = db.prepare(`
         SELECT r.*, e.price_type, e.price, e.consumable_fee 
