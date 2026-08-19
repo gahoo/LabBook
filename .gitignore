@@ -49,3 +49,7 @@ extract_batch_stats.py
 extract_lifecycle.py
 extract_core.py
 test_whitelist.js
+check_unused.cjs
+cleanup_server.py
+cleanup_imports.js
+cleanup_routes.py

@@ -1,45 +1,20 @@
-import { validateTimeRange, validateOperatingHours, calculatePeakAccumulatedMinutes } from './src/lib/validators.js';
 import authRoutes from "./src/modules/auth/routes.js";
 import { calendarRoutes } from "./src/modules/calendar/routes.js";
 import settingsRoutes from "./src/modules/settings/routes.js";
 import auditRoutes from './src/modules/audit/routes.js';
 import { equipmentRouter, equipmentAdminRouter } from './src/modules/equipment/routes.js';
-import { recordAuditLog } from './src/modules/audit/service.js';
 import violationRoutes from './src/modules/violation/routes.js';
 import { whitelistRouter, whitelistAdminRouter } from './src/modules/whitelist/routes.js';
-import { checkUserPenalty, evaluatePenaltiesOnViolation, getNaturalPeriodStart } from './src/modules/violation/service.js';
 import { adminAuth } from "./src/middleware/auth.js";
 import { notificationRoutes } from "./src/modules/notification/routes.js";
-import { authLimiter, mailLimiter, actionLimiter } from "./src/middleware/rateLimiter.js";
-import express from 'express';
- 
-import { config } from './src/config.js';
- 
-import { OperationRejectError } from './src/lib/errors.js';
-import { encryptID, decryptID } from './src/lib/crypto.js';
+import express from 'express'; 
+import { config } from './src/config.js'; 
 import { createServer as createViteServer } from 'vite';
-import cronParser from 'cron-parser';
-import * as cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
-import { addDays, format, isBefore, parseISO, startOfDay, endOfDay, isAfter } from 'date-fns';
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import { 
-  reloadBackupCron, 
-  startUpcomingReminderCron, 
-  startEndingReminderCron, 
-  startNoShowScanner,
-  initSchedulers 
-} from './src/modules/scheduler/service.js';
+import { initSchedulers } from './src/modules/scheduler/service.js';    
+import { processNotificationQueue, setBaseUrl } from './src/modules/notification/service.js';
 
- 
- 
- 
- 
-import { marked } from 'marked';
-import { notifyEvent, processNotificationQueue, scheduleNextRun, setBaseUrl } from './src/modules/notification/service.js';
- 
 const app = express();
 app.set('trust proxy', config.trustProxy);
 app.use(express.json());
@@ -125,7 +100,6 @@ function getNextNaturalPeriodStart(now: Date, periodType: string): Date {
  
  
  
-import { generateICS } from './src/lib/ics';
  
 // Get settings
  
