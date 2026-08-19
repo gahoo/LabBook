@@ -1,10 +1,11 @@
+import crypto from 'crypto';
 
 import { OperationRejectError } from '../../lib/errors.js';
 import { checkUserPenalty, evaluatePenaltiesOnViolation } from '../violation/service.js';
 import { notifyEvent } from '../notification/service.js';
 import { validateOperatingHours, calculatePeakAccumulatedMinutes } from '../../lib/validators.js';
 import { db } from '../../db/index.js';
-import { isAfter, format } from 'date-fns';
+import { isAfter, isBefore, format } from 'date-fns';
 
 function getViolationSettings(db: any) {
   const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_cancel_minutes', 'violation_no_show_grace_minutes', 'violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
@@ -640,5 +641,314 @@ export class ReservationService {
     }
     
     return result;
+  }
+
+  static create(data: any, tz_offset: number = 0) {
+    const { equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time } = data;
+   
+    // Input validation
+    const stringFields = { student_id, student_name, supervisor, phone, email, start_time, end_time };
+    for (const [key, val] of Object.entries(stringFields)) {
+      if (typeof val !== 'string' || val.trim() === '') {
+        throw new OperationRejectError(`${key} 不能为空且必须为字符串`, 400);
+      }
+    }
+    if (student_name.length > 100 || supervisor.length > 100) {
+      throw new OperationRejectError('姓名或导师名称过长（上限100字符）', 400);
+    }
+    if (supervisor.includes('教授') || supervisor.includes('老师')) {
+      throw new OperationRejectError('导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓', 400);
+    }
+    if (email.length > 200) {
+      throw new OperationRejectError('邮箱地址过长（上限200字符）', 400);
+    }
+    if (equipment_id === undefined || equipment_id === null || isNaN(Number(equipment_id)) || !Number.isInteger(Number(equipment_id))) {
+      throw new OperationRejectError('equipment_id 必须为有效的整数', 400);
+    }
+    
+    // Retrieve setting and check email suffix
+    const emailSuffixesSettingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('allowed_email_suffixes') as any;
+    if (emailSuffixesSettingRow && emailSuffixesSettingRow.value) {
+      const allowedSuffixes = emailSuffixesSettingRow.value.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+      if (allowedSuffixes.length > 0) {
+        if (!email || !email.includes('@')) {
+          throw new OperationRejectError(`邮箱格式不正确，目前仅允许以下后缀: ${allowedSuffixes.join(', ')}`, 400);
+        }
+        const domain = email.split('@').pop()?.toLowerCase() || '';
+        if (!allowedSuffixes.includes(domain)) {
+          throw new OperationRejectError(`暂不支持该邮箱，目前仅允许以下邮箱后缀: ${allowedSuffixes.join(', ')}`, 400);
+        }
+      }
+    }
+   
+    const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
+    if (!equipment) throw new OperationRejectError('未找到该仪器', 404);
+    
+    let penaltyCheck = { isPenalized: false, penaltyMethod: 'NONE', reason: '', restrictions: { reduce_days: 0, min_retain_days: 999, fee_multiplier: 1.0 }, violation_ids: [] as number[] };
+    try {
+      penaltyCheck = checkUserPenalty(student_id, equipment_id) as any;
+    } catch (e) {
+      console.error('Error in checkUserPenalty:', e);
+      throw new OperationRejectError('检查用户惩罚状态时发生错误', 500);
+    }
+   
+    if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
+      const err = new OperationRejectError(penaltyCheck.reason, 403);
+      (err as any).violation_ids = penaltyCheck.violation_ids;
+      (err as any).structured_penalty = (penaltyCheck as any).structured_penalty;
+      throw err;
+    }
+    
+    if (equipment.is_hidden) {
+      throw new OperationRejectError('该仪器暂不开放预约', 403);
+    }
+   
+    // Whitelist check
+    if (equipment.whitelist_enabled) {
+      const whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
+      if (!whitelist.includes(student_name.trim())) {
+        const err = new OperationRejectError('您不在该仪器的预约白名单中，请先申请加入白名单。', 403);
+        (err as any).needs_whitelist_application = true;
+        throw err;
+      }
+    }
+   
+    // Check if slot is in the past
+    const now = new Date();
+    const start = new Date(start_time);
+    const end = new Date(end_time);
+   
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new OperationRejectError('无效的时间格式', 400);
+    }
+   
+    if (isBefore(start, now)) {
+      throw new OperationRejectError('不能预约已经开始或过去的时间', 400);
+    }
+   
+    let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
+    try {
+      if (equipment.availability_json) {
+        availability = JSON.parse(equipment.availability_json);
+      }
+    } catch (e) {}
+   
+    if (end <= start) {
+      throw new OperationRejectError('结束时间必须晚于开始时间', 400);
+    }
+   
+    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+    const minDuration = availability.minDurationMinutes || 30;
+   
+    if (durationMinutes < minDuration) throw new OperationRejectError(`预约时长不能少于 ${minDuration} 分钟`, 400);
+   
+    const originalAdvanceDays = availability.advanceDays || 7;
+    let penalizedAdvanceDays = originalAdvanceDays;
+    if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
+      if (penaltyCheck.restrictions.reduce_days > 0) {
+        penalizedAdvanceDays -= penaltyCheck.restrictions.reduce_days;
+      }
+      if (penalizedAdvanceDays < penaltyCheck.restrictions.min_retain_days) {
+        penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
+      }
+    }
+   
+    const maxOriginalDate = new Date(now);
+    maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
+    maxOriginalDate.setHours(23, 59, 59, 999);
+   
+    const maxPenalizedDate = new Date(now);
+    maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
+    maxPenalizedDate.setHours(23, 59, 59, 999);
+    
+    if (start > maxOriginalDate) {
+      throw new OperationRejectError(`只能提前 ${originalAdvanceDays} 天预约`, 400);
+    } else if (start > maxPenalizedDate) {
+      const err = new OperationRejectError(`受惩罚规则限制，您当前只能提前 ${penalizedAdvanceDays} 天预约`, 403);
+      (err as any).structured_penalty = (penaltyCheck as any).structured_penalty || penaltyCheck;
+      throw err;
+    }
+   
+    const validResult = validateOperatingHours(start, end, availability, tz_offset);
+    if (!validResult.isValid) {
+      throw new OperationRejectError(validResult.error, 400);
+    }
+    let isOutOfHours = validResult.isOutOfHours;
+   
+    const maxDuration = availability.maxDurationMinutes || 60;
+    const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
+    const allowExceed = !!availability.allowExceedDuration;
+    const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
+    const peakHours = availability.peakHours || [];
+   
+    const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
+   
+    const userDailyUsedRow = db.prepare(`
+      SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
+      FROM reservations
+      WHERE equipment_id = ?
+        AND student_id = ?
+        AND DATE(start_time, ?) = DATE(?, ?)
+        AND status IN ('pending', 'approved', 'active')
+    `).get(equipment_id, student_id, offsetModifier, start_time, offsetModifier) as any;
+    const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
+   
+    if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
+      throw new OperationRejectError(`超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)`, 400);
+    }
+   
+    const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
+    let isPeakExceeded = false;
+    
+    if (peakAccumulated > maxDuration) {
+      if (!allowExceed) {
+        throw new OperationRejectError(`您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许忙时超额预约。`, 400);
+      }
+      isPeakExceeded = true;
+    } else if (durationMinutes > maxDuration) {
+      if (!allowExceedOffPeak) {
+        throw new OperationRejectError(`您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。`, 400);
+      }
+    }
+   
+    const tx = db.transaction(() => {
+      // Check if slot is already booked
+      const existingRaw = db.prepare(`
+        SELECT id, start_time, actual_start_time FROM reservations 
+        WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
+        AND start_time < ? AND end_time > ?
+      `).all(equipment_id, end_time, start_time);
+   
+      let hasConflict = false;
+      if (existingRaw.length > 0) {
+        if (equipment.release_noshow_slots) {
+          const nowTime = new Date().getTime();
+          hasConflict = existingRaw.some((res: any) => {
+            if (!res.actual_start_time) {
+              const resStartTime = new Date(res.start_time).getTime();
+              if (nowTime > resStartTime + 30 * 60 * 1000) {
+                return false; // This is a no-show, so it's not a conflict
+              }
+            }
+            return true;
+          });
+        } else {
+          hasConflict = true;
+        }
+      }
+   
+      if (hasConflict) {
+        throw new OperationRejectError('该时间段已被预约', 400);
+      }
+   
+      const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      let status = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
+      
+      if (penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL') {
+        status = 'pending';
+      }
+   
+      const stmt = db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `);
+   
+      const info = stmt.run(equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code);
+      return { info, booking_code, status };
+    });
+   
+    const { info, booking_code, status } = tx();
+   
+    notifyEvent(db, 'booking_created', {
+      booking_id: info.lastInsertRowid,
+      booking_code,
+      student_id,
+      student_name,
+      equipment_name: equipment.name,
+      start_time,
+      end_time,
+      status
+    }, email);
+   
+    const deliveryWeb = db.prepare('SELECT value FROM settings WHERE key = ?').get('booking_code_delivery.web') as any;
+    const smtpEnabled = db.prepare('SELECT value FROM settings WHERE key = ?').get('smtp.enabled') as any;
+    const smtpEventCreated = db.prepare('SELECT value FROM settings WHERE key = ?').get('email.events.booking_created.enabled') as any;
+    const smtpEventApproved = db.prepare('SELECT value FROM settings WHERE key = ?').get('email.events.booking_approved.enabled') as any;
+   
+    const webhookEnabled = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.enabled') as any;
+    const webhookEventCreated = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.events.booking_created.enabled') as any;
+    const webhookEventApproved = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.events.booking_approved.enabled') as any;
+   
+    const hasSmtp = smtpEnabled?.value === 'true' && (smtpEventCreated?.value === 'true' || smtpEventApproved?.value === 'true');
+    const hasWebhook = webhookEnabled?.value === 'true' && (webhookEventCreated?.value === 'true' || webhookEventApproved?.value === 'true');
+   
+    const booking_code_delivery = {
+      web: deliveryWeb ? deliveryWeb.value : 'true',
+      email: hasSmtp ? 'true' : 'false',
+      webhook: hasWebhook ? 'true' : 'false',
+    };
+   
+    const webhookAliasObj = db.prepare('SELECT value FROM settings WHERE key = ?').get('webhook.alias') as any;
+   
+    return { 
+      id: info.lastInsertRowid, 
+      booking_code: booking_code_delivery.web === 'false' ? undefined : booking_code, 
+      status,
+      message: penaltyCheck.penaltyMethod === 'REQUIRE_APPROVAL' ? penaltyCheck.reason : undefined,
+      booking_code_delivery,
+      webhook_alias: webhookAliasObj?.value || 'Webhook',
+      structured_penalty: (penaltyCheck as any).structured_penalty || penaltyCheck
+    };
+  }
+
+  static adminUpdate(id: string | number, updates: any) {
+    const oldRes = db.prepare('SELECT r.*, e.name as equipment_name, e.price_type, e.price, e.consumable_fee FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
+    if (!oldRes) throw new OperationRejectError('未找到该预约', 404);
+   
+    // Merge old data with incoming data (PATCH style)
+    const student_id = updates.student_id !== undefined ? updates.student_id : oldRes.student_id;
+    const student_name = updates.student_name !== undefined ? updates.student_name : oldRes.student_name;
+    const supervisor = updates.supervisor !== undefined ? updates.supervisor : oldRes.supervisor;
+    const start_time = updates.start_time !== undefined ? updates.start_time : oldRes.start_time;
+    const end_time = updates.end_time !== undefined ? updates.end_time : oldRes.end_time;
+    const status = updates.status !== undefined ? updates.status : oldRes.status;
+    const total_cost = updates.total_cost !== undefined ? updates.total_cost : oldRes.total_cost;
+    const consumable_quantity = updates.consumable_quantity !== undefined ? updates.consumable_quantity : oldRes.consumable_quantity;
+   
+    db.prepare(`
+      UPDATE reservations 
+      SET student_id = ?, student_name = ?, supervisor = ?, start_time = ?, end_time = ?, status = ?, total_cost = ?, consumable_quantity = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(student_id, student_name, supervisor, start_time, end_time, status, total_cost, consumable_quantity, id);
+    
+    if (oldRes.status === 'pending' && status === 'approved') {
+      notifyEvent(db, 'booking_approved', {
+        booking_id: oldRes.id,
+        booking_code: oldRes.booking_code,
+        student_name,
+        equipment_name: oldRes.equipment_name,
+        start_time,
+        end_time
+      }, oldRes.email);
+    }
+  }
+
+  static adminDelete(id: string | number, reason: string = '') {
+    const reservation = db.prepare('SELECT r.*, e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(id) as any;
+    if (!reservation) throw new OperationRejectError('未找到该预约', 404);
+ 
+    db.prepare('DELETE FROM reservations WHERE id = ?').run(id);
+ 
+    if (reservation.status === 'pending' || reservation.status === 'approved') {
+      notifyEvent(db, 'booking_rejected', {
+        booking_id: reservation.id,
+        booking_code: reservation.booking_code,
+        student_name: reservation.student_name,
+        equipment_name: reservation.equipment_name,
+        start_time: reservation.start_time,
+        end_time: reservation.end_time,
+        reject_reason: reason
+      }, reservation.email);
+    }
   }
 }

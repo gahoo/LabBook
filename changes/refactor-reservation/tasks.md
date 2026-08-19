@@ -27,5 +27,5 @@
 - [ ] **3. Phase 2: 渐进式 Service 层抽离 (Progressive Service Extraction)**：
   - [x] **3.1 Batch 2.1 - 查询与统计 (低风险)**: 抽离 `/batch`, 管理端列表, `stats` 的逻辑到 `ReservationService`，运行测试验证。
   - [x] **3.2 Batch 2.2 - 生命周期与状态 (中风险)**: 抽离 `checkin`, `checkout`, `cancel`, `update` 到 `ReservationService`，运行测试验证。
-  - [ ] **3.3 Batch 2.3 - 核心规则引擎 (最高风险)**: 抽离 `POST /` 创建预约，以及管理端审批驳回 (`PUT /:id`, `DELETE /:id`) 到 `ReservationService`，运行测试验证。
+  - [x] **3.3 Batch 2.3 - 核心规则引擎 (最高风险)**: 抽离 `POST /` 创建预约，以及管理端审批驳回 (`PUT /:id`, `DELETE /:id`) 到 `ReservationService`，运行测试验证。
 - [ ] **4. 收尾清理**：清理 `server.ts` 和 `routes.ts` 中废弃的 import 引入，并运行全量测试确保系统稳固。

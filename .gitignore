@@ -47,4 +47,5 @@ move_routes.py
 move_admin_routes.py
 extract_batch_stats.py
 extract_lifecycle.py
-
+extract_core.py
+test_whitelist.js
