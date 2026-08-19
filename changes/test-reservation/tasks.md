@@ -12,12 +12,12 @@
     - [x] 补齐 Update 操作的失败分支 (冲突、超时长、过去时间、非法状态、事务回滚验证)。
     - [x] 恢复 `release_noshow_slots` 临界点释放测试。
     - [x] 补充 Admin 列表筛选、统计空结果边界、非法输入兜底测试 (404 未知 Code, 异常参数)。
-  - [ ] **1.6 测试基建与高置信度加固 (High-Confidence Hardening)**:
+  - [x] **1.6 测试基建与高置信度加固 (High-Confidence Hardening)**:
     - [x] **P0 测试数据库隔离**: 引入 `resetTestDatabase()` 封装清库与初始化逻辑，确保每个测试环境干净独立（保留文件级并行以保证测试运行效率）。
     - [x] **P1 全局时钟冻结**: 使用 `vi.useFakeTimers()` 固定系统时间，消除运行延迟导致的时间窗口 (如签到30分钟边界) 测试假阴性。
     - [x] **P1 完善冲突真值表**: 补充重叠测试场景 (完全相同、内部子集区间)，验证取消/驳回订单的无阻塞性。**补充验证不同设备预约可重叠；爽约释放时若已有 `actual_start_time` 绝对阻塞抢占。**
     - [x] **P1 签退边界与精确计费**: 测试 Checkout 耗材的非法输入(负数/字符)拦截；测试超时签退产生违约记录；精确验证小时计费的向上取整(60分钟与61分钟边界)。验证 Update 的真实事务回滚。
-    - [ ] **P1 查询与管理端加固**: 补充 `/batch` 传入重复 code 的去重或顺应测试；测试管理端列表多参数查询时的严格 AND 匹配。
+    - [x] **P1 查询与管理端加固**: 补充 `/batch` 传入重复 code 的去重或顺应测试；测试管理端列表多参数查询时的严格 AND 匹配。
     - [x] **P2 前置工厂断言加固**: 封装 `createApproved`，强制断言创建结果 (HTTP 200 及 booking_code 返回)，防止错误级联污染。
 - [ ] **2. 抽离 Service 层**：将预约的创建、校验、更新、取消、状态流转逻辑从 `server.ts` 抽离到 `src/modules/reservation/service.ts`。
 - [ ] **3. 抽离 Routes 层**：建立 `src/modules/reservation/routes.ts`，接管 `/api/reservations` 和 `/api/admin/reservations` 相关路由。

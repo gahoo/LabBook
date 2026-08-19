@@ -332,14 +332,19 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(notFound.status).toBe(404);
     });
 
-    it('should query batch by codes and ignore invalid codes', async () => {
+    it('should query batch by codes and ignore invalid or duplicate codes', async () => {
       const eqId = setupEquipment();
       setupSettings();
       const r1 = await createRes({ equipment_id: eqId, student_id: '123', student_name: 'test', supervisor: '张三', phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(25) });
+      const r2 = await createRes({ equipment_id: eqId, student_id: '456', student_name: 'test2', supervisor: '李四', phone: '123', email: 'c@d.com', start_time: t(26), end_time: t(27) });
       
-      const res = await request(app).post('/api/reservations/batch').send({ codes: [r1.body.booking_code, 'NONEXISTENT'] });
+      const res = await request(app).post('/api/reservations/batch').send({ codes: [r1.body.booking_code, 'NONEXISTENT', r2.body.booking_code, r1.body.booking_code] });
       expect(res.status).toBe(200);
-      expect(res.body.length).toBe(1); // Only valid codes returned
+      expect(res.body.length).toBe(2); // Only valid codes returned, duplicates removed
+      
+      const codes = res.body.map((r: any) => r.booking_code);
+      expect(codes).toContain(r1.body.booking_code);
+      expect(codes).toContain(r2.body.booking_code);
     });
   });
 
@@ -573,25 +578,30 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(db.prepare("SELECT * FROM reservations WHERE id=?").get(row2.id)).toBeUndefined();
     });
 
-    it('should filter admin reservations and handle empty stats boundaries', async () => {
+    it('should filter admin reservations and handle strict AND multi-param boundaries', async () => {
       const eqId = setupEquipment();
       setupSettings();
       const res1 = await createRes({ equipment_id: eqId, student_id: 'S1', student_name: 'Alice', supervisor: 'Dr. Smith', phone: '123', email: 'a@b.com', start_time: t(48), end_time: t(49) });
       expect(res1.status).toBe(200);
       const res2 = await createRes({ equipment_id: eqId, student_id: 'S2', student_name: 'Bob', supervisor: 'Dr. Jones', phone: '123', email: 'a@b.com', start_time: t(50), end_time: t(51) });
       expect(res2.status).toBe(200);
+      const res3 = await createRes({ equipment_id: eqId, student_id: 'S3', student_name: 'Alice', supervisor: 'Dr. Jones', phone: '123', email: 'a@b.com', start_time: t(52), end_time: t(53) });
+      expect(res3.status).toBe(200);
 
-      // 1. List Filtering
+      // 1. List Filtering (Single)
       const listAlice = await request(app).get('/api/admin/reservations?student_name=Alice').set('Authorization', 'Bearer ' + adminToken);
       expect(listAlice.status).toBe(200);
-      expect(listAlice.body.length).toBeGreaterThanOrEqual(1);
-      expect(listAlice.body.some((r: any) => r.student_name === 'Alice')).toBe(true);
+      expect(listAlice.body.length).toBe(2);
+      expect(listAlice.body.some((r: any) => r.student_name === 'Bob')).toBe(false);
 
-      const listSmith = await request(app).get('/api/admin/reservations?supervisor=Smith').set('Authorization', 'Bearer ' + adminToken);
-      expect(listSmith.body.some((r: any) => r.supervisor === 'Dr. Smith')).toBe(true);
-      expect(listSmith.body.some((r: any) => r.supervisor === 'Dr. Jones')).toBe(false);
+      // 2. List Filtering (Strict AND multiple params)
+      const listAliceJones = await request(app).get('/api/admin/reservations?student_name=Alice&supervisor=Jones').set('Authorization', 'Bearer ' + adminToken);
+      expect(listAliceJones.status).toBe(200);
+      expect(listAliceJones.body.length).toBe(1);
+      expect(listAliceJones.body[0].student_name).toBe('Alice');
+      expect(listAliceJones.body[0].supervisor).toBe('Dr. Jones');
 
-      // 2. Stats Empty Boundaries
+      // 3. Stats Empty Boundaries
       const emptyStats = await request(app).get(`/api/admin/reservations/stats?student_name=Nobody&startDate=${t(-100)}&endDate=${t(100)}`).set('Authorization', 'Bearer ' + adminToken);
       expect(emptyStats.status).toBe(200);
       expect(emptyStats.body.usageByPerson.length).toBe(0);

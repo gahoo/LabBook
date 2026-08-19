@@ -490,7 +490,7 @@ app.post('/api/reservations/batch', (req, res) => {
     return res.status(400).json({ error: 'codes must be an array' });
   }
  
-  const validCodes = codesArray.map(c => String(c).trim()).filter(Boolean);
+  const validCodes = [...new Set(codesArray.map(c => String(c).trim()).filter(Boolean))];
   if (validCodes.length === 0) {
     return res.json([]);
   }
