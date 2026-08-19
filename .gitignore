@@ -45,3 +45,4 @@ clean_server.cjs
 generate_tests.cjs
 move_routes.py
 move_admin_routes.py
+extract_batch_stats.py
