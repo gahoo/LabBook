@@ -68,7 +68,27 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
     }));
   };
 
-  const createRes = async (data) => request(app).post('/api/reservations').send(data);
+  const createRes = async (data: any) => request(app).post('/api/reservations').send(data);
+
+  // P2: Front-loaded factory assertion
+  const createApproved = async (equipmentId: number, overrides = {}) => {
+    const randomId = 'STU_' + Math.random().toString(36).substring(2, 8);
+    const res = await createRes({
+      equipment_id: equipmentId,
+      student_id: overrides.student_id || randomId,
+      student_name: 'Test Student',
+      supervisor: 'Test Supervisor',
+      phone: '12345678901',
+      email: 'test@example.com',
+      ...overrides
+    });
+    if (res.status !== 200) {
+      console.error('createApproved failed:', res.status, res.body);
+    }
+    expect(res.status).toBe(200);
+    expect(res.body.booking_code).toBeDefined();
+    return res;
+  };
 
   describe('I. Basic Parameters & Boundaries', () => {
     it('should block missing required fields or invalid format', async () => {
@@ -212,42 +232,88 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       expect(count.c).toBe(1);
     });
 
-    it('should block 3 types of overlap: full, partial edge, wrap-around, but allow back-to-back', async () => {
-      const eqId = setupEquipment();
+    it('should properly validate overlap combinations including exact matches, subsets, different equipment, and ignored statuses', async () => {
+      const eqId1 = setupEquipment();
+      const eqId2 = setupEquipment({ name: 'Eq 2' });
       setupSettings();
-      await createRes({ equipment_id: eqId, student_id: 'A', student_name: 'A', supervisor: '张三', phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(26) });
 
-      const r1 = await createRes({ equipment_id: eqId, student_id: 'B', student_name: 'B', supervisor: '张三', phone: '123', email: 'b@b.com', start_time: t(23), end_time: t(25) });
-      expect(r1.status).toBe(400);
+      // Base reservation: [24, 26]
+      await createApproved(eqId1, { start_time: t(24), end_time: t(26) });
 
-      const r2 = await createRes({ equipment_id: eqId, student_id: 'C', student_name: 'C', supervisor: '张三', phone: '123', email: 'c@b.com', start_time: t(25), end_time: t(27) });
-      expect(r2.status).toBe(400);
+      const overlapCases = [
+        { name: 'exact match', start: 24, end: 26, expectStatus: 400 },
+        { name: 'internal subset', start: 24.5, end: 25.5, expectStatus: 400 },
+        { name: 'partial edge left', start: 23, end: 25, expectStatus: 400 },
+        { name: 'partial edge right', start: 25, end: 27, expectStatus: 400 },
+        { name: 'wrap around', start: 23, end: 27, expectStatus: 400 },
+        { name: 'back to back left', start: 22, end: 24, expectStatus: 200 },
+        { name: 'back to back right', start: 26, end: 28, expectStatus: 200 },
+      ];
 
-      const r3 = await createRes({ equipment_id: eqId, student_id: 'D', student_name: 'D', supervisor: '张三', phone: '123', email: 'd@b.com', start_time: t(23), end_time: t(27) });
-      expect(r3.status).toBe(400);
+      for (const c of overlapCases) {
+        const res = await createRes({
+          equipment_id: eqId1, student_id: '123', student_name: 'test', supervisor: '张三', phone: '123', email: 'a@b.com',
+          start_time: t(c.start), end_time: t(c.end)
+        });
+        expect(res.status).toBe(c.expectStatus);
+      }
 
-      // back-to-back
-      const r4 = await createRes({ equipment_id: eqId, student_id: 'E', student_name: 'E', supervisor: '张三', phone: '123', email: 'e@b.com', start_time: t(26), end_time: t(28) });
-      expect(r4.status).toBe(200);
-      const r5 = await createRes({ equipment_id: eqId, student_id: 'F', student_name: 'F', supervisor: '张三', phone: '123', email: 'f@b.com', start_time: t(22), end_time: t(24) });
-      expect(r5.status).toBe(200);
+      // Different equipment allows overlap
+      const resDiffEq = await createApproved(eqId2, { start_time: t(24), end_time: t(26) });
+      expect(resDiffEq.status).toBe(200);
+
+      // Canceled or rejected reservations do not block
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'cancelled', 'CODE_CANCEL')`).run(eqId1, t(30), t(32));
+      db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code) VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'rejected', 'CODE_REJECT')`).run(eqId1, t(32), t(34));
+
+      const resCancelOverlap = await createApproved(eqId1, { start_time: t(30), end_time: t(32) });
+      expect(resCancelOverlap.status).toBe(200);
     });
-    it('should allow preempting noshow slots if release_noshow_slots is true', async () => {
+    it('should strictly manage no-show preemption based on settings and actual_start_time', async () => {
       const eqId = setupEquipment({}, { release_noshow_slots: true });
+      const eqIdNoRelease = setupEquipment({}, { release_noshow_slots: false });
       setupSettings();
       
-      // 40 mins ago -> 20 mins from now. The noshow boundary is 30 mins.
-      // So since it started 40 mins ago and has no actual_start_time, it is considered a forfeited no-show slot by the conflict checker.
+      // Scenario 1: Preemption allowed (started 40 mins ago, no actual_start_time, release enabled)
       db.prepare(`
         INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
-        VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', 'CODE123')
+        VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', 'CODE1')
       `).run(eqId, tMin(-40), tMin(20));
+      const r1 = await createApproved(eqId, { start_time: tMin(0), end_time: tMin(60) });
+      expect(r1.status).toBe(200);
 
-      const res = await createRes({
-        equipment_id: eqId, student_id: 'B', student_name: 'B', supervisor: '张三',
-        phone: '123', email: 'b@b.com', start_time: tMin(5), end_time: tMin(35)
+      // Scenario 2: Preemption blocked if release_noshow_slots is false
+      db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
+        VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', 'CODE2')
+      `).run(eqIdNoRelease, tMin(-40), tMin(20));
+      const r2 = await createRes({
+        equipment_id: eqIdNoRelease, student_id: 'TEST_STU2', student_name: 'Test Student', supervisor: 'Test Supervisor', phone: '12345678901', email: 'test@example.com',
+        start_time: tMin(0), end_time: tMin(60)
       });
-      expect(res.status).toBe(200);
+      expect(r2.status).toBe(400);
+
+      // Scenario 3: Preemption blocked if within 30 min grace period (e.g., 20 mins ago)
+      db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code)
+        VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'approved', 'CODE3')
+      `).run(eqId, tMin(-20), tMin(40));
+      const r3 = await createRes({
+        equipment_id: eqId, student_id: 'TEST_STU3', student_name: 'Test Student', supervisor: 'Test Supervisor', phone: '12345678901', email: 'test@example.com',
+        start_time: tMin(0), end_time: tMin(60)
+      });
+      expect(r3.status).toBe(400);
+
+      // Scenario 4: Preemption blocked if already has actual_start_time (even if >30 mins late)
+      db.prepare(`
+        INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time, status, booking_code, actual_start_time)
+        VALUES (?, 'A', 'A', 'Sup', '123', 'a@b.com', ?, ?, 'active', 'CODE4', ?)
+      `).run(eqId, tMin(-40), tMin(20), tMin(-35));
+      const r4 = await createRes({
+        equipment_id: eqId, student_id: 'TEST_STU4', student_name: 'Test Student', supervisor: 'Test Supervisor', phone: '12345678901', email: 'test@example.com',
+        start_time: tMin(0), end_time: tMin(60)
+      });
+      expect(r4.status).toBe(400);
     });
   });
 
