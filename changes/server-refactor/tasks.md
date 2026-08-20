@@ -55,9 +55,9 @@
 - [x] **步骤 10：提取 `src/modules/equipment/` + `lib/validators.ts`**
   *Tracer Bullet Test*: 编写 `02_equipment.test.ts`（设备可用性算法时间冲突验证）。
   *Refactor*: 剥离设备 CRUD 逻辑及公共验证器。
-- [ ] **步骤 11：提取 `src/modules/reservation/`**  
+- [x] **步骤 11：提取 `src/modules/reservation/`**  
   *Tracer Bullet Test*: 编写 `03_reservation_lifecycle.test.ts`（重点测试越权拦截与状态流转）。
   *Refactor*: 抽离预约新建、修改、签到等最大块逻辑，优化克隆重复代码。
 
-- [ ] **步骤 12：终极收尾与瘦身 `server.ts`**  
+- [x] **步骤 12：终极收尾与瘦身 `server.ts`**  
   清理所有残留函数，`server.ts` 仅做总线注册。执行全量 `npm run test`，验证圈复杂度显著下降。
