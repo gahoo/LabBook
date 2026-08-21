@@ -12,7 +12,7 @@
 - [x] 1.2 提取 `violation/evaluator.ts`：从 service.ts 中提取 checkUserPenalty、evaluatePenaltiesOnViolation、getNaturalPeriodStart、getNextNaturalPeriodStart（后两个作为未导出的私有函数）。更新 reservation/service.ts 的 import 路径指向 evaluator.ts。运行测试。
 - [x] 1.3 提取 `violation/stats.ts`：从 routes.ts 中提取 getViolationStats、getViolationParams。运行测试。
 - [x] 1.4 提取 `violation/penalty.ts`：从 routes.ts 中提取 batchPenalties、waivePenalty、getActivePenalties。这些含事务操作，属高危提取，需仔细核对。运行测试。
-- [ ] 1.5 整理 `violation/service.ts`：从 routes.ts 中提取剩余的违规记录操作（createViolation, updateViolation, revokeViolation, restoreViolation, rejectAppeal, submitAppeal, getMyViolations, getAdminViolations）。routes.ts 中不再出现任何 db.prepare 和 notifyEvent 调用。运行测试。
+- [x] 1.5 整理 `violation/service.ts`：从 routes.ts 中提取剩余的违规记录操作（createViolation, updateViolation, revokeViolation, restoreViolation, rejectAppeal, submitAppeal, getMyViolations, getAdminViolations）。routes.ts 中不再出现任何 db.prepare 和 notifyEvent 调用。运行测试。
 - [ ] 1.6 最终验证：确认 violation/routes.ts 已瘦身至约 200 行，仅含参数解析、service 调用和 HTTP 响应。运行全量测试。
 
 ## 阶段 2：reservation 拆分 (P0)
