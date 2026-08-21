@@ -1,14 +1,14 @@
 # 任务拆解与进度清单 (Refactor Post-Evaluation)
 
 ## 阶段 0：当前测试基线快照
-- [ ] 0.1 运行 `npm run test:coverage`，记录当前覆盖率数据，作为重构安全网的基线。
-- [ ] 0.2 确认现有的 135 个测试全部通过。
+- [x] 0.1 运行 `npm run test:coverage`，记录当前覆盖率数据，作为重构安全网的基线。
+- [x] 0.2 确认现有的 135 个测试全部通过。
 
 ## 阶段 1：violation 核心分层治理 (P0)
 
 按子域逐步提取，每步完成后运行测试确保不破坏已有行为。
 
-- [ ] 1.1 提取 `violation/rules.ts`：从 routes.ts 中提取规则 CRUD 五个函数（getPublicRules, getAdminRules, createRule, updateRule, deleteRule）+ simulateRule + 从 service.ts 迁入 formatRuleName。运行测试。
+- [x] 1.1 提取 `violation/rules.ts`：从 routes.ts 中提取规则 CRUD 五个函数（getPublicRules, getAdminRules, createRule, updateRule, deleteRule）+ simulateRule + 从 service.ts 迁入 formatRuleName。运行测试。
 - [ ] 1.2 提取 `violation/evaluator.ts`：从 service.ts 中提取 checkUserPenalty、evaluatePenaltiesOnViolation、getNaturalPeriodStart、getNextNaturalPeriodStart（后两个作为未导出的私有函数）。更新 reservation/service.ts 的 import 路径指向 evaluator.ts。运行测试。
 - [ ] 1.3 提取 `violation/stats.ts`：从 routes.ts 中提取 getViolationStats、getViolationParams。运行测试。
 - [ ] 1.4 提取 `violation/penalty.ts`：从 routes.ts 中提取 batchPenalties、waivePenalty、getActivePenalties。这些含事务操作，属高危提取，需仔细核对。运行测试。

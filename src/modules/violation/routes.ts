@@ -3,13 +3,14 @@ import { db } from '../../db/index.js';
 import { adminAuth } from '../../middleware/auth.js';
 import { notifyEvent } from '../notification/service.js';
 import { checkUserPenalty, evaluatePenaltiesOnViolation, getNaturalPeriodStart, getNextNaturalPeriodStart } from './service.js';
+import { getPublicRules, getAdminRules, createRule, updateRule, deleteRule, simulateRule } from './rules.js';
 import { validateTimeRange } from '../../lib/validators.js'; // if exists
 
 const router = Router();
 
 router.get('/api/public/penalty-rules', (req, res) => {
   try {
-    const rules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1 ORDER BY id DESC').all();
+    const rules = getPublicRules();
     res.json(rules);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch penalty rules' });
@@ -18,7 +19,7 @@ router.get('/api/public/penalty-rules', (req, res) => {
 
 router.get('/api/admin/penalty-rules', adminAuth, (req, res) => {
   try {
-    const rules = db.prepare('SELECT * FROM penalty_rules ORDER BY id DESC').all();
+    const rules = getAdminRules();
     res.json(rules);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch penalty rules' });
@@ -27,13 +28,8 @@ router.get('/api/admin/penalty-rules', adminAuth, (req, res) => {
 
 router.post('/api/admin/penalty-rules', adminAuth, (req, res) => {
   try {
-    const { name, description, violation_type, trigger_config, action_config, is_active } = req.body;
-    const stmt = db.prepare(`
-      INSERT INTO penalty_rules (name, description, violation_type, trigger_config, action_config, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `);
-    const info = stmt.run(name, description, violation_type, JSON.stringify(trigger_config), JSON.stringify(action_config), is_active ? 1 : 0);
-    res.json({ id: info.lastInsertRowid });
+    const result = createRule(req.body);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create penalty rule' });
   }
@@ -41,14 +37,8 @@ router.post('/api/admin/penalty-rules', adminAuth, (req, res) => {
 
 router.put('/api/admin/penalty-rules/:id', adminAuth, (req, res) => {
   try {
-    const { name, description, violation_type, trigger_config, action_config, is_active } = req.body;
-    const stmt = db.prepare(`
-      UPDATE penalty_rules 
-      SET name = ?, description = ?, violation_type = ?, trigger_config = ?, action_config = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    stmt.run(name, description, violation_type, JSON.stringify(trigger_config), JSON.stringify(action_config), is_active ? 1 : 0, req.params.id);
-    res.json({ success: true });
+    const result = updateRule(req.params.id, req.body);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update penalty rule' });
   }
@@ -56,9 +46,8 @@ router.put('/api/admin/penalty-rules/:id', adminAuth, (req, res) => {
 
 router.delete('/api/admin/penalty-rules/:id', adminAuth, (req, res) => {
   try {
-    const stmt = db.prepare('DELETE FROM penalty_rules WHERE id = ?');
-    stmt.run(req.params.id);
-    res.json({ success: true });
+    const result = deleteRule(req.params.id);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete penalty rule' });
   }
@@ -214,99 +203,13 @@ router.get('/api/admin/violations', adminAuth, (req, res) => {
 router.post('/api/admin/penalty-rules/simulate', adminAuth, (req, res) => {
   const { trigger, action, start_date, end_date } = req.body;
   
-  if (!trigger || typeof trigger !== 'object') {
-    return res.status(400).json({ error: 'Missing required parameters' });
-  }
-  if (typeof start_date !== 'string' || typeof end_date !== 'string' || !start_date || !end_date) {
-    return res.status(400).json({ error: 'Missing required parameters' });
-  }
-
-  const violationTypes = trigger.violation_types || [trigger.violation_type];
-  if (!violationTypes || violationTypes.length === 0) {
-     return res.json([]);
-  }
-  
-  const typePlaceholders = violationTypes.map(() => '?').join(',');
-  
-  let scopeCondition = '';
-  // Append T23:59:59.999Z to end_date to include the whole day if it's a date string like '2023-10-15'
-  const finalEndDate = end_date.includes('T') ? end_date : end_date + 'T23:59:59.999Z';
-  let queryParams: any[] = [...violationTypes, start_date, finalEndDate];
-
-  if (trigger.scope && Array.isArray(trigger.scope) && trigger.scope.length > 0) {
-    const placeholders = trigger.scope.map(() => '?').join(',');
-    scopeCondition = `AND reservation_id IN (SELECT id FROM reservations WHERE equipment_id IN (${placeholders}))`;
-    queryParams.push(...trigger.scope);
-  }
-
   try {
-    // Get all active violations in the time range matching types and scope
-    const violationsQuery = `
-      SELECT id, student_id, reservation_id, violation_type, duration_minutes, violation_time 
-      FROM violation_records 
-      WHERE status = 'active' 
-        AND violation_type IN (${typePlaceholders}) 
-        AND violation_time >= ? 
-        AND violation_time <= ?
-        ${scopeCondition}
-    `;
-    const allViolations = db.prepare(violationsQuery).all(...queryParams) as any[];
-
-    // Group by student_id
-    const studentViolations = new Map<string, any[]>();
-    for (const v of allViolations) {
-       if (!studentViolations.has(v.student_id)) {
-         studentViolations.set(v.student_id, []);
-       }
-       studentViolations.get(v.student_id)!.push(v);
-    }
-
-    const results = [];
-    
-    for (const [student_id, violations] of studentViolations.entries()) {
-      let metricValue = 0;
-      let contributingIds: number[] = [];
-      
-      if (trigger.metric === 'count') {
-        if (trigger.count_strategy === 'by_reservation') {
-          const uniqueReservations = new Map<number, number>(); // res_id -> violation_id
-          for (const v of violations) {
-            if (!uniqueReservations.has(v.reservation_id) || v.id < uniqueReservations.get(v.reservation_id)!) {
-              uniqueReservations.set(v.reservation_id, v.id);
-            }
-          }
-          metricValue = uniqueReservations.size;
-          contributingIds = Array.from(uniqueReservations.values());
-        } else {
-          metricValue = violations.length;
-          contributingIds = violations.map(v => v.id);
-        }
-      } else if (trigger.metric === 'duration') {
-        metricValue = violations.reduce((sum, v) => sum + (v.duration_minutes || 0), 0);
-        contributingIds = violations.map(v => v.id);
-      }
-      
-      if (metricValue >= trigger.threshold) {
-         // Lookup student name for UI
-         const latestRes = db.prepare('SELECT student_name FROM reservations WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(student_id) as any;
-         
-         results.push({
-           student_id,
-           student_name: latestRes ? latestRes.student_name : student_id,
-           metric_value: metricValue,
-           contributing_ids: contributingIds,
-           violations: violations.filter(v => contributingIds.includes(v.id)).map(v => ({
-             ...v,
-             equipment_name: (db.prepare('SELECT e.name as equipment_name FROM reservations r JOIN equipment e ON r.equipment_id = e.id WHERE r.id = ?').get(v.reservation_id) as any)?.equipment_name
-           }))
-         });
-      }
-    }
-
+    const results = simulateRule(trigger, action, start_date, end_date);
     res.json(results);
   } catch (error: any) {
     console.error('Simulation error:', error);
-    res.status(500).json({ error: '模拟执行失败: ' + (error.message || String(error)) });
+    res.status(error.message === 'Missing required parameters' ? 400 : 500)
+       .json({ error: error.message === 'Missing required parameters' ? error.message : '模拟执行失败: ' + (error.message || String(error)) });
   }
 });
 

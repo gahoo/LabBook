@@ -1,5 +1,6 @@
 import { db } from '../../db/index.js';
 import { notifyEvent } from '../notification/service.js';
+import { formatRuleName } from './rules.js';
 
 export function getNaturalPeriodStart(now: Date, periodType: string): Date {
   const year = now.getFullYear();
@@ -176,43 +177,6 @@ export function evaluatePenaltiesOnViolation(student_id: string) {
   }
 }
 
-const typeTranslationMap: Record<string, string> = {
-  late: '迟到',
-  overdue: '超时',
-  'no-show': '爽约',
-  'late-cancel': '临期取消',
-  'late_cancel': '临期取消',
-  hygiene_issue: '卫生不达标',
-  improper_operation: '违规操作',
-  proxy_booking: '代预约',
-  other_manual: '其他违规'
-};
-
-export function formatRuleName(ruleName: string, triggerConfigStr?: string, defaultViolationType?: string) {
-  try {
-    let violationTypes: string[] = [];
-    if (triggerConfigStr) {
-      const tg = JSON.parse(triggerConfigStr);
-      if (tg.violation_types && tg.violation_types.length > 0) {
-        violationTypes = tg.violation_types;
-      } else if (tg.violation_type) {
-        violationTypes = [tg.violation_type];
-      }
-    }
-    
-    if (violationTypes.length === 0 && defaultViolationType && defaultViolationType !== 'combo') {
-      violationTypes = [defaultViolationType];
-    }
-    
-    if (violationTypes.length > 0) {
-      const translated = violationTypes.map(t => typeTranslationMap[t] || t).join(' 或 ');
-      return `${ruleName}（包含：${translated}）`;
-    }
-  } catch (e) {
-    // Parsing error or empty, fallback to original
-  }
-  return ruleName;
-}
 
 export function checkUserPenalty(student_id: string, target_equipment_id?: number) {
   const activeRules = db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1').all() as any[];
