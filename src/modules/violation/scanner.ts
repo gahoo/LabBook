@@ -1,5 +1,5 @@
 import { db } from '../../db/index.js';
-import { evaluatePenaltiesOnViolation } from './service.js';
+import { evaluatePenaltiesOnViolation } from './evaluator.js';
 
 export function scanForNoShows() {
   try {

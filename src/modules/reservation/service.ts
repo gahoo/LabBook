@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 import { OperationRejectError } from '../../lib/errors.js';
-import { checkUserPenalty, evaluatePenaltiesOnViolation } from '../violation/service.js';
+import { checkUserPenalty, evaluatePenaltiesOnViolation } from '../violation/evaluator.js';
 import { notifyEvent } from '../notification/service.js';
 import { validateOperatingHours, calculatePeakAccumulatedMinutes } from '../../lib/validators.js';
 import { db } from '../../db/index.js';
