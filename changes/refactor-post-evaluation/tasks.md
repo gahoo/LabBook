@@ -52,5 +52,5 @@
 
 - [x] 4.1 统一路由导出风格：遍历 modules/*/routes.ts，统一改为 `export { xxxRouter, xxxAdminRouter }` 命名导出风格。
 - [x] 4.2 统一路由挂载方式：重构 server.ts 中的路由挂载，统一采用集中管理路径前缀的方式。对于路径前缀不统一的模块（如 violation 有 /api/public/、/api/user/、/api/admin/、/api/violations/ 四个前缀），在模块内部保留路径前缀以保证 API 兼容，仅统一导出风格。
-- [x] 4.3 修复时间时区相关问题：使用 `date-fns-tz` 统一定义 `toShanghaiString` 工具函数。
+- [x] 4.3 修复时间时区相关问题：使用 `date-fns-tz` 统一定义 `toAppTimezoneString` 工具函数。
 - [x] 4.4 引入 Zod 统一验证器并重构 `req.body`
