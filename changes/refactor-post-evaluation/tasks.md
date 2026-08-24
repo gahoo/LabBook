@@ -13,11 +13,11 @@
 - [x] 1.3 提取 `violation/stats.ts`：从 routes.ts 中提取 getViolationStats、getViolationParams。运行测试。
 - [x] 1.4 提取 `violation/penalty.ts`：从 routes.ts 中提取 batchPenalties、waivePenalty、getActivePenalties。这些含事务操作，属高危提取，需仔细核对。运行测试。
 - [x] 1.5 整理 `violation/service.ts`：从 routes.ts 中提取剩余的违规记录操作（createViolation, updateViolation, revokeViolation, restoreViolation, rejectAppeal, submitAppeal, getMyViolations, getAdminViolations）。routes.ts 中不再出现任何 db.prepare 和 notifyEvent 调用。运行测试。
-- [ ] 1.6 最终验证：确认 violation/routes.ts 已瘦身至约 200 行，仅含参数解析、service 调用和 HTTP 响应。运行全量测试。
+- [x] 1.6 最终验证：确认 violation/routes.ts 已瘦身至约 200 行，仅含参数解析、service 调用和 HTTP 响应。运行全量测试。
 
 ## 阶段 2：reservation 拆分 (P0)
 
-- [ ] 2.1 提取 `reservation/validation.ts`：从 service.ts 的 create 和 update 方法中提取共享校验逻辑（参数校验、惩罚检查、提前天数限制、时长限制、运营时间校验、冲突检测），消除两者的重复代码。将 `lib/validators.ts` 中的 validateOperatingHours 和 calculatePeakAccumulatedMinutes 迁入此文件（它们仅被 reservation 调用）。`lib/validators.ts` 仅保留 validateTimeRange。运行测试。
+- [x] 2.1 提取 `reservation/validation.ts`：从 service.ts 的 create 和 update 方法中提取共享校验逻辑（参数校验、惩罚检查、提前天数限制、时长限制、运营时间校验、冲突检测），消除两者的重复代码。将 `lib/validators.ts` 中的 validateOperatingHours 和 calculatePeakAccumulatedMinutes 迁入此文件（它们仅被 reservation 调用）。`lib/validators.ts` 仅保留 validateTimeRange。运行测试。
 - [ ] 2.2 提取 `reservation/stats.ts`：从 service.ts 中提取 getAdminList、getStats，连同它们依赖的 calculateReportStatus 和 getViolationSettings 辅助函数。运行测试。
 - [ ] 2.3 最终验证：确认 reservation/service.ts 约 550 行，运行全量测试。
 

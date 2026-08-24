@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import { OperationRejectError } from '../../lib/errors.js';
 import { checkUserPenalty, evaluatePenaltiesOnViolation } from '../violation/evaluator.js';
 import { notifyEvent } from '../notification/service.js';
-import { validateOperatingHours, calculatePeakAccumulatedMinutes } from '../../lib/validators.js';
+import { validateReservationInput, validateReservationRules, validateReservationConflict } from './validation.js';
+import { validateTimeRange } from '../../lib/validators.js';
 import { db } from '../../db/index.js';
 import { isAfter, isBefore, format } from 'date-fns';
 
@@ -368,154 +369,27 @@ export class ReservationService {
       throw new OperationRejectError('无法修改进行中或已完成的预约', 400);
     }
     
-    const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
     const maxLateMinutes = 30;
-    
-    const startTime = new Date(reservation.start_time).getTime();
-    if (Date.now() > startTime + maxLateMinutes * 60000) {
+    const startTimeTime = new Date(reservation.start_time).getTime();
+    if (Date.now() > startTimeTime + maxLateMinutes * 60000) {
       throw new OperationRejectError(`超过上机时间${maxLateMinutes}分钟未上机的预约，不允许取消或者修改`, 400);
     }
- 
+
     if (reservation.modified_count >= 1) {
       throw new OperationRejectError('每个预约仅允许修改一次时间，请取消后重新预约', 400);
     }
- 
-    const penaltyCheck = checkUserPenalty(reservation.student_id, reservation.equipment_id);
-    if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
-      const err = new OperationRejectError(penaltyCheck.reason, 403);
-      (err as any).structured_penalty = penaltyCheck.structured_penalty;
-      throw err;
-    }
- 
-    const start = new Date(start_time);
-    const end = new Date(end_time);
+
+    const { start, end } = validateReservationInput({ start_time, end_time }, true);
     
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      throw new OperationRejectError('无效的时间格式', 400);
-    }
- 
-    if (end <= start) {
-      throw new OperationRejectError('结束时间必须晚于开始时间', 400);
-    }
- 
-    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+    const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(reservation.equipment_id) as any;
     
-    let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
-    try {
-      if (equipment.availability_json) {
-        availability = JSON.parse(equipment.availability_json);
-      }
-    } catch (e) {}
- 
-    const minDuration = availability.minDurationMinutes || 30;
- 
-    if (durationMinutes < minDuration) throw new OperationRejectError(`预约时长不能少于 ${minDuration} 分钟`, 400);
- 
-    const now = new Date();
-    const maxDate = new Date(now);
-    
-    const originalAdvanceDays = availability.advanceDays || 7;
-    let penalizedAdvanceDays = originalAdvanceDays;
-    if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
-      if (penaltyCheck.restrictions.reduce_days > 0) {
-        penalizedAdvanceDays -= penaltyCheck.restrictions.reduce_days;
-      }
-      if (penalizedAdvanceDays < penaltyCheck.restrictions.min_retain_days) {
-        penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
-      }
-    }
- 
-    const maxOriginalDate = new Date(now);
-    maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
-    maxOriginalDate.setHours(23, 59, 59, 999);
- 
-    const maxPenalizedDate = new Date(now);
-    maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
-    maxPenalizedDate.setHours(23, 59, 59, 999);
-    
-    if (start > maxOriginalDate) {
-      throw new OperationRejectError(`只能提前 ${originalAdvanceDays} 天预约`, 400);
-    } else if (start > maxPenalizedDate) {
-      const err = new OperationRejectError(`受惩罚规则限制，您当前只能提前 ${penalizedAdvanceDays} 天预约`, 403);
-      (err as any).structured_penalty = (penaltyCheck as any).structured_penalty || penaltyCheck;
-      throw err;
-    }
-    if (start < now) {
-      throw new OperationRejectError('不能预约过去的时间', 400);
-    }
- 
-    const validResult = validateOperatingHours(start, end, availability, tz_offset);
-    if (!validResult.isValid) {
-      throw new OperationRejectError(validResult.error, 400);
-    }
-    let isOutOfHours = validResult.isOutOfHours;
- 
-    const maxDuration = availability.maxDurationMinutes || 60;
-    const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
-    const allowExceed = !!availability.allowExceedDuration;
-    const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
-    const peakHours = availability.peakHours || [];
- 
-    const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
- 
-    const userDailyUsedRow = db.prepare(`
-      SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
-      FROM reservations
-      WHERE equipment_id = ?
-        AND student_id = ?
-        AND id != ?
-        AND DATE(start_time, ?) = DATE(?, ?)
-        AND status IN ('pending', 'approved', 'active')
-    `).get(reservation.equipment_id, reservation.student_id, reservation.id, offsetModifier, start_time, offsetModifier) as any;
-    const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
- 
-    if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
-      throw new OperationRejectError(`超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)`, 400);
-    }
- 
-    const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
-    let isPeakExceeded = false;
-    
-    if (peakAccumulated > maxDuration) {
-      if (!allowExceed) {
-        throw new OperationRejectError(`您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许忙时超额预约。`, 400);
-      }
-      isPeakExceeded = true;
-    } else if (durationMinutes > maxDuration) {
-      if (!allowExceedOffPeak) {
-        throw new OperationRejectError(`您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。`, 400);
-      }
-    }
- 
+    const { isOutOfHours, isPeakExceeded, penaltyCheck } = validateReservationRules(start, end, equipment, reservation.student_id, reservation.student_name, tz_offset, reservation.id);
+
     const tx = db.transaction(() => {
-      // Check conflicts (excluding self)
-      const conflictRaw = db.prepare(`
-        SELECT id, start_time, actual_start_time FROM reservations 
-        WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active') AND id != ?
-        AND start_time < ? AND end_time > ?
-      `).all(reservation.equipment_id, reservation.id, end_time, start_time);
- 
-      let hasConflict = false;
-      if (conflictRaw.length > 0) {
-        if (equipment.release_noshow_slots) {
-          const nowTime = new Date().getTime();
-          hasConflict = conflictRaw.some((res: any) => {
-            if (!res.actual_start_time) {
-              const resStartTime = new Date(res.start_time).getTime();
-              if (nowTime > resStartTime + 30 * 60 * 1000) {
-                return false; // This is a no-show, so it's not a conflict
-              }
-            }
-            return true;
-          });
-        } else {
-          hasConflict = true;
-        }
-      }
- 
-      if (hasConflict) {
-        throw new OperationRejectError('所选时间段已有其他预约', 400);
-      }
+      validateReservationConflict(equipment, start_time, end_time, reservation.id);
+      
+
+      
  
       let newStatus = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
       
@@ -645,202 +519,21 @@ export class ReservationService {
 
   static create(data: any, tz_offset: number = 0) {
     const { equipment_id, student_id, student_name, supervisor, phone, email, start_time, end_time } = data;
-   
-    // Input validation
-    const stringFields = { student_id, student_name, supervisor, phone, email, start_time, end_time };
-    for (const [key, val] of Object.entries(stringFields)) {
-      if (typeof val !== 'string' || val.trim() === '') {
-        throw new OperationRejectError(`${key} 不能为空且必须为字符串`, 400);
-      }
-    }
-    if (student_name.length > 100 || supervisor.length > 100) {
-      throw new OperationRejectError('姓名或导师名称过长（上限100字符）', 400);
-    }
-    if (supervisor.includes('教授') || supervisor.includes('老师')) {
-      throw new OperationRejectError('导师姓名请直接填写真实姓名，请勿包含“教授”或“老师”等称谓', 400);
-    }
-    if (email.length > 200) {
-      throw new OperationRejectError('邮箱地址过长（上限200字符）', 400);
-    }
+    
     if (equipment_id === undefined || equipment_id === null || isNaN(Number(equipment_id)) || !Number.isInteger(Number(equipment_id))) {
       throw new OperationRejectError('equipment_id 必须为有效的整数', 400);
     }
+
+    const { start, end } = validateReservationInput(data, false);
     
-    // Retrieve setting and check email suffix
-    const emailSuffixesSettingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('allowed_email_suffixes') as any;
-    if (emailSuffixesSettingRow && emailSuffixesSettingRow.value) {
-      const allowedSuffixes = emailSuffixesSettingRow.value.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
-      if (allowedSuffixes.length > 0) {
-        if (!email || !email.includes('@')) {
-          throw new OperationRejectError(`邮箱格式不正确，目前仅允许以下后缀: ${allowedSuffixes.join(', ')}`, 400);
-        }
-        const domain = email.split('@').pop()?.toLowerCase() || '';
-        if (!allowedSuffixes.includes(domain)) {
-          throw new OperationRejectError(`暂不支持该邮箱，目前仅允许以下邮箱后缀: ${allowedSuffixes.join(', ')}`, 400);
-        }
-      }
-    }
-   
     const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipment_id) as any;
     if (!equipment) throw new OperationRejectError('未找到该仪器', 404);
-    
-    let penaltyCheck = { isPenalized: false, penaltyMethod: 'NONE', reason: '', restrictions: { reduce_days: 0, min_retain_days: 999, fee_multiplier: 1.0 }, violation_ids: [] as number[] };
-    try {
-      penaltyCheck = checkUserPenalty(student_id, equipment_id) as any;
-    } catch (e) {
-      console.error('Error in checkUserPenalty:', e);
-      throw new OperationRejectError('检查用户惩罚状态时发生错误', 500);
-    }
-   
-    if (penaltyCheck.isPenalized && penaltyCheck.penaltyMethod === 'BAN') {
-      const err = new OperationRejectError(penaltyCheck.reason, 403);
-      (err as any).violation_ids = penaltyCheck.violation_ids;
-      (err as any).structured_penalty = (penaltyCheck as any).structured_penalty;
-      throw err;
-    }
-    
-    if (equipment.is_hidden) {
-      throw new OperationRejectError('该仪器暂不开放预约', 403);
-    }
-   
-    // Whitelist check
-    if (equipment.whitelist_enabled) {
-      const whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
-      if (!whitelist.includes(student_name.trim())) {
-        const err = new OperationRejectError('您不在该仪器的预约白名单中，请先申请加入白名单。', 403);
-        (err as any).needs_whitelist_application = true;
-        throw err;
-      }
-    }
-   
-    // Check if slot is in the past
-    const now = new Date();
-    const start = new Date(start_time);
-    const end = new Date(end_time);
-   
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      throw new OperationRejectError('无效的时间格式', 400);
-    }
-   
-    if (isBefore(start, now)) {
-      throw new OperationRejectError('不能预约已经开始或过去的时间', 400);
-    }
-   
-    let availability: any = { rules: [], advanceDays: 7, maxDurationMinutes: 60, minDurationMinutes: 30 };
-    try {
-      if (equipment.availability_json) {
-        availability = JSON.parse(equipment.availability_json);
-      }
-    } catch (e) {}
-   
-    if (end <= start) {
-      throw new OperationRejectError('结束时间必须晚于开始时间', 400);
-    }
-   
-    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    const minDuration = availability.minDurationMinutes || 30;
-   
-    if (durationMinutes < minDuration) throw new OperationRejectError(`预约时长不能少于 ${minDuration} 分钟`, 400);
-   
-    const originalAdvanceDays = availability.advanceDays || 7;
-    let penalizedAdvanceDays = originalAdvanceDays;
-    if (penaltyCheck.isPenalized && penaltyCheck.restrictions) {
-      if (penaltyCheck.restrictions.reduce_days > 0) {
-        penalizedAdvanceDays -= penaltyCheck.restrictions.reduce_days;
-      }
-      if (penalizedAdvanceDays < penaltyCheck.restrictions.min_retain_days) {
-        penalizedAdvanceDays = penaltyCheck.restrictions.min_retain_days;
-      }
-    }
-   
-    const maxOriginalDate = new Date(now);
-    maxOriginalDate.setDate(maxOriginalDate.getDate() + originalAdvanceDays);
-    maxOriginalDate.setHours(23, 59, 59, 999);
-   
-    const maxPenalizedDate = new Date(now);
-    maxPenalizedDate.setDate(maxPenalizedDate.getDate() + penalizedAdvanceDays);
-    maxPenalizedDate.setHours(23, 59, 59, 999);
-    
-    if (start > maxOriginalDate) {
-      throw new OperationRejectError(`只能提前 ${originalAdvanceDays} 天预约`, 400);
-    } else if (start > maxPenalizedDate) {
-      const err = new OperationRejectError(`受惩罚规则限制，您当前只能提前 ${penalizedAdvanceDays} 天预约`, 403);
-      (err as any).structured_penalty = (penaltyCheck as any).structured_penalty || penaltyCheck;
-      throw err;
-    }
-   
-    const validResult = validateOperatingHours(start, end, availability, tz_offset);
-    if (!validResult.isValid) {
-      throw new OperationRejectError(validResult.error, 400);
-    }
-    let isOutOfHours = validResult.isOutOfHours;
-   
-    const maxDuration = availability.maxDurationMinutes || 60;
-    const dailyMaxDuration = availability.dailyMaxDurationMinutes ?? 0;
-    const allowExceed = !!availability.allowExceedDuration;
-    const allowExceedOffPeak = availability.allowExceedDurationOffPeak || false;
-    const peakHours = availability.peakHours || [];
-   
-    const offsetModifier = `${-tz_offset >= 0 ? '+' : ''}${-tz_offset} minutes`;
-   
-    const userDailyUsedRow = db.prepare(`
-      SELECT COALESCE(SUM((strftime('%s', end_time) - strftime('%s', start_time)) / 60), 0) AS total_minutes
-      FROM reservations
-      WHERE equipment_id = ?
-        AND student_id = ?
-        AND DATE(start_time, ?) = DATE(?, ?)
-        AND status IN ('pending', 'approved', 'active')
-    `).get(equipment_id, student_id, offsetModifier, start_time, offsetModifier) as any;
-    const userDailyUsed = userDailyUsedRow ? userDailyUsedRow.total_minutes : 0;
-   
-    if (dailyMaxDuration > 0 && userDailyUsed + durationMinutes > dailyMaxDuration) {
-      throw new OperationRejectError(`超过单日预约总时长硬性上限 (${dailyMaxDuration} 分钟)`, 400);
-    }
-   
-    const peakAccumulated = calculatePeakAccumulatedMinutes(start, end, peakHours, tz_offset);
-    let isPeakExceeded = false;
-    
-    if (peakAccumulated > maxDuration) {
-      if (!allowExceed) {
-        throw new OperationRejectError(`您的预约占用的忙时 (${peakAccumulated} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许忙时超额预约。`, 400);
-      }
-      isPeakExceeded = true;
-    } else if (durationMinutes > maxDuration) {
-      if (!allowExceedOffPeak) {
-        throw new OperationRejectError(`您的预约时长 (${durationMinutes} 分钟) 超过了单次时长上限 (${maxDuration} 分钟)，且该仪器不允许闲时超额预约。`, 400);
-      }
-    }
-   
+
+    const { isOutOfHours, isPeakExceeded, penaltyCheck } = validateReservationRules(start, end, equipment, student_id, student_name, tz_offset);
+
     const tx = db.transaction(() => {
-      // Check if slot is already booked
-      const existingRaw = db.prepare(`
-        SELECT id, start_time, actual_start_time FROM reservations 
-        WHERE equipment_id = ? AND status IN ('pending', 'approved', 'active')
-        AND start_time < ? AND end_time > ?
-      `).all(equipment_id, end_time, start_time);
-   
-      let hasConflict = false;
-      if (existingRaw.length > 0) {
-        if (equipment.release_noshow_slots) {
-          const nowTime = new Date().getTime();
-          hasConflict = existingRaw.some((res: any) => {
-            if (!res.actual_start_time) {
-              const resStartTime = new Date(res.start_time).getTime();
-              if (nowTime > resStartTime + 30 * 60 * 1000) {
-                return false; // This is a no-show, so it's not a conflict
-              }
-            }
-            return true;
-          });
-        } else {
-          hasConflict = true;
-        }
-      }
-   
-      if (hasConflict) {
-        throw new OperationRejectError('该时间段已被预约', 400);
-      }
-   
+      validateReservationConflict(equipment, start_time, end_time);
+      
       const booking_code = crypto.randomBytes(4).toString('hex').toUpperCase();
       let status = (isOutOfHours || isPeakExceeded || !equipment.auto_approve) ? 'pending' : 'approved';
       
