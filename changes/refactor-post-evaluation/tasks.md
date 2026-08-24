@@ -33,6 +33,12 @@
   - [x] 3.1.6 补充：爽约槽位抢占释放 (No-Show Release) 允许覆盖
   - [x] 3.1.7 补充：异常与隐藏拦截（设备隐藏、非法 JSON 降级）
 - [ ] 3.2 补充 Service 层测试 (Violation)：直接调用 violation/evaluator.ts 中的 checkUserPenalty 和 evaluatePenaltiesOnViolation，测试多规则组合、窗口期边界、豁免判定等场景。
+  - [ ] 3.2.1 补充：惩罚类型转化效果（ban, require_approval, reduce_advance_days, double_fee 的基础解析转化）
+  - [ ] 3.2.2 补充：阈值触发与累积（边界触发、订单去重统计）
+  - [ ] 3.2.3 补充：时间窗口隔离（自然周期跨月隔离、滚动天数掉出窗口）
+  - [ ] 3.2.4 补充：撤销、豁免与降级恢复（单条撤销、组合豁免 waivers、固化惩罚过期）
+  - [ ] 3.2.5 补充：规则叠加与合并（就高原则 BAN、多重参数化限制叠加）
+  - [ ] 3.2.6 补充：解封时间预测（精准计算规则过期的时间点）
 - [ ] 3.3 覆盖率报告：运行 `npm run test:coverage`，对比阶段 0 基线，确认覆盖率未下降。
 
 ## 阶段 4：接口一致性与类型安全 (P2 & P3)

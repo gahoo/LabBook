@@ -32,6 +32,13 @@
     5. **惩罚系统联动**：用户有 `BAN` 状态硬拦截、有 `REQUIRE_APPROVAL` 降级为 `pending`、有 `reduce_days` 惩罚时导致其提前预约天数缩水。
     6. **爽约槽位抢占释放 (No-Show Release)**：开启 `release_noshow_slots` 时，超 30 分钟未签到槽位允许并发抢占覆盖。
     7. **异常与隐藏拦截**：隐藏设备 (`is_hidden = true`) 拦截，异常 JSON 配置的降级安全保护。
+  - **Violation 测试重点覆盖 6 大边界场景**：
+    1. **惩罚类型转化效果（Penalty Type Effects）**：验证不同的 `action_config`（`ban`, `require_approval`, `reduce_advance_days`, `double_fee`）能否被正确解析并输出对应的状态标识及限制参数。
+    2. **阈值触发与累积（Metric & Threshold）**：精确边界触发（如2次不罚3次罚），以及基于订单去重统计（`by_reservation`）的准确性。
+    3. **时间窗口隔离（Time Windows）**：自然周期（如跨月不合并）与滚动窗口（如近30天内掉出）的边界隔离与合并逻辑。
+    4. **撤销、豁免与降级恢复（Revocation, Waivers & Recovery）**：单条违规 `revoked` 后的实时降级、针对特定违规组合记录的 `penalty_waivers` 免疫跳过、以及固化惩罚过期自动恢复。
+    5. **规则叠加与合并（Restrictions Merge）**：状态就高原则叠加（REQUIRE_APPROVAL + BAN = BAN），参数化限制合并（叠加扣费翻倍与提前期缩减）。
+    6. **解封时间预测（Unban Time Prediction）**：基于违规记录掉出窗口的时间点，精确预测自动解封时间。
 
 ### 2.3 接口一致性与类型安全 (P2 & P3)
 - **统一路由导出与挂载**：当前各模块的路由导出混合使用了默认导出（`export default router`）和命名导出（`export { xxxRouter }`），导致 `server.ts` 中的导入和挂载缺乏一致性。所有模块必须统一使用命名导出，且挂载路径的前缀应在 `server.ts` 中集中声明。
