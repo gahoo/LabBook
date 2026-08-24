@@ -24,6 +24,14 @@
 ## 阶段 3：测试深度提升 (P1)
 
 - [x] 3.1 补充 Service 层测试 (Reservation)：创建测试文件，使用 tests/setup.ts 的内存 DB 基础设施，绕过 HTTP 层直接调用 ReservationService.create，测试校验逻辑和冲突检测的边界情况。
+  - [x] 基础流程（已完成）：创建成功、冲突检测、非自动审批降级、基础输入校验、非工作时间预定。
+  - [x] 3.1.1 补充：时限硬约束（单次超限、单日累计超限）
+  - [x] 3.1.2 补充：峰谷分离逻辑（忙时超限、allowExceed 闲忙时超额转 pending）
+  - [x] 3.1.3 补充：前置白名单防线拦截
+  - [x] 3.1.4 补充：提前预约期限制 (Advance Days) 拦截
+  - [x] 3.1.5 补充：惩罚系统联动（BAN、REQUIRE_APPROVAL、reduce_days 天数缩水）
+  - [x] 3.1.6 补充：爽约槽位抢占释放 (No-Show Release) 允许覆盖
+  - [x] 3.1.7 补充：异常与隐藏拦截（设备隐藏、非法 JSON 降级）
 - [ ] 3.2 补充 Service 层测试 (Violation)：直接调用 violation/evaluator.ts 中的 checkUserPenalty 和 evaluatePenaltiesOnViolation，测试多规则组合、窗口期边界、豁免判定等场景。
 - [ ] 3.3 覆盖率报告：运行 `npm run test:coverage`，对比阶段 0 基线，确认覆盖率未下降。
 

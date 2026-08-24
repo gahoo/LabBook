@@ -24,6 +24,14 @@
 ### 2.2 测试基线加固 (P1)
 - 在分层刚完成后，趁热打铁进行测试加固。当前 135 个测试全部为通过 `supertest` 发起的 HTTP 集成测试，虽然流程覆盖率高，但对深层业务逻辑粒度较粗。
 - 需要为高复杂度的纯业务核心（如预约冲突校验 `ReservationService.create`，违规计分与处罚生成 `evaluatePenaltiesOnViolation`、`checkUserPenalty`）补充直接调用 Service 层的纯逻辑测试（使用内存 DB）。
+  - **Reservation 测试重点覆盖 7 大边界场景**：
+    1. **时限硬约束**：单次超限 (`> maxDurationMinutes`) 与单日累计超限 (`> dailyMaxDurationMinutes`) 的拒绝逻辑。
+    2. **峰谷（忙闲时）分离逻辑**：忙时超限被拒、开启 `allowExceed` 时忙时/闲时超额转 `pending`。
+    3. **前置白名单防线**：`whitelist_enabled = true` 且用户不在名单中的拦截。
+    4. **提前预约期限制 (Advance Days)**：预约时间超过允许的提前天数时的硬拦截。
+    5. **惩罚系统联动**：用户有 `BAN` 状态硬拦截、有 `REQUIRE_APPROVAL` 降级为 `pending`、有 `reduce_days` 惩罚时导致其提前预约天数缩水。
+    6. **爽约槽位抢占释放 (No-Show Release)**：开启 `release_noshow_slots` 时，超 30 分钟未签到槽位允许并发抢占覆盖。
+    7. **异常与隐藏拦截**：隐藏设备 (`is_hidden = true`) 拦截，异常 JSON 配置的降级安全保护。
 
 ### 2.3 接口一致性与类型安全 (P2 & P3)
 - **统一路由导出与挂载**：当前各模块的路由导出混合使用了默认导出（`export default router`）和命名导出（`export { xxxRouter }`），导致 `server.ts` 中的导入和挂载缺乏一致性。所有模块必须统一使用命名导出，且挂载路径的前缀应在 `server.ts` 中集中声明。
