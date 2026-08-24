@@ -50,6 +50,22 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     );
     return info.lastInsertRowid;
   };
+  const baseData = {
+    student_id: "STU_123",
+    student_name: "Test Student",
+    supervisor: "Super Visor",
+    phone: "12345678901",
+    email: "test@example.com",
+  };
+
+  const createResData = (eqId: number, start: string, end: string, overrides: any = {}) => ({
+    ...baseData,
+    equipment_id: eqId,
+    start_time: start,
+    end_time: end,
+    ...overrides
+  });
+
 
   it('should successfully create a reservation bypassing HTTP', () => {
     const eqId = setupEquipment();
@@ -123,30 +139,19 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     
     const result = ReservationService.create(data, -480);
     expect(result.status).toBe('pending');
+       const saved = db.prepare('SELECT status FROM reservations WHERE booking_code = ?').get(result.booking_code) as any;
+       expect(saved.status).toBe('pending');
     
-    const saved = db.prepare('SELECT status FROM reservations WHERE booking_code = ?').get(result.booking_code) as any;
-    expect(saved.status).toBe('pending');
   });
 
   it('should validate invalid inputs', () => {
     const eqId = setupEquipment();
     
-    const baseData = {
-      equipment_id: eqId,
-      student_id: 'STU_123',
-      student_name: 'Test Student',
-      supervisor: 'Super Visor',
-      phone: '12345678901',
-      email: 'test@example.com',
-      start_time: t(1),
-      end_time: t(2)
-    };
-    
     // Missing equipment_id
-    expect(() => ReservationService.create({ ...baseData, equipment_id: undefined })).toThrowError(/equipment_id 必须为有效的整数/);
+    expect(() => ReservationService.create(createResData(undefined as any, t(1), t(2)))).toThrowError(/equipment_id 必须为有效的整数/);
     
     // Invalid time bounds
-    expect(() => ReservationService.create({ ...baseData, start_time: t(2), end_time: t(1) })).toThrowError(/结束时间必须晚于开始时间/);
+    expect(() => ReservationService.create(createResData(eqId, t(2), t(1)))).toThrowError(/结束时间必须晚于开始时间/);
   });
 
   it('should mark status pending when booking out of hours if allowOutOfHours is true', () => {
@@ -173,28 +178,63 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     
     const result = ReservationService.create(data, -480);
     expect(result.status).toBe('pending');
+       const saved = db.prepare('SELECT status FROM reservations WHERE booking_code = ?').get(result.booking_code) as any;
+       expect(saved.status).toBe('pending');
   });
 
-  const baseData = {
-    student_id: 'STU_123',
-    student_name: 'Test Student',
-    supervisor: 'Super Visor',
-    phone: '12345678901',
-    email: 'test@example.com',
-  };
 
-  describe('3.1.1 Time Limits', () => {
+  describe('3.1.1 Time Limits & Boundaries', () => {
     it('should reject when duration > maxDurationMinutes', () => {
       const eqId = setupEquipment({ maxDurationMinutes: 60 });
-      const data = { ...baseData, equipment_id: eqId, start_time: t(1), end_time: t(3) }; // 2 hours
+      const data = createResData(eqId, t(1), t(3)); // 2 hours
       expect(() => ReservationService.create(data, -480)).toThrowError(/单次时长上限/);
     });
 
     it('should reject when daily accumulated duration > dailyMaxDurationMinutes', () => {
       const eqId = setupEquipment({ maxDurationMinutes: 120, dailyMaxDurationMinutes: 180 });
-      ReservationService.create({ ...baseData, equipment_id: eqId, start_time: t(1), end_time: t(3) }, -480);
-      const data2 = { ...baseData, equipment_id: eqId, start_time: t(4), end_time: t(6) }; // 120 + 120 = 240 > 180
+      ReservationService.create(createResData(eqId, t(1), t(3)), -480);
+      const data2 = createResData(eqId, t(4), t(6)); // 120 + 120 = 240 > 180
       expect(() => ReservationService.create(data2, -480)).toThrowError(/超过单日预约总时长硬性上限/);
+    });
+
+    it('should allow booking exactly at maxDurationMinutes and minDurationMinutes', () => {
+      const eqId = setupEquipment({ maxDurationMinutes: 120, minDurationMinutes: 30 });
+      
+      const dataMax = createResData(eqId, t(1), t(3)); // exactly 120m
+      const resMax = ReservationService.create(dataMax, -480);
+      expect(resMax.status).toBe('approved');
+      
+      const dataMin = createResData(eqId, t(4), tMin(240 + 30)); // exactly 30m
+      const resMin = ReservationService.create(dataMin, -480);
+      expect(resMin.status).toBe('approved');
+    });
+
+    it('should allow adjacent bookings (A.end === B.start)', () => {
+      const eqId = setupEquipment();
+      const data1 = createResData(eqId, t(1), t(2));
+      ReservationService.create(data1, -480);
+      
+      const data2 = createResData(eqId, t(2), t(3)); // exactly at t(2)
+      expect(() => ReservationService.create(data2, -480)).not.toThrow();
+    });
+
+    it('should allow booking exactly crossing midnight', () => {
+      const eqId = setupEquipment({ dailyMaxDurationMinutes: 240 });
+      // Book from 23:00 to 01:00 next day (local time).
+      // FixedNow is local 18:00 (UTC 10:00). So local 23:00 is +5 hours.
+      const dataCross = createResData(eqId, t(5), t(7)); // 120 minutes
+      const resCross = ReservationService.create(dataCross, -480);
+      expect(resCross.status).toBe('approved');
+      
+      // The current implementation calculates daily usage by assigning the entire duration
+      // to the DATE(start_time). So 120 minutes are counted towards the first day.
+      // We can still book 120 minutes on the first day.
+      const dataBefore = createResData(eqId, t(1), t(3)); // 2 hours (120m) on first day
+      expect(() => ReservationService.create(dataBefore, -480)).not.toThrow();
+      
+      // Booking another 1 hour on the first day should fail.
+      const dataBeforeFail = createResData(eqId, t(3), t(4)); // 1 hour on first day
+      expect(() => ReservationService.create(dataBeforeFail, -480)).toThrowError(/超过单日预约总时长硬性上限/);
     });
   });
 
@@ -207,7 +247,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
        });
        // fixedNow UTC 10:00 -> Local 18:00
        // local tomorrow 10:00 -> UTC 02:00
-       const data = { ...baseData, equipment_id: eqId, start_time: t(16), end_time: t(18) }; // 16h after UTC 10:00 is UTC 02:00
+       const data = createResData(eqId, t(16), t(18)); // 16h after UTC 10:00 is UTC 02:00
        expect(() => ReservationService.create(data, -480)).toThrowError(/占用的忙时/);
     });
 
@@ -217,9 +257,11 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
          peakHours: [{ start: '10:00', end: '12:00' }],
          allowExceedDuration: true 
        });
-       const data = { ...baseData, equipment_id: eqId, start_time: t(16), end_time: t(18) };
+       const data = createResData(eqId, t(16), t(18));
        const result = ReservationService.create(data, -480);
        expect(result.status).toBe('pending');
+       const saved = db.prepare('SELECT status FROM reservations WHERE booking_code = ?').get(result.booking_code) as any;
+       expect(saved.status).toBe('pending');
     });
 
     it('should allow and set pending if allowExceedDurationOffPeak is true for off-peak', () => {
@@ -228,7 +270,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
          allowExceedDurationOffPeak: true 
        });
        // local 19:00 -> UTC 11:00
-       const data = { ...baseData, equipment_id: eqId, start_time: t(1), end_time: t(3) };
+       const data = createResData(eqId, t(1), t(3));
        const result = ReservationService.create(data, -480);
        expect(result.status).toBe('approved');
     });
@@ -239,7 +281,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
       const eqId = setupEquipment({}, { whitelist_enabled: true });
       db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run('Alice, Bob', eqId);
       
-      const data = { ...baseData, equipment_id: eqId, student_name: 'Test Student', start_time: t(1), end_time: t(2) };
+      const data = createResData(eqId, t(1), t(2), { student_name: 'Test Student' });
       expect(() => ReservationService.create(data, -480)).toThrowError(/不在该仪器的预约白名单中/);
     });
     
@@ -247,7 +289,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
       const eqId = setupEquipment({}, { whitelist_enabled: true });
       db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run('Alice, Test Student', eqId);
       
-      const data = { ...baseData, equipment_id: eqId, student_name: 'Test Student', start_time: t(1), end_time: t(2) };
+      const data = createResData(eqId, t(1), t(2), { student_name: 'Test Student' });
       const res = ReservationService.create(data, -480);
       expect(res.status).toBe('approved');
     });
@@ -256,7 +298,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
   describe('3.1.4 Advance Days limit', () => {
     it('should reject if booking exceeds advanceDays', () => {
        const eqId = setupEquipment({ advanceDays: 7 });
-       const data = { ...baseData, equipment_id: eqId, start_time: t(24 * 8), end_time: t(24 * 8 + 1) };
+       const data = createResData(eqId, t(24 * 8), t(24 * 8 + 1));
        expect(() => ReservationService.create(data, -480)).toThrowError(/只能提前 7 天预约/);
     });
   });
@@ -271,14 +313,14 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     it('should hard reject if user is BANned', () => {
        const eqId = setupEquipment();
        db.prepare(`INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?, ?)`).run('STU_BAN', ruleId, 'BAN', '{}', t(-1), t(24), 'active');
-       const data = { ...baseData, student_id: 'STU_BAN', equipment_id: eqId, start_time: t(1), end_time: t(2) };
+       const data = createResData(eqId, t(1), t(2), { student_id: 'STU_BAN' });
        expect(() => ReservationService.create(data, -480)).toThrowError(/Test Rule/);
     });
 
     it('should degrade to pending if user has REQUIRE_APPROVAL penalty', () => {
        const eqId = setupEquipment();
        db.prepare(`INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?, ?)`).run('STU_REQ', ruleId, 'REQUIRE_APPROVAL', '{}', t(-1), t(24), 'active');
-       const data = { ...baseData, student_id: 'STU_REQ', equipment_id: eqId, start_time: t(1), end_time: t(2) };
+       const data = createResData(eqId, t(1), t(2), { student_id: 'STU_REQ' });
        const res = ReservationService.create(data, -480);
        expect(res.status).toBe('pending');
     });
@@ -300,7 +342,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
       
       db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, booking_code, status, start_time, end_time) VALUES (?, ?, ?, 'Super', '123', 'a@b.com', 'NOSHOW', ?, ?, ?)`).run(eqId, 'STU_NO_SHOW', 'No Show', 'approved', pastData.start_time, pastData.end_time);
 
-      const data = { ...baseData, equipment_id: eqId, start_time: tMin(0), end_time: tMin(30) };
+      const data = createResData(eqId, tMin(0), tMin(30));
       const res = ReservationService.create(data, -480);
       expect(res.status).toBe('approved');
     });
@@ -311,7 +353,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
       
       db.prepare(`INSERT INTO reservations (equipment_id, student_id, student_name, supervisor, phone, email, booking_code, status, start_time, end_time) VALUES (?, ?, ?, 'Super', '123', 'a@b.com', 'LATE', ?, ?, ?)`).run(eqId, 'STU_LATE', 'Late', 'approved', pastData.start_time, pastData.end_time);
 
-      const data = { ...baseData, equipment_id: eqId, start_time: tMin(0), end_time: tMin(30) };
+      const data = createResData(eqId, tMin(0), tMin(30));
       expect(() => ReservationService.create(data, -480)).toThrowError(/该时间段已被预约/);
     });
   });
@@ -319,7 +361,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
   describe('3.1.7 Hidden & Malformed JSON', () => {
     it('should reject if equipment is_hidden', () => {
       const eqId = setupEquipment({}, { is_hidden: true });
-      const data = { ...baseData, equipment_id: eqId, start_time: t(1), end_time: t(2) };
+      const data = createResData(eqId, t(1), t(2));
       expect(() => ReservationService.create(data, -480)).toThrowError(/该仪器暂不开放预约/);
     });
 
@@ -330,10 +372,10 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
       const data1 = { ...baseData, equipment_id: eqId, start_time: t(1), end_time: tMin(60 + 15) };
       expect(() => ReservationService.create(data1, -480)).toThrowError(/预约时长不能少于 30 分钟/);
       
-      const data2 = { ...baseData, equipment_id: eqId, start_time: t(24 * 8), end_time: t(24 * 8 + 1) };
+      const data2 = createResData(eqId, t(24 * 8), t(24 * 8 + 1));
       expect(() => ReservationService.create(data2, -480)).toThrowError(/只能提前 7 天预约/);
       
-      const data3 = { ...baseData, equipment_id: eqId, start_time: t(1), end_time: t(2) };
+      const data3 = createResData(eqId, t(1), t(2));
       expect(() => ReservationService.create(data3, -480)).toThrowError(/所选时间包含了仪器不开放的日期/);
     });
   });

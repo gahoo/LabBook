@@ -37,10 +37,10 @@
   - [x] 3.2.2 明确并添加 30 天滚动窗口的毫秒级边界断言（恰好30天 vs 30天+1ms）。
   - [x] 3.2.3 补充新增违规打破已有“豁免 (Waivers)”的回归测试。
   - [x] 3.2.4 补充 `metric: 'duration'` 和 `target_equipment_id` 的维度测试。
-- [ ] 3.3 预约测试基建与边界增强 (Reservation Service 增强)：
-  - [ ] 3.3.1 提取 `createReservationData` 等 fixtures，减少重复，合成冲突断言。
-  - [ ] 3.3.2 补充所有真正的边界测试（首尾相接 `A.end === B.start`、恰好跨 0 点、最小/最大时长边缘）。
-  - [ ] 3.3.3 补充 pending 状态的真实查库断言，确保数据不仅返回 pending 且已持久化。
+- [x] 3.3 预约测试基建与边界增强 (Reservation Service 增强)：
+  - [x] 3.3.1 提取 `createReservationData` 等 fixtures，减少重复，合成冲突断言。
+  - [x] 3.3.2 补充所有真正的边界测试（首尾相接 `A.end === B.start`、恰好跨 0 点、最小/最大时长边缘）。
+  - [x] 3.3.3 补充 pending 状态的真实查库断言，确保数据不仅返回 pending 且已持久化。
 - [ ] 3.4 补齐预约状态机生命周期测试 (Reservation Service Lifecycle)：
   - [ ] 3.4.1 补充 `checkin` 的测试（签到时间窗限制）。
   - [ ] 3.4.2 补充 `checkout` 的测试（计费与超时处罚判定）。
