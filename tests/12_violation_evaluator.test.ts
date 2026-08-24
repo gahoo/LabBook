@@ -50,6 +50,14 @@ describe('Violation Evaluator (12_violation_evaluator.test.ts)', () => {
     createViolation(studentId, type, fixedNow, 3);
   };
 
+  const createReservationWithEquipment = (id: number, equipment_id: number) => {
+    db.prepare(`INSERT OR IGNORE INTO equipment (id, name, price_type, price) VALUES (?, 'Test Eq', 'free', 0)`).run(equipment_id);
+    db.prepare(`
+      INSERT INTO reservations (id, student_id, student_name, supervisor, phone, email, booking_code, equipment_id, start_time, end_time, status)
+      VALUES (?, 'STU_1', 'John', 'Dr. Smith', '123', 'john@test.com', ?, ?, ?, ?, 'completed')
+    `).run(id, `CODE_${id}`, equipment_id, fixedNow.toISOString(), fixedNow.toISOString());
+  };
+
   describe('3.2.1 Penalty Type Effects (Action Config Parsing)', () => {
     it('should correctly evaluate BAN penalty type', () => {
       createRule({ action_config: { type: 'ban' } });
@@ -86,19 +94,25 @@ describe('Violation Evaluator (12_violation_evaluator.test.ts)', () => {
       expect(result.restrictions.fee_multiplier).toBe(2.5);
     });
 
-    it('should create fixed duration penalty via evaluatePenaltiesOnViolation', () => {
+    it('should create fixed duration penalty via evaluatePenaltiesOnViolation and ensure idempotency', () => {
       createRule({ action_config: { type: 'ban', duration_type: 'fixed', duration_days: 14 } });
       insertThreeViolations('STU_5', 'late');
       
       // evaluatePenaltiesOnViolation writes to user_penalties for fixed duration rules
       evaluatePenaltiesOnViolation('STU_5');
       
-      const penalties = db.prepare('SELECT * FROM user_penalties WHERE student_id = ?').all('STU_5') as any[];
+      let penalties = db.prepare('SELECT * FROM user_penalties WHERE student_id = ?').all('STU_5') as any[];
       expect(penalties.length).toBe(1);
       expect(penalties[0].penalty_method).toBe('ban');
       
       const expectedEnd = new Date(fixedNow.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
       expect(penalties[0].end_time).toBe(expectedEnd);
+
+      // Idempotency check: triggering evaluation again should NOT extend the end time
+      evaluatePenaltiesOnViolation('STU_5');
+      penalties = db.prepare('SELECT * FROM user_penalties WHERE student_id = ?').all('STU_5') as any[];
+      expect(penalties.length).toBe(1); // Still exactly 1 active penalty
+      expect(penalties[0].end_time).toBe(expectedEnd); // End time unchanged
     });
   });
 
@@ -129,6 +143,45 @@ describe('Violation Evaluator (12_violation_evaluator.test.ts)', () => {
       
       const result2 = checkUserPenalty('STU_1');
       expect(result2.isPenalized).toBe(true); // Total 3
+    });
+
+    it('should evaluate correctly using duration metric', () => {
+      createRule({ trigger_config: { window_type: 'rolling', period_days: 30, metric: 'duration', threshold: 120 } });
+      
+      createViolation('STU_1', 'late', fixedNow, 1, { duration_minutes: 50 });
+      createViolation('STU_1', 'late', fixedNow, 2, { duration_minutes: 60 });
+      
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(false); // 110 < 120
+      
+      createViolation('STU_1', 'late', fixedNow, 3, { duration_minutes: 10 });
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(true); // 120 >= 120
+    });
+
+    it('should filter correctly using equipment scope', () => {
+      // Create a rule that only applies to equipment_id 99
+      createRule({ trigger_config: { window_type: 'rolling', period_days: 30, metric: 'count', threshold: 3, scope: [99] } });
+      
+      createReservationWithEquipment(10, 99);
+      createReservationWithEquipment(11, 88);
+      createReservationWithEquipment(12, 99);
+      createReservationWithEquipment(13, 99);
+
+      createViolation('STU_1', 'late', fixedNow, 10);
+      createViolation('STU_1', 'late', fixedNow, 11); // On equipment 88, shouldn't count
+      createViolation('STU_1', 'late', fixedNow, 12);
+      
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(false); // Only 2 violations on eq 99
+      
+      createViolation('STU_1', 'late', fixedNow, 13);
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(true); // 3 violations on eq 99
+    });
+
+    it('should not evaluate inactive rules', () => {
+      createRule({ is_active: 0, trigger_config: { window_type: 'rolling', period_days: 30, metric: 'count', threshold: 2 } });
+      createViolation('STU_1', 'late', fixedNow, 1);
+      createViolation('STU_1', 'late', fixedNow, 2);
+      
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(false); // Rule is inactive
     });
   });
 
@@ -162,6 +215,31 @@ describe('Violation Evaluator (12_violation_evaluator.test.ts)', () => {
       const result = checkUserPenalty('STU_1');
       expect(result.isPenalized).toBe(false); // Only 1 inside the 30-day window
     });
+
+    it('should handle rolling window exact millisecond boundaries (30 days vs 30 days + 1ms)', () => {
+      createRule({ trigger_config: { window_type: 'rolling', period_days: 30, metric: 'count', threshold: 3 } });
+      
+      const exact30DaysAgo = new Date(fixedNow.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const exact30DaysPlus1msAgo = new Date(fixedNow.getTime() - 30 * 24 * 60 * 60 * 1000 - 1);
+      
+      // Test 1: EXACTLY 30 days ago - should be INCLUDED (>=)
+      createViolation('STU_1', 'late', fixedNow, 1);
+      createViolation('STU_1', 'late', fixedNow, 2);
+      createViolation('STU_1', 'late', exact30DaysAgo, 3);
+      
+      let result = checkUserPenalty('STU_1');
+      expect(result.isPenalized).toBe(true); 
+      
+      // Test 2: EXACTLY 30 days + 1ms ago - should be EXCLUDED (<)
+      db.prepare('DELETE FROM violation_records').run();
+      
+      createViolation('STU_2', 'late', fixedNow, 4);
+      createViolation('STU_2', 'late', fixedNow, 5);
+      createViolation('STU_2', 'late', exact30DaysPlus1msAgo, 6);
+      
+      result = checkUserPenalty('STU_2');
+      expect(result.isPenalized).toBe(false);
+    });
   });
 
   describe('3.2.4 Revocation, Waivers & Recovery', () => {
@@ -193,6 +271,28 @@ describe('Violation Evaluator (12_violation_evaluator.test.ts)', () => {
       db.prepare(`INSERT INTO penalty_waivers (student_id, rule_id, violation_ids) VALUES (?, ?, ?)`).run('STU_1', ruleId, snapshot);
       
       expect(checkUserPenalty('STU_1').isPenalized).toBe(false);
+    });
+
+    it('should break existing waiver if a new violation occurs', () => {
+      const ruleId = createRule({});
+      const v1 = createViolation('STU_1', 'late', fixedNow, 1);
+      const v2 = createViolation('STU_1', 'late', fixedNow, 2);
+      const v3 = createViolation('STU_1', 'late', fixedNow, 3);
+      
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(true);
+      
+      // Insert waiver for exact combination
+      const ids = [v1, v2, v3].sort((a, b) => a - b);
+      const snapshot = `,${ids.join(',')},`;
+      db.prepare(`INSERT INTO penalty_waivers (student_id, rule_id, violation_ids) VALUES (?, ?, ?)`).run('STU_1', ruleId, snapshot);
+      
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(false);
+      
+      // New violation occurs
+      createViolation('STU_1', 'late', fixedNow, 4);
+      
+      // Now has 4 violations, snapshot doesn't match
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(true);
     });
 
     it('should automatically recover from fixed penalties if end_time is in the past', () => {

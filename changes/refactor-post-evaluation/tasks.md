@@ -32,11 +32,11 @@
   - [x] 3.1.5 补充：惩罚系统联动（BAN、REQUIRE_APPROVAL、reduce_days 天数缩水）
   - [x] 3.1.6 补充：爽约槽位抢占释放 (No-Show Release) 允许覆盖
   - [x] 3.1.7 补充：异常与隐藏拦截（设备隐藏、非法 JSON 降级）
-- [ ] 3.2 高风险评估器逻辑攻坚 (Violation Evaluator 增强)：
-  - [ ] 3.2.1 修复固定处罚的幂等性测试，确保多次评估不会错误顺延解封时间。
-  - [ ] 3.2.2 明确并添加 30 天滚动窗口的毫秒级边界断言（恰好30天 vs 30天+1ms）。
-  - [ ] 3.2.3 补充新增违规打破已有“豁免 (Waivers)”的回归测试。
-  - [ ] 3.2.4 补充 `metric: 'duration'` 和 `target_equipment_id` 的维度测试。
+- [x] 3.2 高风险评估器逻辑攻坚 (Violation Evaluator 增强)：
+  - [x] 3.2.1 修复固定处罚的幂等性测试，确保多次评估不会错误顺延解封时间。
+  - [x] 3.2.2 明确并添加 30 天滚动窗口的毫秒级边界断言（恰好30天 vs 30天+1ms）。
+  - [x] 3.2.3 补充新增违规打破已有“豁免 (Waivers)”的回归测试。
+  - [x] 3.2.4 补充 `metric: 'duration'` 和 `target_equipment_id` 的维度测试。
 - [ ] 3.3 预约测试基建与边界增强 (Reservation Service 增强)：
   - [ ] 3.3.1 提取 `createReservationData` 等 fixtures，减少重复，合成冲突断言。
   - [ ] 3.3.2 补充所有真正的边界测试（首尾相接 `A.end === B.start`、恰好跨 0 点、最小/最大时长边缘）。
