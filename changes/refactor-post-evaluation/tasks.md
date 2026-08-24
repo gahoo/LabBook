@@ -41,11 +41,11 @@
   - [x] 3.3.1 提取 `createReservationData` 等 fixtures，减少重复，合成冲突断言。
   - [x] 3.3.2 补充所有真正的边界测试（首尾相接 `A.end === B.start`、恰好跨 0 点、最小/最大时长边缘）。
   - [x] 3.3.3 补充 pending 状态的真实查库断言，确保数据不仅返回 pending 且已持久化。
-- [ ] 3.4 补齐预约状态机生命周期测试 (Reservation Service Lifecycle)：
-  - [ ] 3.4.1 补充 `checkin` 的测试（签到时间窗限制）。
-  - [ ] 3.4.2 补充 `checkout` 的测试（计费与超时处罚判定）。
-  - [ ] 3.4.3 补充 `cancel` 的测试（迟到/临时取消的处罚逻辑）。
-  - [ ] 3.4.4 补充 `update`，`adminUpdate` 及 `adminDelete` 的测试与通知触发断言。
+- [x] 3.4 补齐预约状态机生命周期测试 (Reservation Service Lifecycle)：
+  - [x] 3.4.1 补充 `checkin` 的测试（签到时间窗限制）。
+  - [x] 3.4.2 补充 `checkout` 的测试（计费与超时处罚判定）。
+  - [x] 3.4.3 补充 `cancel` 的测试（迟到/临时取消的处罚逻辑）。
+  - [x] 3.4.4 补充 `update`，`adminUpdate` 及 `adminDelete` 的测试与通知触发断言。
 - [ ] 3.5 覆盖率报告：运行 `npm run test:coverage`，对比阶段 0 基线，确认覆盖率未下降。
 
 ## 阶段 4：接口一致性与类型安全 (P2 & P3)

@@ -242,7 +242,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     it('should reject peak exceeding if not allowed', () => {
        const eqId = setupEquipment({ 
          maxDurationMinutes: 60, 
-         peakHours: [{ start: '10:00', end: '12:00' }],
+         peakHours: [{ start: '10:00', end: '15:00' }],
          allowExceedDuration: false 
        });
        // fixedNow UTC 10:00 -> Local 18:00
@@ -254,7 +254,7 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     it('should allow and set pending if allowExceed is true for peak', () => {
        const eqId = setupEquipment({ 
          maxDurationMinutes: 60, 
-         peakHours: [{ start: '10:00', end: '12:00' }],
+         peakHours: [{ start: '10:00', end: '15:00' }],
          allowExceedDuration: true 
        });
        const data = createResData(eqId, t(16), t(18));
@@ -377,6 +377,205 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
       
       const data3 = createResData(eqId, t(1), t(2));
       expect(() => ReservationService.create(data3, -480)).toThrowError(/所选时间包含了仪器不开放的日期/);
+    });
+  });
+  describe('3.4 Reservation Service Lifecycle', () => {
+    let eqId: number;
+    let baseResData: any;
+    
+    beforeEach(() => {
+      eqId = setupEquipment();
+      baseResData = createResData(eqId, t(1), t(2));
+      vi.setSystemTime(fixedNow); // Reset time before each test
+    });
+
+    describe('3.4.1 checkin', () => {
+      it('should fail if booking not found', () => {
+        expect(() => ReservationService.checkin('INVALID')).toThrowError(/未找到该预约/);
+      });
+
+      it('should fail if status is not approved', () => {
+        const eqId2 = setupEquipment({}, { auto_approve: false });
+        const res2 = ReservationService.create(createResData(eqId2, t(1), t(2)), -480);
+        expect(res2.status).toBe('pending');
+        expect(() => ReservationService.checkin(res2.booking_code)).toThrowError(/未通过审批/);
+      });
+
+      it('should fail if checking in too early', () => {
+        const res = ReservationService.create(createResData(eqId, t(2), t(3)), -480); // starts in 2 hours
+        expect(() => ReservationService.checkin(res.booking_code)).toThrowError(/只能在预约开始前 30 分钟内上机/);
+      });
+
+      it('should fail if checking in too late', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480); // starts in 1 hour
+        
+        // Fast forward 1 hour 40 mins
+        vi.setSystemTime(new Date(fixedNow.getTime() + 100 * 60000));
+        expect(() => ReservationService.checkin(res.booking_code)).toThrowError(/已超过预约开始时间30分钟/);
+      });
+
+      it('should successfully check in within time window', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480); // starts in 1 hour
+        
+        // Fast forward 50 mins (10 mins before start)
+        vi.setSystemTime(new Date(fixedNow.getTime() + 50 * 60000));
+        ReservationService.checkin(res.booking_code);
+        
+        const saved = db.prepare('SELECT status, actual_start_time FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved.status).toBe('active');
+        expect(saved.actual_start_time).toBeDefined();
+      });
+
+      it('should trigger late penalty if diffMinutes > late_grace_minutes', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480); // starts in 1 hour
+        
+        // Fast forward 1 hour + 20 mins (20 mins late)
+        vi.setSystemTime(new Date(fixedNow.getTime() + 80 * 60000));
+        ReservationService.checkin(res.booking_code);
+        
+        const violation = db.prepare('SELECT * FROM violation_records WHERE reservation_id = ?').get(res.id) as any;
+        expect(violation).toBeDefined();
+        expect(violation.violation_type).toBe('late');
+      });
+    });
+
+    describe('3.4.2 checkout', () => {
+      it('should fail if booking not found or not active', () => {
+        expect(() => ReservationService.checkout('INVALID')).toThrowError(/未找到该预约/);
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        expect(() => ReservationService.checkout(res.booking_code)).toThrowError(/未在进行中/);
+      });
+
+      it('should successfully check out and calculate correct cost (hour based)', () => {
+        const eqIdCost = setupEquipment({}, { price_type: 'hour', price: 10 });
+        const res = ReservationService.create(createResData(eqIdCost, t(1), t(2)), -480); // starts in 1h, ends in 2h
+        
+        vi.setSystemTime(new Date(fixedNow.getTime() + 60 * 60000)); // exactly start time
+        ReservationService.checkin(res.booking_code);
+        
+        // Fast forward 1 hour (checkout exactly at end time)
+        vi.setSystemTime(new Date(fixedNow.getTime() + 120 * 60000));
+        ReservationService.checkout(res.booking_code, 2); // consumable qty 2
+        
+        const saved = db.prepare('SELECT status, actual_end_time, total_cost FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved.status).toBe('completed');
+        expect(saved.total_cost).toBe(10); // 1 hour * 10 = 10.
+        expect(saved.actual_end_time).toBeDefined();
+      });
+
+      it('should apply fee_multiplier if user is penalized', () => {
+        const eqIdCost = setupEquipment({}, { price_type: 'hour', price: 10 });
+        const res = ReservationService.create(createResData(eqIdCost, t(1), t(2)), -480);
+        
+        vi.setSystemTime(new Date(fixedNow.getTime() + 60 * 60000));
+        ReservationService.checkin(res.booking_code);
+        
+        // Add penalty for this user right before checkout
+        db.prepare(`INSERT INTO penalty_rules (name, violation_type, trigger_config, action_config) VALUES ('Fee', 'late', '{}', '{}')`).run();
+        const ruleId = (db.prepare('SELECT last_insert_rowid() as id').get() as any).id;
+        db.prepare(`INSERT INTO user_penalties (student_id, rule_id, penalty_method, restrictions, start_time, end_time, status) VALUES (?, ?, 'DOUBLE_FEE', '{"multiplier":2}', ?, ?, 'active')`).run('STU_123', ruleId, t(-1), t(24));
+        
+        vi.setSystemTime(new Date(fixedNow.getTime() + 120 * 60000));
+        ReservationService.checkout(res.booking_code);
+        
+        const saved = db.prepare('SELECT total_cost FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved.total_cost).toBe(20); // 10 * 2
+      });
+
+      it('should trigger overdue violation if checked out late', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        
+        vi.setSystemTime(new Date(fixedNow.getTime() + 60 * 60000));
+        ReservationService.checkin(res.booking_code);
+        
+        // Check out 30 mins late (end is t(2), so + 150 mins from fixedNow)
+        vi.setSystemTime(new Date(fixedNow.getTime() + 150 * 60000));
+        ReservationService.checkout(res.booking_code);
+        
+        const violation = db.prepare('SELECT * FROM violation_records WHERE reservation_id = ?').get(res.id) as any;
+        expect(violation).toBeDefined();
+        expect(violation.violation_type).toBe('overdue');
+      });
+    });
+
+    describe('3.4.3 cancel', () => {
+      it('should fail if booking not found or not pending/approved', () => {
+        expect(() => ReservationService.cancel('INVALID')).toThrowError(/未找到该预约/);
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        ReservationService.cancel(res.booking_code);
+        expect(() => ReservationService.cancel(res.booking_code)).toThrowError(/无法取消进行中或已完成的预约/);
+      });
+
+      it('should fail if > 30 mins late (no-show grace)', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        vi.setSystemTime(new Date(fixedNow.getTime() + 100 * 60000)); // 1h 40m later
+        expect(() => ReservationService.cancel(res.booking_code)).toThrowError(/不允许取消或者修改/);
+      });
+
+      it('should successfully cancel and not trigger late cancel if far enough in advance', () => {
+        const res = ReservationService.create(createResData(eqId, t(3), t(4)), -480); // starts in 3 hours
+        ReservationService.cancel(res.booking_code);
+        
+        const saved = db.prepare('SELECT status FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved.status).toBe('cancelled');
+        
+        const violation = db.prepare('SELECT * FROM violation_records WHERE reservation_id = ?').get(res.id) as any;
+        expect(violation).toBeUndefined();
+      });
+
+      it('should trigger late_cancel violation if within late cancellation window', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480); // starts in 1 hour
+        ReservationService.cancel(res.booking_code); // default late cancel is 120 mins
+        
+        const violation = db.prepare('SELECT * FROM violation_records WHERE reservation_id = ?').get(res.id) as any;
+        expect(violation).toBeDefined();
+        expect(violation.violation_type).toBe('late_cancel');
+      });
+    });
+
+    describe('3.4.4 update, adminUpdate, adminDelete', () => {
+      it('should fail to update if > 30 mins late', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        vi.setSystemTime(new Date(fixedNow.getTime() + 100 * 60000)); // 1h 40m later
+        expect(() => ReservationService.update(res.booking_code, t(2), t(3))).toThrowError(/不允许取消或者修改/);
+      });
+
+      it('should fail to update if modified_count >= 1', () => {
+        const res = ReservationService.create(createResData(eqId, t(2), t(3)), -480);
+        ReservationService.update(res.booking_code, t(3), t(4));
+        expect(() => ReservationService.update(res.booking_code, t(4), t(5))).toThrowError(/每个预约仅允许修改一次时间/);
+      });
+
+      it('should successfully update and change status to pending if rules dictate', () => {
+        const eqId2 = setupEquipment({ peakHours: [{ start: '10:00', end: '15:00' }], allowExceedDuration: true });
+        
+        // We want to book local 13:00 to 14:00 (off-peak)
+        // UTC 10:00 is Local 18:00 (tz_offset -480).
+        // Tomorrow Local 13:00 -> UTC 05:00 next day -> 19 hours ahead.
+        const res = ReservationService.create(createResData(eqId2, t(19), t(20)), -480);
+        expect(res.status).toBe('approved');
+        
+        // Update to Peak (Local 11:00 next day -> UTC 03:00 next day -> 17 hours ahead)
+        ReservationService.update(res.booking_code, t(17), t(20), -480);
+        
+        const saved = db.prepare('SELECT status, modified_count FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved.status).toBe('pending');
+        expect(saved.modified_count).toBe(1);
+      });
+
+      it('should successfully adminUpdate', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        ReservationService.adminUpdate(res.id, { status: 'cancelled' });
+        const saved = db.prepare('SELECT status FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved.status).toBe('cancelled');
+      });
+
+      it('should successfully adminDelete', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        ReservationService.adminDelete(res.id, 'Test delete');
+        const saved = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
+        expect(saved).toBeUndefined();
+      });
     });
   });
 });
