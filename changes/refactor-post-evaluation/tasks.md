@@ -23,7 +23,7 @@
 
 ## 阶段 3：测试深度提升 (P1)
 
-- [ ] 3.1 补充 Service 层测试 (Reservation)：创建测试文件，使用 tests/setup.ts 的内存 DB 基础设施，绕过 HTTP 层直接调用 ReservationService.create，测试校验逻辑和冲突检测的边界情况。
+- [x] 3.1 补充 Service 层测试 (Reservation)：创建测试文件，使用 tests/setup.ts 的内存 DB 基础设施，绕过 HTTP 层直接调用 ReservationService.create，测试校验逻辑和冲突检测的边界情况。
 - [ ] 3.2 补充 Service 层测试 (Violation)：直接调用 violation/evaluator.ts 中的 checkUserPenalty 和 evaluatePenaltiesOnViolation，测试多规则组合、窗口期边界、豁免判定等场景。
 - [ ] 3.3 覆盖率报告：运行 `npm run test:coverage`，对比阶段 0 基线，确认覆盖率未下降。
 
