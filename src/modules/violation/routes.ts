@@ -260,4 +260,4 @@ router.get('/api/admin/penalties/active', adminAuth, (req, res) => {
   }
 });
 
-export default router;
+export { router as violationRouter };

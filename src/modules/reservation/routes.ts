@@ -1,3 +1,5 @@
+import { validateRequest } from '../../middleware/validate.js';
+import { CreateReservationSchema } from '../../lib/zodSchemas.js';
 import { validateTimeRange } from '../../lib/validators.js';
 import { db } from '../../db/index.js';
 import { actionLimiter } from '../../middleware/rateLimiter.js';
@@ -9,11 +11,11 @@ import { Router } from 'express';
 // Phase 1: 纯物理路由剥离
 // 业务依赖 (如 db, actionLimiter 等) 将在搬运端点时逐步按需引入
 
-export const reservationRouter = Router();
-export const reservationAdminRouter = Router();
+const reservationRouter = Router();
+const reservationAdminRouter = Router();
 
 // 4. Create reservation
-reservationRouter.post('/', actionLimiter, (req, res) => {
+reservationRouter.post('/', actionLimiter, validateRequest(CreateReservationSchema), (req, res) => {
   const tz_offset = req.body.tz_offset || 0;
   try {
     const result = ReservationService.create(req.body, tz_offset);
@@ -197,3 +199,4 @@ reservationAdminRouter.delete('/:id', (req, res) => {
     }
   }
 });
+export { reservationRouter, reservationAdminRouter };

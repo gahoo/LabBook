@@ -2,7 +2,7 @@ import { OperationRejectError } from '../../lib/errors.js';
 import { Router } from 'express';
 import { applyWhitelist, listApplications, approveApplication, rejectApplication } from './service.js';
 
-export const whitelistRouter = Router();
+const whitelistRouter = Router();
 
 whitelistRouter.post('/apply', (req, res, next) => {
   try {
@@ -18,7 +18,7 @@ whitelistRouter.post('/apply', (req, res, next) => {
   }
 });
 
-export const whitelistAdminRouter = Router();
+const whitelistAdminRouter = Router();
 
 whitelistAdminRouter.get('/applications', (req, res, next) => {
   try {
@@ -61,3 +61,4 @@ whitelistAdminRouter.post('/applications/:id/reject', (req, res, next) => {
 
   }
 });
+export { whitelistRouter, whitelistAdminRouter };

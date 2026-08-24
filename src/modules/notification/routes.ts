@@ -5,9 +5,9 @@ import { OperationRejectError } from '../../lib/errors.js';
 import { scheduleNextRun } from './service.js';
 import { marked } from 'marked';
 
-export const notificationRoutes = Router();
+const router = Router();
 
-notificationRoutes.post('/notifications/test-connection', adminAuth, async (req, res) => {
+router.post('/notifications/test-connection', adminAuth, async (req, res) => {
   const { type, config } = req.body;
   
   try {
@@ -45,7 +45,7 @@ notificationRoutes.post('/notifications/test-connection', adminAuth, async (req,
   }
 });
 
-notificationRoutes.post('/notifications/test-event', adminAuth, async (req, res) => {
+router.post('/notifications/test-event', adminAuth, async (req, res) => {
   const { event, type, config, eventConfig } = req.body;
   
   // Mock Data
@@ -120,7 +120,7 @@ notificationRoutes.post('/notifications/test-event', adminAuth, async (req, res)
   }
 });
 
-notificationRoutes.get('/delivery-logs', adminAuth, (req, res) => {
+router.get('/delivery-logs', adminAuth, (req, res) => {
   const { status, reference_code, target, events, startDate, endDate, page = '1', limit = '50' } = req.query;
 
   try {
@@ -201,7 +201,7 @@ notificationRoutes.get('/delivery-logs', adminAuth, (req, res) => {
   }
 });
 
-notificationRoutes.post('/delivery-logs/:id/retry', adminAuth, (req, res) => {
+router.post('/delivery-logs/:id/retry', adminAuth, (req, res) => {
   try {
       db.prepare(`UPDATE notifications SET status = 'pending', retry_count = 0, next_retry_time = CURRENT_TIMESTAMP WHERE id = ?`).run(req.params.id);
       setTimeout(() => { scheduleNextRun(db); }, 100);
@@ -210,3 +210,4 @@ notificationRoutes.post('/delivery-logs/:id/retry', adminAuth, (req, res) => {
       res.status(500).json({ error: 'Failed to retry' });
   }
 });
+export { router as notificationAdminRouter };

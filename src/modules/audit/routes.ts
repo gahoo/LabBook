@@ -5,7 +5,7 @@ import { getAuditLogs } from './service.js';
 
 const router = Router();
 
-router.get('/api/admin/audit-logs', adminAuth, (req: Request, res: Response) => {
+router.get('/', adminAuth, (req: Request, res: Response) => {
   if (!validateTimeRange(req, res, 'start_date', 'end_date')) return;
 
   const { start_date, end_date } = req.query as { start_date?: string, end_date?: string };
@@ -19,4 +19,4 @@ router.get('/api/admin/audit-logs', adminAuth, (req: Request, res: Response) => 
   }
 });
 
-export default router;
+export { router as auditAdminRouter };

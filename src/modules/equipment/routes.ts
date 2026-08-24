@@ -1,3 +1,5 @@
+import { validateRequest } from '../../middleware/validate.js';
+import { CreateEquipmentSchema, UpdateEquipmentSchema } from '../../lib/zodSchemas.js';
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../../config.js';
@@ -5,15 +7,15 @@ import { adminAuth } from '../../middleware/auth.js';
 import { format } from 'date-fns';
 import * as service from './service.js';
 
-export const equipmentRouter = Router();
-export const equipmentAdminRouter = Router();
+const equipmentRouter = Router();
+const equipmentAdminRouter = Router();
 
 // ========================
 // Public / User Routes
 // ========================
 
 // 1. Get all equipment
-equipmentRouter.get('/api/equipment', (req: Request, res: Response) => {
+equipmentRouter.get('/', (req: Request, res: Response) => {
   let isAdmin = false;
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -31,14 +33,14 @@ equipmentRouter.get('/api/equipment', (req: Request, res: Response) => {
 });
 
 // 2. Get today's availability for all equipment
-equipmentRouter.get('/api/equipment/availability/today', (req: Request, res: Response) => {
+equipmentRouter.get('/availability/today', (req: Request, res: Response) => {
   const date = (req.query.date as string) || format(new Date(), 'yyyy-MM-dd');
   const results = service.getEquipmentAvailabilityToday(date);
   res.json(results);
 });
 
 // 3. Get availability for an equipment on a specific date or date range
-equipmentRouter.get('/api/equipment/:id/availability', (req: Request, res: Response) => {
+equipmentRouter.get('/:id/availability', (req: Request, res: Response) => {
   const { id } = req.params;
   const { date, start_date, end_date } = req.query as any;
   
@@ -71,7 +73,7 @@ equipmentRouter.get('/api/equipment/:id/availability', (req: Request, res: Respo
 });
 
 // 4. Get all reservations for an equipment in a date range (for chart)
-equipmentRouter.get('/api/equipment/:id/reservations', (req: Request, res: Response) => {
+equipmentRouter.get('/:id/reservations', (req: Request, res: Response) => {
   const { id } = req.params;
   const { start, end } = req.query;
   
@@ -84,7 +86,7 @@ equipmentRouter.get('/api/equipment/:id/reservations', (req: Request, res: Respo
 // Admin Routes
 // ========================
 
-equipmentAdminRouter.post('/api/admin/equipment', adminAuth, (req: Request, res: Response) => {
+equipmentAdminRouter.post('/equipment', adminAuth, (req: Request, res: Response) => {
   try {
     const id = service.createEquipment(req.body);
     res.json({ id });
@@ -94,7 +96,7 @@ equipmentAdminRouter.post('/api/admin/equipment', adminAuth, (req: Request, res:
   }
 });
 
-equipmentAdminRouter.put('/api/admin/equipment/:id', adminAuth, (req: Request, res: Response) => {
+equipmentAdminRouter.put('/equipment/:id', adminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     service.updateEquipment(id, req.body);
@@ -105,7 +107,7 @@ equipmentAdminRouter.put('/api/admin/equipment/:id', adminAuth, (req: Request, r
   }
 });
 
-equipmentAdminRouter.put('/api/admin/equipment-batch', adminAuth, (req: Request, res: Response) => {
+equipmentAdminRouter.put('/equipment-batch', adminAuth, (req: Request, res: Response) => {
   const { ids, updates } = req.body;
   
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -121,7 +123,7 @@ equipmentAdminRouter.put('/api/admin/equipment-batch', adminAuth, (req: Request,
   }
 });
 
-equipmentAdminRouter.delete('/api/admin/equipment/:id', adminAuth, (req: Request, res: Response) => {
+equipmentAdminRouter.delete('/equipment/:id', adminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     service.deleteEquipment(id);
@@ -132,3 +134,4 @@ equipmentAdminRouter.delete('/api/admin/equipment/:id', adminAuth, (req: Request
   }
 });
 
+export { equipmentRouter, equipmentAdminRouter };

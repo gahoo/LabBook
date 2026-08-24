@@ -4,9 +4,9 @@ import { mailLimiter } from '../../middleware/rateLimiter.js';
 import * as calendarService from './service.js';
 import { OperationRejectError } from '../../lib/errors.js';
 
-export const calendarRoutes = Router();
+const router = Router();
 
-calendarRoutes.get('/api/calendar/user/url', (req, res) => {
+router.get('/user/url', (req, res) => {
   try {
     const url = calendarService.generateUserCalendarUrl(
       req.query.booking_code as string,
@@ -23,7 +23,7 @@ calendarRoutes.get('/api/calendar/user/url', (req, res) => {
   }
 });
 
-calendarRoutes.post('/api/calendar/user/mail', mailLimiter, (req, res) => {
+router.post('/user/mail', mailLimiter, (req, res) => {
   try {
     const email = calendarService.processUserCalendarMail(
       req.body.booking_code,
@@ -39,7 +39,7 @@ calendarRoutes.post('/api/calendar/user/mail', mailLimiter, (req, res) => {
   }
 });
 
-calendarRoutes.get('/api/calendar/user/:token.ics', (req, res) => {
+router.get('/user/:token.ics', (req, res) => {
   try {
     const icsContent = calendarService.getUserICS(req.params.token);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -54,7 +54,7 @@ calendarRoutes.get('/api/calendar/user/:token.ics', (req, res) => {
   }
 });
 
-calendarRoutes.get('/api/calendar/equipment/:token.ics', (req, res) => {
+router.get('/equipment/:token.ics', (req, res) => {
   try {
     const { icsContent, equipmentId } = calendarService.getEquipmentICS(req.params.token);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -69,7 +69,7 @@ calendarRoutes.get('/api/calendar/equipment/:token.ics', (req, res) => {
   }
 });
 
-calendarRoutes.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
+router.get('/equipment/:id/url', adminAuth, (req, res) => {
   try {
     const url = calendarService.generateEquipmentCalendarUrl(
       req.params.id,
@@ -84,3 +84,5 @@ calendarRoutes.get('/api/calendar/equipment/:id/url', adminAuth, (req, res) => {
     }
   }
 });
+
+export { router as calendarRouter };

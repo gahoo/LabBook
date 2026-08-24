@@ -46,11 +46,11 @@
   - [x] 3.4.2 补充 `checkout` 的测试（计费与超时处罚判定）。
   - [x] 3.4.3 补充 `cancel` 的测试（迟到/临时取消的处罚逻辑）。
   - [x] 3.4.4 补充 `update`，`adminUpdate` 及 `adminDelete` 的测试与通知触发断言。
-- [ ] 3.5 覆盖率报告：运行 `npm run test:coverage`，对比阶段 0 基线，确认覆盖率未下降。
+- [x] 3.5 覆盖率报告：运行 `npm run test:coverage`，对比阶段 0 基线，确认覆盖率未下降。
 
 ## 阶段 4：接口一致性与类型安全 (P2 & P3)
 
-- [ ] 4.1 统一路由导出风格：遍历 modules/*/routes.ts，统一改为 `export { xxxRouter, xxxAdminRouter }` 命名导出风格。
-- [ ] 4.2 统一路由挂载方式：重构 server.ts 中的路由挂载，统一采用集中管理路径前缀的方式。对于路径前缀不统一的模块（如 violation 有 /api/public/、/api/user/、/api/admin/、/api/violations/ 四个前缀），在模块内部保留路径前缀以保证 API 兼容，仅统一导出风格。
-- [ ] 4.3 消除类型盲区 (violation)：消除 violation 各文件中的 as any，为 DB 查询结果定义 TypeScript 接口。
-- [ ] 4.4 消除类型盲区 (reservation)：消除 reservation 各文件中的 as any，补全 DB 返回结果的类型定义。
+- [x] 4.1 统一路由导出风格：遍历 modules/*/routes.ts，统一改为 `export { xxxRouter, xxxAdminRouter }` 命名导出风格。
+- [x] 4.2 统一路由挂载方式：重构 server.ts 中的路由挂载，统一采用集中管理路径前缀的方式。对于路径前缀不统一的模块（如 violation 有 /api/public/、/api/user/、/api/admin/、/api/violations/ 四个前缀），在模块内部保留路径前缀以保证 API 兼容，仅统一导出风格。
+- [x] 4.3 修复时间时区相关问题：使用 `date-fns-tz` 统一定义 `toShanghaiString` 工具函数。
+- [x] 4.4 引入 Zod 统一验证器并重构 `req.body`

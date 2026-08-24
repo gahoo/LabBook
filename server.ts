@@ -1,12 +1,12 @@
-import authRoutes from "./src/modules/auth/routes.js";
-import { calendarRoutes } from "./src/modules/calendar/routes.js";
-import settingsRoutes from "./src/modules/settings/routes.js";
-import auditRoutes from './src/modules/audit/routes.js';
+import { authRouter } from "./src/modules/auth/routes.js";
+import { calendarRouter } from "./src/modules/calendar/routes.js";
+import { settingsRouter } from "./src/modules/settings/routes.js";
+import { auditAdminRouter } from './src/modules/audit/routes.js';
 import { equipmentRouter, equipmentAdminRouter } from './src/modules/equipment/routes.js';
-import violationRoutes from './src/modules/violation/routes.js';
+import { violationRouter } from './src/modules/violation/routes.js';
 import { whitelistRouter, whitelistAdminRouter } from './src/modules/whitelist/routes.js';
 import { reservationRouter, reservationAdminRouter } from './src/modules/reservation/routes.js';
-import { notificationRoutes } from "./src/modules/notification/routes.js";
+import { notificationAdminRouter } from "./src/modules/notification/routes.js";
 import { adminAuth } from "./src/middleware/auth.js";
 import express from 'express'; 
 import { config } from './src/config.js'; 
@@ -36,14 +36,14 @@ if (!fs.existsSync(backupDir)) {
 processNotificationQueue(db).catch(console.error);
 
 // Register application routes
-app.use(authRoutes);
-app.use(calendarRoutes);
-app.use(equipmentRouter);
-app.use(equipmentAdminRouter);
-app.use(settingsRoutes);
-app.use(auditRoutes);
-app.use("/api/admin", notificationRoutes);
-app.use(violationRoutes);
+app.use('/api/admin', authRouter);
+app.use('/api/calendar', calendarRouter);
+app.use('/api/equipment', equipmentRouter);
+app.use('/api/admin', equipmentAdminRouter);
+app.use(settingsRouter);
+app.use('/api/admin/audit-logs', auditAdminRouter);
+app.use("/api/admin", notificationAdminRouter);
+app.use(violationRouter);
 app.use('/api/whitelist', whitelistRouter);
 app.use('/api/admin/whitelist', adminAuth, whitelistAdminRouter);
 app.use('/api/reservations', reservationRouter);

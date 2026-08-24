@@ -4,7 +4,7 @@ import { loginAdmin } from './service.js';
 
 const router = Router();
 
-router.post('/api/admin/login', authLimiter, (req: Request, res: Response) => {
+router.post('/login', authLimiter, (req: Request, res: Response) => {
   const { password } = req.body;
   const token = loginAdmin(password);
   
@@ -15,4 +15,4 @@ router.post('/api/admin/login', authLimiter, (req: Request, res: Response) => {
   }
 });
 
-export default router;
+export { router as authRouter };
