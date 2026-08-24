@@ -24,21 +24,21 @@
 ### 2.2 测试基线加固 (P1)
 - 在分层刚完成后，趁热打铁进行测试加固。当前 135 个测试全部为通过 `supertest` 发起的 HTTP 集成测试，虽然流程覆盖率高，但对深层业务逻辑粒度较粗。
 - 需要为高复杂度的纯业务核心（如预约冲突校验 `ReservationService.create`，违规计分与处罚生成 `evaluatePenaltiesOnViolation`、`checkUserPenalty`）补充直接调用 Service 层的纯逻辑测试（使用内存 DB）。
-  - **Reservation 测试重点覆盖 7 大边界场景**：
-    1. **时限硬约束**：单次超限 (`> maxDurationMinutes`) 与单日累计超限 (`> dailyMaxDurationMinutes`) 的拒绝逻辑。
-    2. **峰谷（忙闲时）分离逻辑**：忙时超限被拒、开启 `allowExceed` 时忙时/闲时超额转 `pending`。
-    3. **前置白名单防线**：`whitelist_enabled = true` 且用户不在名单中的拦截。
-    4. **提前预约期限制 (Advance Days)**：预约时间超过允许的提前天数时的硬拦截。
+  - **Reservation 测试重点覆盖 7 大边界与生命周期场景**：
+    1. **完整生命周期流转（新）**：除 `create` 外，必须覆盖 `checkin`（签到时间窗）、`checkout`（提前/延期结算及超时处罚判定）、`cancel`（迟到/临时取消违规逻辑）、`update`（修改次数上限）、以及 `adminUpdate/adminDelete` 和管理员审批的通知触发机制。
+    2. **时限与无缝衔接边界（新）**：单次时长恰好等于下限/上限、单日累计恰好等于上限；两个预约首尾相接（`A.end === B.start`）的情况；跨午夜（跨天）预约对每日累计时长的影响评估；提前预约恰好第 7 天的 23:59 与超出一秒的严格区分。
+    3. **峰谷（忙闲时）分离逻辑**：忙时超限被拒、开启 `allowExceed` 时忙时/闲时超额转 `pending`，并**严格断言**数据库中落库状态为 `pending`，而不仅验证返回值。
+    4. **前置白名单防线**：`whitelist_enabled = true` 且用户不在名单中的拦截。
     5. **惩罚系统联动**：用户有 `BAN` 状态硬拦截、有 `REQUIRE_APPROVAL` 降级为 `pending`、有 `reduce_days` 惩罚时导致其提前预约天数缩水。
-    6. **爽约槽位抢占释放 (No-Show Release)**：开启 `release_noshow_slots` 时，超 30 分钟未签到槽位允许并发抢占覆盖。
-    7. **异常与隐藏拦截**：隐藏设备 (`is_hidden = true`) 拦截，异常 JSON 配置的降级安全保护。
+    6. **爽约槽位抢占释放 (No-Show Release)**：开启 `release_noshow_slots` 时，超 30 分钟（恰好阈值前、恰好、后一刻）未签到槽位允许并发抢占覆盖。
+    7. **异常与参数输入边界（新）**：隐藏设备 (`is_hidden = true`) 拦截、参数字段缺少、空字符串、小数/非数字ID、超长名称、以及异常 JSON 配置的降级安全保护。
   - **Violation 测试重点覆盖 6 大边界场景**：
-    1. **惩罚类型转化效果（Penalty Type Effects）**：验证不同的 `action_config`（`ban`, `require_approval`, `reduce_advance_days`, `double_fee`）能否被正确解析并输出对应的状态标识及限制参数。
-    2. **阈值触发与累积（Metric & Threshold）**：精确边界触发（如2次不罚3次罚），以及基于订单去重统计（`by_reservation`）的准确性。
-    3. **时间窗口隔离（Time Windows）**：自然周期（如跨月不合并）与滚动窗口（如近30天内掉出）的边界隔离与合并逻辑。
-    4. **撤销、豁免与降级恢复（Revocation, Waivers & Recovery）**：单条违规 `revoked` 后的实时降级、针对特定违规组合记录的 `penalty_waivers` 免疫跳过、以及固化惩罚过期自动恢复。
+    1. **固定处罚的幂等性与顺延（新/P1）**：验证同一违规事件或重试触发 `evaluatePenaltiesOnViolation` 时，已存在处罚记录的 `end_time` 不会被错误顺延；调用 `checkUserPenalty` 仍应正确返回锁定状态。
+    2. **精确的时间窗口边界（新/P1）**：自然周期跨月隔离测试，以及**滚动窗口毫秒级边界**（例如恰好 30 天仍被判定过期还是计入？30 天 + 1 毫秒的严格区分，确保前后端失效解封时间判定绝对一致）。
+    3. **配置维度全覆盖（新/P2）**：增加对 `metric: 'duration'`（按时长累计）的断言、`target_equipment_id`（仅针对特定仪器生效）的范围过滤验证，并确保 `is_active: 0` 时不产生任何影响。
+    4. **撤销、豁免与降级恢复（Revocation, Waivers & Recovery）**：单条违规 `revoked` 后的实时降级、针对特定违规组合记录的 `penalty_waivers` 免疫跳过、**新增违规导致旧豁免快照失效的回归测试（新）**、以及固化惩罚过期自动恢复。
     5. **规则叠加与合并（Restrictions Merge）**：状态就高原则叠加（REQUIRE_APPROVAL + BAN = BAN），参数化限制合并（叠加扣费翻倍与提前期缩减）。
-    6. **解封时间预测（Unban Time Prediction）**：基于违规记录掉出窗口的时间点，精确预测自动解封时间。
+    6. **解封时间预测（Unban Time Prediction）**：基于违规记录掉出窗口的时间点，精确预测自动解封时间，尽量对比结构化时间字段，避免跨时区和格式化引起的断言偏差。
 
 ### 2.3 接口一致性与类型安全 (P2 & P3)
 - **统一路由导出与挂载**：当前各模块的路由导出混合使用了默认导出（`export default router`）和命名导出（`export { xxxRouter }`），导致 `server.ts` 中的导入和挂载缺乏一致性。所有模块必须统一使用命名导出，且挂载路径的前缀应在 `server.ts` 中集中声明。

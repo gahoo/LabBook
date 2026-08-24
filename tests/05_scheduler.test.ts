@@ -363,8 +363,11 @@ describe('Scheduler Module (05_scheduler.test.ts)', () => {
       const originalPrepare = db.prepare;
       try {
         db.prepare = vi.fn().mockImplementation(() => { throw new Error('DB Error'); });
-        // Should not throw
+        // Should not throw, and should log error
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         expect(() => scanForNoShows()).not.toThrow();
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error scanning for no-shows:'), expect.any(Error));
+        consoleSpy.mockRestore();
       } finally {
         // Restore
         db.prepare = originalPrepare;
