@@ -20,4 +20,6 @@ bun.lock
 patch3.cjs
 patch4.cjs
 patch5.cjs
+patch_*.cjs
+update_tasks.cjs
 

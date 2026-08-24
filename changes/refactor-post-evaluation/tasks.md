@@ -18,8 +18,8 @@
 ## 阶段 2：reservation 拆分 (P0)
 
 - [x] 2.1 提取 `reservation/validation.ts`：从 service.ts 的 create 和 update 方法中提取共享校验逻辑（参数校验、惩罚检查、提前天数限制、时长限制、运营时间校验、冲突检测），消除两者的重复代码。将 `lib/validators.ts` 中的 validateOperatingHours 和 calculatePeakAccumulatedMinutes 迁入此文件（它们仅被 reservation 调用）。`lib/validators.ts` 仅保留 validateTimeRange。运行测试。
-- [ ] 2.2 提取 `reservation/stats.ts`：从 service.ts 中提取 getAdminList、getStats，连同它们依赖的 calculateReportStatus 和 getViolationSettings 辅助函数。运行测试。
-- [ ] 2.3 最终验证：确认 reservation/service.ts 约 550 行，运行全量测试。
+- [x] 2.2 提取 `reservation/stats.ts`：从 service.ts 中提取 getAdminList、getStats，连同它们依赖的 calculateReportStatus 和 getViolationSettings 辅助函数。运行测试。
+- [x] 2.3 最终验证：确认 reservation/service.ts 约 550 行，运行全量测试。
 
 ## 阶段 3：测试深度提升 (P1)
 

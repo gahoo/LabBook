@@ -3,6 +3,7 @@ import { db } from '../../db/index.js';
 import { actionLimiter } from '../../middleware/rateLimiter.js';
 import { OperationRejectError } from '../../lib/errors.js';
 import { ReservationService } from './service.js';
+import { getAdminList, getStats } from './stats.js';
 import { Router } from 'express';
 
 // Phase 1: 纯物理路由剥离
@@ -142,7 +143,7 @@ reservationRouter.post('/checkout', (req, res) => {
  
 reservationAdminRouter.get('/', (req, res) => {
   const { student_name, supervisor, startDate, endDate } = req.query;
-  const enrichedReservations = ReservationService.getAdminList({ 
+  const enrichedReservations = getAdminList({ 
     student_name: student_name as string, 
     supervisor: supervisor as string, 
     startDate: startDate as string, 
@@ -155,7 +156,7 @@ reservationAdminRouter.get('/stats', (req, res) => {
   if (!validateTimeRange(req, res)) return;
  
   const { period, student_name, supervisor, startDate, endDate } = req.query;
-  const stats = ReservationService.getStats({
+  const stats = getStats({
     period: period as string,
     student_name: student_name as string,
     supervisor: supervisor as string,
