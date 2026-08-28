@@ -1,0 +1,15 @@
+- [ ] Phase 1: 清理工作 (Quick Wins)
+  - [ ] 移除未使用的依赖
+  - [ ] 调整依赖位置
+  - [ ] 删除未使用的文件
+  - [ ] 移除未使用的导出项
+- [ ] Phase 2: 高优先级重构 (High Priority)
+  - [ ] 重构 src/utils.ts
+  - [ ] 重构 src/modules/reservation/validation.ts
+  - [ ] 重构 src/modules/violation/evaluator.ts
+  - [ ] 重构 React 组件
+- [ ] Phase 3: 消除重复代码 (De-duplication)
+  - [ ] 分析并提取公共逻辑
+- [ ] Phase 4: 建立 CI 门禁 (CI Integration)
+  - [ ] 安装 Fallow commit hook
+  - [ ] 保存基线
