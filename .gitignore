@@ -22,4 +22,5 @@ patch4.cjs
 patch5.cjs
 patch_*.cjs
 update_tasks.cjs
-
+replace_*
+fix_assertions.cjs

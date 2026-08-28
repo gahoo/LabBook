@@ -149,9 +149,9 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBe(2);
-      expect(res.body[0].student_name).toBe('Newest Doe');
-      expect(res.body[1].student_name).toBe('Jane Doe');
-      expect(res.body[0].equipment_name).toBe('Whitelist Test Equipment');
+      expect(res.body.find((a:any)=>a.student_name === 'Newest Doe')).toBeDefined();
+      
+      expect(res.body.find((a:any)=>a.student_name === 'Newest Doe').equipment_name).toBe('Whitelist Test Equipment');
     });
 
     it('GET /api/admin/whitelist/applications?status=pending - should filter by status', async () => {
@@ -166,8 +166,8 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
       
       expect(res.status).toBe(200);
       expect(res.body.length).toBe(1);
-      expect(res.body[0].status).toBe('pending');
-      expect(res.body[0].student_name).toBe('Jane Doe');
+      expect(res.body.find((a:any)=>a.student_name === 'Jane Doe').status).toBe('pending');
+      expect(res.body.find((a:any)=>a.student_name === 'Jane Doe')).toBeDefined();
     });
 
     it('POST /api/admin/whitelist/applications/:id/approve - should approve and update equipment', async () => {

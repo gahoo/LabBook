@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../server.js';
 import { db } from '../src/db/index.js';
+import { createTestEquipment, createTestReservation } from './utils/fixtures.js';
 import jwt from 'jsonwebtoken';
 
 describe('Equipment Module (02_equipment.test.ts)', () => {
@@ -93,7 +94,8 @@ describe('Equipment Module (02_equipment.test.ts)', () => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBeGreaterThan(0);
-      expect(res.body[0].name).toBe('Test Microscope');
+      const found = res.body.find((e: any) => e.name === 'Test Microscope');
+      expect(found).toBeDefined();
     });
 
     it('PUT /api/admin/equipment/:id - should update equipment', async () => {
@@ -239,7 +241,8 @@ describe('Equipment Module (02_equipment.test.ts)', () => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBeGreaterThan(0);
-      expect(res.body[0].student_name).toBe('Tester');
+      const found = res.body.find((e: any) => e.student_name === 'Tester');
+      expect(found).toBeDefined();
     });
   });
 

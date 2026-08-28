@@ -33,10 +33,13 @@ global.fetch = vi.fn((input, init) => {
     return Promise.resolve(new Response(JSON.stringify({ status: 'ok' }), { status: 200 }));
   }
   // Let other requests pass through (or you can mock everything)
-  return originalFetch(input, init);
+  throw new Error(`Unhandled external network request in test: ${input}`);
 });
 
 beforeAll(() => {
+  // 抑制测试过程中的预期错误日志噪声
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   // Global setup before tests
 });
 

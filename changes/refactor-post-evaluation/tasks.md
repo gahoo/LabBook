@@ -54,3 +54,10 @@
 - [x] 4.2 统一路由挂载方式：重构 server.ts 中的路由挂载，统一采用集中管理路径前缀的方式。对于路径前缀不统一的模块（如 violation 有 /api/public/、/api/user/、/api/admin/、/api/violations/ 四个前缀），在模块内部保留路径前缀以保证 API 兼容，仅统一导出风格。
 - [x] 4.3 修复时间时区相关问题：使用 `date-fns-tz` 统一定义 `toAppTimezoneString` 工具函数。
 - [x] 4.4 引入 Zod 统一验证器并重构 `req.body`
+
+## 阶段 5：测试基建与工程化加固任务书 (Test Infrastructure Hardening)
+- [x] 5.1 网络安全与顺序依赖解耦：拦截测试外网穿透 (setup.ts)，修复 08_notification 的顺序依赖。
+- [x] 5.2 统一 Fixtures 构建与脆弱断言消除：新建 `tests/utils/fixtures.ts` 封装实体创建，消除老测试中的脆弱数组位置断言。
+- [x] 5.3 CI 自动化工作流与覆盖率门槛：安装 `@vitest/coverage-v8` 配置覆盖率，建立 `.github/workflows/ci.yml`。
+- [x] 5.4 时区配置化：将 `dateUtils.ts` 中的时区配置为从 `APP_TIMEZONE` 读取。
+- [x] 5.5 测试环境体验优化：配置 `fileParallelism: false` 取消并发执行，并在 `setup.ts` 拦截 `console.error` 消除测试控制台噪声。

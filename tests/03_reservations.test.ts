@@ -622,8 +622,8 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       const listAliceJones = await request(app).get('/api/admin/reservations?student_name=Alice&supervisor=Jones').set('Authorization', 'Bearer ' + adminToken);
       expect(listAliceJones.status).toBe(200);
       expect(listAliceJones.body.length).toBe(1);
-      expect(listAliceJones.body[0].student_name).toBe('Alice');
-      expect(listAliceJones.body[0].supervisor).toBe('Dr. Jones');
+      expect(listAliceJones.body.find((r:any) => r.student_name === 'Alice')).toBeDefined();
+      expect(listAliceJones.body.find((r:any) => r.supervisor === 'Dr. Jones')).toBeDefined();
 
       // 3. Stats Empty Boundaries
       const emptyStats = await request(app).get(`/api/admin/reservations/stats?student_name=Nobody&startDate=${t(-100)}&endDate=${t(100)}`).set('Authorization', 'Bearer ' + adminToken);
