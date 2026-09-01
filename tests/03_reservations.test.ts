@@ -657,5 +657,56 @@ describe('Reservation Lifecycle and Rules (03_reservations.test.ts)', () => {
       const badParamsRes = await request(app).post('/api/reservations/update').send({ booking_code: 123, start_time: 100, end_time: [] });
       expect(badParamsRes.status).toBe(400);
     });
+    it('should generate and revoke violations when admin updates actual times', async () => {
+      const eqId = setupEquipment();
+      setupSettings({
+        violation_params_json: JSON.stringify({
+          maxLateMinutes: 15,
+          lateCancelMinutes: 120,
+          noShowPoints: 5,
+          lateCancelPoints: 2
+        })
+      });
+      // Set grace periods in settings
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('violation_late_grace_minutes', '15')").run();
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('violation_overtime_grace_minutes', '30')").run();
+
+      const res = await createRes({ equipment_id: eqId, student_id: 'S_ADMIN_V', student_name: 'Test', supervisor: 'Test', phone: '123', email: 'a@b.com', start_time: t(24), end_time: t(25) });
+      const code = res.body.booking_code;
+      const row = db.prepare("SELECT id FROM reservations WHERE booking_code=?").get(code) as any;
+
+      // 1. Mark as cancelled (simulating a no-show cancellation by system)
+      db.prepare("UPDATE reservations SET status = 'cancelled' WHERE id = ?").run(row.id);
+      db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, status, violation_time) VALUES (?, ?, 'no-show', 'active', ?)").run('S_ADMIN_V', row.id, t(24));
+
+      // 2. Admin fills in actual_start_time and actual_end_time (on time) -> revokes no-show, creates NO late/overdue
+      const updateRes1 = await request(app).put('/api/admin/reservations/' + row.id).set('Authorization', 'Bearer ' + adminToken).send({
+        actual_start_time: t(24),
+        actual_end_time: t(25)
+      });
+      expect(updateRes1.status).toBe(200);
+
+      const noShow = db.prepare("SELECT status FROM violation_records WHERE reservation_id=? AND violation_type='no-show'").get(row.id) as any;
+      expect(noShow.status).toBe('revoked'); // Revoked
+
+      const violations1 = db.prepare("SELECT count(*) as c FROM violation_records WHERE reservation_id=? AND status='active'").get(row.id) as any;
+      expect(violations1.c).toBe(0);
+
+      // 3. Admin modifies actual_end_time to be 60 mins late (over grace period 30m) -> generates overdue
+      await request(app).put('/api/admin/reservations/' + row.id).set('Authorization', 'Bearer ' + adminToken).send({
+        actual_end_time: tMin(24 * 60 + 60 + 60) // Scheduled end is t(25) = 25*60. This is 26*60 (60 mins late)
+      });
+      
+      const overdue = db.prepare("SELECT duration_minutes FROM violation_records WHERE reservation_id=? AND violation_type='overdue' AND status='active'").get(row.id) as any;
+      expect(overdue.duration_minutes).toBe(60);
+
+      // 4. Admin modifies it back to on time -> revokes overdue
+      await request(app).put('/api/admin/reservations/' + row.id).set('Authorization', 'Bearer ' + adminToken).send({
+        actual_end_time: t(25)
+      });
+
+      const overdueRevoked = db.prepare("SELECT status FROM violation_records WHERE reservation_id=? AND violation_type='overdue'").get(row.id) as any;
+      expect(overdueRevoked.status).toBe('revoked');
+    });
   });
 });

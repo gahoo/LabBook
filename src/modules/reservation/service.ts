@@ -342,18 +342,86 @@ export class ReservationService {
     const supervisor = updates.supervisor !== undefined ? updates.supervisor : oldRes.supervisor;
     const start_time = updates.start_time !== undefined ? updates.start_time : oldRes.start_time;
     const end_time = updates.end_time !== undefined ? updates.end_time : oldRes.end_time;
-    const status = updates.status !== undefined ? updates.status : oldRes.status;
+    let status = updates.status !== undefined ? updates.status : oldRes.status;
     const total_cost = updates.total_cost !== undefined ? updates.total_cost : oldRes.total_cost;
     const consumable_quantity = updates.consumable_quantity !== undefined ? updates.consumable_quantity : oldRes.consumable_quantity;
     const actual_start_time = updates.actual_start_time !== undefined ? updates.actual_start_time : oldRes.actual_start_time;
     const actual_end_time = updates.actual_end_time !== undefined ? updates.actual_end_time : oldRes.actual_end_time;
     const notes = updates.notes !== undefined ? updates.notes : oldRes.notes;
-   
-    db.prepare(`
-      UPDATE reservations 
-      SET student_id = ?, student_name = ?, supervisor = ?, start_time = ?, end_time = ?, status = ?, total_cost = ?, consumable_quantity = ?, actual_start_time = ?, actual_end_time = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(student_id, student_name, supervisor, start_time, end_time, status, total_cost, consumable_quantity, actual_start_time, actual_end_time, notes, id);
+
+    const txResult = db.transaction(() => {
+      let violationChanged = false;
+
+      if (actual_start_time && oldRes.status === 'cancelled') {
+        status = actual_end_time ? 'completed' : 'active';
+        const noShowViolation = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'no-show' AND status = 'active'").get(id) as any;
+        if (noShowViolation) {
+          db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(noShowViolation.id);
+          violationChanged = true;
+        }
+      } else if (actual_end_time && (oldRes.status === 'active' || oldRes.status === 'approved')) {
+        if (updates.status === undefined) {
+          status = 'completed';
+        }
+      }
+
+      const settingsRows = db.prepare("SELECT key, value FROM settings WHERE key IN ('violation_late_grace_minutes', 'violation_overtime_grace_minutes')").all() as any[];
+      const settingsMap = settingsRows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
+      const lateGraceMinutes = settingsMap['violation_late_grace_minutes'] ? parseInt(settingsMap['violation_late_grace_minutes'], 10) : 15;
+      const overtimeGraceMinutes = settingsMap['violation_overtime_grace_minutes'] ? parseInt(settingsMap['violation_overtime_grace_minutes'], 10) : 30;
+
+      if (actual_start_time) {
+        const scheduledStart = new Date(start_time);
+        const actualStart = new Date(actual_start_time);
+        const diffMinutes = (actualStart.getTime() - scheduledStart.getTime()) / (1000 * 60);
+
+        const existingLate = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'late' AND status = 'active'").get(id) as any;
+        
+        if (diffMinutes > lateGraceMinutes) {
+          if (!existingLate) {
+            db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(student_id, id, 'late', actual_start_time, Math.round(diffMinutes));
+            violationChanged = true;
+          } else {
+            db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_start_time, existingLate.id);
+          }
+        } else if (existingLate) {
+          db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingLate.id);
+          violationChanged = true;
+        }
+      }
+
+      if (actual_end_time) {
+        const scheduledEnd = new Date(end_time);
+        const actualEnd = new Date(actual_end_time);
+        const diffMinutes = (actualEnd.getTime() - scheduledEnd.getTime()) / (1000 * 60);
+
+        const existingOverdue = db.prepare("SELECT id FROM violation_records WHERE reservation_id = ? AND violation_type = 'overdue' AND status = 'active'").get(id) as any;
+
+        if (diffMinutes > overtimeGraceMinutes) {
+          if (!existingOverdue) {
+            db.prepare("INSERT INTO violation_records (student_id, reservation_id, violation_type, violation_time, duration_minutes) VALUES (?, ?, ?, ?, ?)").run(student_id, id, 'overdue', actual_end_time, Math.round(diffMinutes));
+            violationChanged = true;
+          } else {
+            db.prepare("UPDATE violation_records SET duration_minutes = ?, violation_time = ? WHERE id = ?").run(Math.round(diffMinutes), actual_end_time, existingOverdue.id);
+          }
+        } else if (existingOverdue) {
+          db.prepare("UPDATE violation_records SET status = 'revoked', remark = 'Administratively revoked' WHERE id = ?").run(existingOverdue.id);
+          violationChanged = true;
+        }
+      }
+
+      db.prepare(`
+        UPDATE reservations 
+        SET student_id = ?, student_name = ?, supervisor = ?, start_time = ?, end_time = ?, status = ?, total_cost = ?, consumable_quantity = ?, actual_start_time = ?, actual_end_time = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(student_id, student_name, supervisor, start_time, end_time, status, total_cost, consumable_quantity, actual_start_time, actual_end_time, notes, id);
+
+      return { violationChanged };
+    })();
+
+    if (txResult.violationChanged) {
+      evaluatePenaltiesOnViolation(student_id);
+    }
     
     if (oldRes.status === 'pending' && status === 'approved') {
       notifyEvent(db, 'booking_approved', {
