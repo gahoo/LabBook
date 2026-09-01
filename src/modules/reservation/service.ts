@@ -345,12 +345,15 @@ export class ReservationService {
     const status = updates.status !== undefined ? updates.status : oldRes.status;
     const total_cost = updates.total_cost !== undefined ? updates.total_cost : oldRes.total_cost;
     const consumable_quantity = updates.consumable_quantity !== undefined ? updates.consumable_quantity : oldRes.consumable_quantity;
+    const actual_start_time = updates.actual_start_time !== undefined ? updates.actual_start_time : oldRes.actual_start_time;
+    const actual_end_time = updates.actual_end_time !== undefined ? updates.actual_end_time : oldRes.actual_end_time;
+    const notes = updates.notes !== undefined ? updates.notes : oldRes.notes;
    
     db.prepare(`
       UPDATE reservations 
-      SET student_id = ?, student_name = ?, supervisor = ?, start_time = ?, end_time = ?, status = ?, total_cost = ?, consumable_quantity = ?, updated_at = CURRENT_TIMESTAMP
+      SET student_id = ?, student_name = ?, supervisor = ?, start_time = ?, end_time = ?, status = ?, total_cost = ?, consumable_quantity = ?, actual_start_time = ?, actual_end_time = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(student_id, student_name, supervisor, start_time, end_time, status, total_cost, consumable_quantity, id);
+    `).run(student_id, student_name, supervisor, start_time, end_time, status, total_cost, consumable_quantity, actual_start_time, actual_end_time, notes, id);
     
     if (oldRes.status === 'pending' && status === 'approved') {
       notifyEvent(db, 'booking_approved', {
