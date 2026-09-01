@@ -22,9 +22,9 @@ export function applyWhitelist(payload: any) {
   }
 
   
-  const existing = db.prepare(`SELECT status FROM whitelist_applications WHERE student_id = ? AND equipment_id = ? AND status IN ('pending', 'approved')`).get(student_id, equipment_id) as any;
+  const existing = db.prepare(`SELECT status FROM whitelist_applications WHERE student_id = ? AND equipment_id = ? AND status = 'pending'`).get(student_id, equipment_id) as any;
   if (existing) {
-    throw new OperationRejectError(`您已经申请过该仪器的白名单，且当前状态为${existing.status === 'pending' ? '待审批' : '已通过'}`, 400);
+    throw new OperationRejectError('您已经提交过该仪器的白名单申请，当前正在待审批中，请勿重复提交', 400);
   }
 
   const stmt = db.prepare(`
