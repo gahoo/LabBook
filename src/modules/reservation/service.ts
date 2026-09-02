@@ -343,10 +343,29 @@ export class ReservationService {
     const start_time = updates.start_time !== undefined ? updates.start_time : oldRes.start_time;
     const end_time = updates.end_time !== undefined ? updates.end_time : oldRes.end_time;
     let status = updates.status !== undefined ? updates.status : oldRes.status;
-    const total_cost = updates.total_cost !== undefined ? updates.total_cost : oldRes.total_cost;
     const consumable_quantity = updates.consumable_quantity !== undefined ? updates.consumable_quantity : oldRes.consumable_quantity;
     const actual_start_time = updates.actual_start_time !== undefined ? updates.actual_start_time : oldRes.actual_start_time;
     const actual_end_time = updates.actual_end_time !== undefined ? updates.actual_end_time : oldRes.actual_end_time;
+
+    let total_cost = updates.total_cost;
+    if (total_cost === undefined) {
+      if (actual_start_time && actual_end_time) {
+        const aStart = new Date(actual_start_time);
+        const aEnd = new Date(actual_end_time);
+        const hours = Math.max(0, (aEnd.getTime() - aStart.getTime()) / (1000 * 60 * 60));
+        
+        if (oldRes.price_type === 'hour') {
+          total_cost = hours * oldRes.price;
+        } else {
+          total_cost = oldRes.price;
+        }
+        if (oldRes.consumable_fee > 0 && consumable_quantity > 0) {
+          total_cost += oldRes.consumable_fee * consumable_quantity;
+        }
+      } else {
+        total_cost = oldRes.total_cost;
+      }
+    }
     const notes = updates.notes !== undefined ? updates.notes : oldRes.notes;
 
     const txResult = db.transaction(() => {
