@@ -58,7 +58,7 @@ export function listApplications(status?: string) {
 export function approveApplication(id: string | number) {
   const app = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
   if (!app) throw new OperationRejectError('未找到申请');
-  if (app.status !== 'pending') throw new OperationRejectError('只能对待审批的申请进行操作');
+  if (app.status === 'approved') return;
 
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(app.equipment_id) as any;
   if (!equipment) throw new OperationRejectError('未找到仪器');
@@ -83,8 +83,17 @@ export function approveApplication(id: string | number) {
 export function rejectApplication(id: string | number) {
   const appRecord = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
   if (!appRecord) throw new OperationRejectError('未找到申请');
-  if (appRecord.status !== 'pending') throw new OperationRejectError('只能对待审批的申请进行操作');
+  if (appRecord.status === 'rejected') return;
+  
   const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(appRecord.equipment_id) as any;
+
+  // If transitioning from approved -> rejected, remove the name from whitelist_data
+  if (appRecord.status === 'approved' && equipment) {
+    let whitelist = (equipment.whitelist_data || '').split(/[\n,，]/).map((s: string) => s.trim()).filter(Boolean);
+    const targetName = appRecord.student_name.trim();
+    whitelist = whitelist.filter(name => name !== targetName);
+    db.prepare('UPDATE equipment SET whitelist_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(whitelist.join('\n'), appRecord.equipment_id);
+  }
 
   db.prepare("UPDATE whitelist_applications SET status = 'rejected' WHERE id = ?").run(id);
 
@@ -95,4 +104,26 @@ export function rejectApplication(id: string | number) {
     resolution: 'rejected',
     reason: appRecord.reason || ''
   }, appRecord.email || undefined);
+}
+
+
+export function undoApplication(id: string | number) {
+  const appRecord = db.prepare('SELECT * FROM whitelist_applications WHERE id = ?').get(id) as any;
+  if (!appRecord) throw new OperationRejectError('未找到申请');
+  if (appRecord.status === 'pending') return;
+
+  const equipment = db.prepare('SELECT * FROM equipment WHERE id = ?').get(appRecord.equipment_id) as any;
+
+  if (appRecord.status === 'approved' && equipment) {
+    const list = equipment.whitelist_data ? equipment.whitelist_data.split(/[\r\n,]+/).map((s: string) => s.trim()).filter(Boolean) : [];
+    const index = list.indexOf(appRecord.student_name);
+    if (index !== -1) {
+      list.splice(index, 1);
+      db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run(list.join('\n'), equipment.id);
+    }
+  }
+
+  db.prepare('UPDATE whitelist_applications SET status = ? WHERE id = ?').run('pending', id);
+
+  // Note: For undo, we don't send notification to avoid spamming the user if the admin is just correcting a mistake quickly.
 }

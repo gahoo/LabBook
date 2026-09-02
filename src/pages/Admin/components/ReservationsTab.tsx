@@ -19,6 +19,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
   const [reports, setReports] = useState<any>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [pendingWhitelistApps, setPendingWhitelistApps] = useState<any[]>([]);
+  const [actionStack, setActionStack] = useState<{id: number, action: 'approve' | 'reject', name: string}[]>([]);
 
   const fetchWhitelistApps = async () => {
     try {
@@ -34,7 +35,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
     }
   };
 
-  const handleApproveWhitelist = async (id: number) => {
+  const handleApproveWhitelist = async (id: number, studentName: string) => {
     try {
       const res = await fetch(`/api/admin/whitelist/applications/${id}/approve`, {
         method: 'POST',
@@ -42,6 +43,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
       });
       if (res.ok) {
         toast.success('已通过');
+        setActionStack(prev => [...prev, { id, action: 'approve', name: studentName }]);
         fetchWhitelistApps();
       } else {
         const data = await res.json();
@@ -52,7 +54,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
     }
   };
 
-  const handleRejectWhitelist = async (id: number) => {
+  const handleRejectWhitelist = async (id: number, studentName: string) => {
     try {
       const res = await fetch(`/api/admin/whitelist/applications/${id}/reject`, {
         method: 'POST',
@@ -60,6 +62,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
       });
       if (res.ok) {
         toast.success('已驳回');
+        setActionStack(prev => [...prev, { id, action: 'reject', name: studentName }]);
         fetchWhitelistApps();
       } else {
         const data = await res.json();
@@ -67,6 +70,27 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
       }
     } catch (error) {
       toast.error('操作失败');
+    }
+  };
+
+  const handleUndoLastAction = async () => {
+    if (actionStack.length === 0) return;
+    const lastAction = actionStack[actionStack.length - 1];
+    
+    try {
+      const res = await fetch(`/api/admin/whitelist/applications/${lastAction.id}/undo`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success(`已撤销操作，恢复为待审批`);
+        setActionStack(prev => prev.slice(0, -1));
+        fetchWhitelistApps();
+      } else {
+        toast.error('撤销失败');
+      }
+    } catch (error) {
+      toast.error('撤销失败');
     }
   };
 
@@ -644,14 +668,22 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
         ))}
       </datalist>
       <div className="space-y-4">
-        {pendingWhitelistApps.length > 0 && (
+        {(pendingWhitelistApps.length > 0 || actionStack.length > 0) && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-amber-800 shrink-0">
                 <AlertTriangle className="w-4 h-4" />
                 <span className="font-medium text-sm">白名单待审批 ({pendingWhitelistApps.length})</span>
               </div>
-              <div className="flex items-center flex-wrap gap-1">
+              {actionStack.length > 0 && (
+                <button 
+                  onClick={handleUndoLastAction}
+                  className="ml-auto text-xs px-2 py-1 bg-white border border-amber-200 text-amber-700 rounded shadow-sm hover:bg-amber-50 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+                >
+                  撤销
+                </button>
+              )}
+              <div className="flex items-center flex-wrap gap-1 w-full">
                 <AnimatePresence mode="popLayout">
                 {pendingWhitelistApps.map(app => (
                   <motion.div 
@@ -665,10 +697,10 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                   >
                     <span className="font-medium text-sm text-neutral-900">{app.student_name}</span>
                     <div className="flex items-center border-l border-amber-100 pl-2 ml-2">
-                      <button onClick={() => handleApproveWhitelist(app.id)} className="p-1 text-emerald-500 hover:text-emerald-700 rounded transition-colors" title="通过">
+                      <button onClick={() => handleApproveWhitelist(app.id, app.student_name)} className="p-1 text-emerald-500 hover:text-emerald-700 rounded transition-colors" title="通过">
                         <UserCheck className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => handleRejectWhitelist(app.id)} className="p-1 text-red-400 hover:text-red-600 rounded transition-colors" title="驳回">
+                      <button onClick={() => handleRejectWhitelist(app.id, app.student_name)} className="p-1 text-red-400 hover:text-red-600 rounded transition-colors" title="驳回">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>

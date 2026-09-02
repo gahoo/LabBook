@@ -1,6 +1,6 @@
 import { OperationRejectError } from '../../lib/errors.js';
 import { Router } from 'express';
-import { applyWhitelist, listApplications, approveApplication, rejectApplication } from './service.js';
+import { applyWhitelist, listApplications, approveApplication, rejectApplication, undoApplication } from './service.js';
 
 const whitelistRouter = Router();
 
@@ -14,7 +14,6 @@ whitelistRouter.post('/apply', (req, res, next) => {
     } else {
       res.status(500).json({ error: 'Internal Server Error' });
     }
-
   }
 });
 
@@ -30,7 +29,6 @@ whitelistAdminRouter.get('/applications', (req, res, next) => {
     } else {
       res.status(500).json({ error: 'Internal Server Error' });
     }
-
   }
 });
 
@@ -44,7 +42,6 @@ whitelistAdminRouter.post('/applications/:id/approve', (req, res, next) => {
     } else {
       res.status(500).json({ error: 'Internal Server Error' });
     }
-
   }
 });
 
@@ -58,7 +55,21 @@ whitelistAdminRouter.post('/applications/:id/reject', (req, res, next) => {
     } else {
       res.status(500).json({ error: 'Internal Server Error' });
     }
-
   }
 });
+
+whitelistAdminRouter.post('/applications/:id/undo', (req, res, next) => {
+  try {
+    undoApplication(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('UNDO ERROR:', err);
+    if (err instanceof OperationRejectError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
 export { whitelistRouter, whitelistAdminRouter };

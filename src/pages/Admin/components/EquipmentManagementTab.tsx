@@ -73,20 +73,22 @@ export default function EquipmentManagementTab({
     }
   };
 
-  const [pendingWhitelistApps, setPendingWhitelistApps] = useState<any[]>([]);
+  const [allWhitelistApps, setAllWhitelistApps] = useState<any[]>([]);
+  const [showWhitelistHistory, setShowWhitelistHistory] = useState<Record<number, boolean>>({});
   const fetchWhitelistApps = async () => {
     try {
-      const res = await fetch('/api/admin/whitelist/applications?status=pending', {
+      const res = await fetch('/api/admin/whitelist/applications', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setPendingWhitelistApps(data);
+        setAllWhitelistApps(data);
       }
     } catch (err) {
       console.error('Failed to fetch whitelist apps:', err);
     }
   };
+
 
   const handleApproveWhitelist = async (id: number) => {
     try {
@@ -688,7 +690,23 @@ export default function EquipmentManagementTab({
             </thead>
             <tbody className="block md:table-row-group divide-y divide-neutral-100 md:divide-y-0 p-4 md:p-0">
               {filteredEquipmentList.map(eq => {
-                const eqPendingApps = pendingWhitelistApps.filter((app: any) => app.equipment_id === eq.id);
+                const eqApps = allWhitelistApps.filter((app: any) => app.equipment_id === eq.id);
+                let visibleApps = eqApps.filter(app => {
+                  if (app.status === 'pending') return true;
+                  if (showWhitelistHistory[eq.id]) {
+                    const createdTime = new Date(app.created_at).getTime();
+                    return Date.now() - createdTime < 7 * 24 * 60 * 60 * 1000;
+                  }
+                  return false;
+                });
+                
+                const seenStudentIds = new Set();
+                visibleApps = visibleApps.filter(app => {
+                  if (seenStudentIds.has(app.student_id)) return false;
+                  seenStudentIds.add(app.student_id);
+                  return true;
+                });
+                
                 let advanceDays = 7;
                 let allowOutOfHours = false;
                 try {
@@ -698,7 +716,7 @@ export default function EquipmentManagementTab({
                 } catch (e) {}
                 
                 return (
-                <React.Fragment key={eq.id}><tr className={`block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none ${eqPendingApps.length > 0 ? 'bg-amber-50/30 border-b-0 md:border-b-0' : 'bg-white md:border-b'}`}>
+                <React.Fragment key={eq.id}><tr className={`block md:table-row hover:bg-neutral-50/50 border border-neutral-200 md:border-x-0 md:border-t-0 rounded-xl md:rounded-none mb-4 md:mb-0 shadow-sm md:shadow-none ${visibleApps.length > 0 ? 'bg-amber-50/30 border-b-0 md:border-b-0' : 'bg-white md:border-b'}`}>
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <div className="flex justify-between items-center md:block">
                       <span className="md:hidden font-medium text-neutral-500 text-xs">名称</span>
@@ -856,36 +874,91 @@ export default function EquipmentManagementTab({
                     </div>
                   </td>
                 </tr>
-{eqPendingApps.length > 0 && (
+{visibleApps.length > 0 && (
                 <tr className="block md:table-row bg-amber-50/30 border-b border-neutral-200 border-t-0"><td colSpan={6} className="px-4 py-3 md:py-4 block md:table-cell"><div className="flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-2 text-amber-800 text-sm font-medium whitespace-nowrap">
                         <AlertCircle className="w-4 h-4" />
-                        待审批白名单申请
+                        白名单申请
+                        <button onClick={() => setShowWhitelistHistory(prev => ({...prev, [eq.id]: !prev[eq.id]}))} className={`ml-2 p-1 rounded-md transition-colors ${showWhitelistHistory[eq.id] ? 'bg-red-100 text-red-600' : 'bg-transparent text-amber-600 hover:bg-amber-200'}`} title="显示最近7天已处理">
+                          <Clock className="w-4 h-4" />
+                        </button>
                       </div>
                   <AnimatePresence mode="popLayout">
-                  {eqPendingApps.map((app: any) => (
+                  {visibleApps.map((app: any) => {
+                    const isPending = app.status === 'pending';
+                    const isApproved = app.status === 'approved';
+                    const isRejected = app.status === 'rejected';
+                    
+                    return (
                     <motion.div 
                       layout
                       initial={{ opacity: 0, scale: 0.8, x: -20 }}
                       animate={{ opacity: 1, scale: 1, x: 0 }}
                       exit={{ opacity: 0, scale: 0.8, x: -20, transition: { duration: 0.2 } }}
-                      key={app.id}
+                      key={`${app.id}-${app.status}`}
                       tabIndex={0}
-                      className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-3 py-2 md:px-2 md:py-1 shadow-sm flex items-center shrink-0 cursor-pointer md:cursor-default"
+                      className={`relative group/tooltip rounded-lg border px-3 py-2 md:px-2 md:py-1 shadow-sm flex items-center shrink-0 cursor-pointer md:cursor-default transition-colors
+                        ${isPending ? 'bg-white border-amber-200 group/capsule' : ''}
+                        ${isApproved ? 'bg-emerald-50 border-emerald-200 group/capsule' : ''}
+                        ${isRejected ? 'bg-red-50 border-red-200 group/capsule' : ''}
+                      `}
                     >
-                      <span className="font-medium text-sm text-neutral-900">{app.student_name}</span>
-                      <div className="flex items-center border-l border-amber-100 pl-2 ml-2">
-                        <button onClick={() => handleApproveWhitelist(app.id)} className="p-1 text-emerald-500 hover:text-emerald-700 rounded transition-colors" title="通过">
-                          <UserCheck className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleRejectWhitelist(app.id)} className="p-1 text-red-400 hover:text-red-600 rounded transition-colors" title="驳回">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                      <span className={`font-medium text-sm
+                        ${isPending ? 'text-neutral-900' : ''}
+                        ${isApproved ? 'text-emerald-900' : ''}
+                        ${isRejected ? 'text-red-900' : ''}
+                      `}>{app.student_name}</span>
+                      
+                      <div className={`flex items-center border-l pl-2 ml-2 transition-all duration-200
+                        ${isPending ? 'border-amber-100' : ''}
+                        ${isApproved ? 'border-emerald-200' : ''}
+                        ${isRejected ? 'border-red-200' : ''}
+                      `}>
+                        {isPending && (
+                          <>
+                            <button onClick={() => handleApproveWhitelist(app.id)} className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors" title="通过">
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleRejectWhitelist(app.id)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="驳回">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                        {isApproved && (
+                          <>
+                            <div className="p-1 text-emerald-600">
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </div>
+                            <button onClick={() => handleRejectWhitelist(app.id)} className="p-1 text-red-400 opacity-0 group-hover/capsule:opacity-100 hover:text-red-600 hover:bg-red-100 rounded transition-all duration-200 absolute right-1 bg-emerald-50" title="翻转为驳回">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                        {isRejected && (
+                          <>
+                            <button onClick={() => handleApproveWhitelist(app.id)} className="p-1 text-emerald-500 opacity-0 group-hover/capsule:opacity-100 hover:text-emerald-700 hover:bg-emerald-100 rounded transition-all duration-200 absolute right-1 bg-red-50" title="翻转为通过">
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="p-1 text-red-500">
+                              <X className="w-3.5 h-3.5" />
+                            </div>
+                          </>
+                        )}
                       </div>
+                      
                       <div className="absolute left-0 top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50">
                         <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3 py-2 whitespace-nowrap min-w-[200px]">
-                          <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
-                            申请明细
+                          <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5 flex justify-between">
+                            <span>申请明细</span>
+                            <span className={`
+                              ${isPending ? 'text-amber-500' : ''}
+                              ${isApproved ? 'text-emerald-500' : ''}
+                              ${isRejected ? 'text-red-500' : ''}
+                            `}>
+                              {isPending && '待审批'}
+                              {isApproved && '已通过'}
+                              {isRejected && '已驳回'}
+                            </span>
                           </div>
                           <div className="flex flex-col gap-1.5 mt-1">
                             <div className="flex justify-between items-center gap-4">
@@ -919,9 +992,10 @@ export default function EquipmentManagementTab({
                         <div className="w-3 h-3 bg-white border-t border-l border-neutral-200 rotate-45 absolute -top-1.5 left-4"></div>
                       </div>
                     </motion.div>
-                  ))}
+                  )})}
                   </AnimatePresence>
                 </div></td></tr>)}
+
 </React.Fragment>
               )})}
               {filteredEquipmentList.length === 0 && (

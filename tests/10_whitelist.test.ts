@@ -215,6 +215,113 @@ describe('Whitelist Module (10_whitelist.test.ts)', () => {
       expect(notifs.length).toBeGreaterThan(0);
       expect(notifs[0].payload).toContain('rejected');
     });
+    it('POST /api/admin/whitelist/applications/:id/reject - should flip approved to rejected and remove from equipment', async () => {
+      // Create approved application
+      db.prepare(`
+        INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'approved', datetime('now'))
+      `).run(equipmentId, 'S_FLIP_REJ', 'Flip Reject Student', 'Dr. Smith', '111', 'flip@test.com');
+      const newApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('S_FLIP_REJ') as any;
+
+      // Add to whitelist manually to simulate existing state
+      const eq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId) as any;
+      const currentData = eq.whitelist_data ? eq.whitelist_data + '\nFlip Reject Student' : 'Flip Reject Student';
+      db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run(currentData, equipmentId);
+
+      // Verify it's in equipment
+      const checkEq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId) as any;
+      expect(checkEq.whitelist_data).toContain('Flip Reject Student');
+
+      // Call reject on an approved application
+      const res = await request(app)
+        .post(`/api/admin/whitelist/applications/${newApp.id}/reject`)
+        .set('Authorization', `Bearer ${token}`);
+      
+      expect(res.status).toBe(200);
+
+      // Verify status flipped
+      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(newApp.id) as any;
+      expect(dbApp.status).toBe('rejected');
+
+      // Verify removed from equipment whitelist_data
+      const updatedEq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId) as any;
+      expect(updatedEq.whitelist_data).not.toContain('Flip Reject Student');
+    });
+
+    it('POST /api/admin/whitelist/applications/:id/approve - should flip rejected to approved and add to equipment', async () => {
+      // Create rejected application
+      db.prepare(`
+        INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'rejected', datetime('now'))
+      `).run(equipmentId, 'S_FLIP_APP', 'Flip Approve Student', 'Dr. Smith', '111', 'flip@test.com');
+      const newApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('S_FLIP_APP') as any;
+
+      // Ensure it's not in equipment
+      const checkEq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId) as any;
+      expect(checkEq.whitelist_data).not.toContain('Flip Approve Student');
+
+      // Call approve on a rejected application
+      const res = await request(app)
+        .post(`/api/admin/whitelist/applications/${newApp.id}/approve`)
+        .set('Authorization', `Bearer ${token}`);
+      
+      expect(res.status).toBe(200);
+
+      // Verify status flipped
+      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(newApp.id) as any;
+      expect(dbApp.status).toBe('approved');
+
+      // Verify added to equipment whitelist_data
+      const updatedEq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId) as any;
+      expect(updatedEq.whitelist_data).toContain('Flip Approve Student');
+    });
+
+    it('POST /api/admin/whitelist/applications/:id/undo - should revert rejected to pending', async () => {
+      // Create rejected application
+      db.prepare(`
+        INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'rejected', datetime('now'))
+      `).run(equipmentId, 'S_UNDO_REJ', 'Undo Rej Student', 'Dr. Smith', '111', 'undorej@test.com');
+      const newApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('S_UNDO_REJ');
+
+      const res = await request(app)
+        .post(`/api/admin/whitelist/applications/${newApp.id}/undo`)
+        .set('Authorization', `Bearer ${token}`);
+      
+      console.log('UNDO REJECTED RES:', res.body);
+      expect(res.status).toBe(200);
+
+      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(newApp.id);
+      expect(dbApp.status).toBe('pending');
+    });
+
+    it('POST /api/admin/whitelist/applications/:id/undo - should revert approved to pending and remove from equipment whitelist', async () => {
+      // Create approved application
+      db.prepare(`
+        INSERT INTO whitelist_applications (equipment_id, student_id, student_name, supervisor, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'approved', datetime('now'))
+      `).run(equipmentId, 'S_UNDO_APP', 'Undo App Student', 'Dr. Smith', '111', 'undoapp@test.com');
+      const newApp = db.prepare('SELECT id FROM whitelist_applications WHERE student_id = ?').get('S_UNDO_APP') as any;
+
+      // Add to equipment physically
+      db.prepare('UPDATE equipment SET whitelist_data = ? WHERE id = ?').run('Undo App Student\nOther Student', equipmentId);
+
+      const res = await request(app)
+        .post(`/api/admin/whitelist/applications/${newApp.id}/undo`)
+        .set('Authorization', `Bearer ${token}`);
+      
+      console.log('UNDO APPROVED RES:', res.body);
+      expect(res.status).toBe(200);
+
+      // Verify status flipped
+      const dbApp = db.prepare('SELECT status FROM whitelist_applications WHERE id = ?').get(newApp.id);
+      expect(dbApp.status).toBe('pending');
+
+      // Verify removed from equipment whitelist_data
+      const updatedEq = db.prepare('SELECT whitelist_data FROM equipment WHERE id = ?').get(equipmentId);
+      expect(updatedEq.whitelist_data).not.toContain('Undo App Student');
+      expect(updatedEq.whitelist_data).toContain('Other Student');
+    });
   });
 
   describe('E2E Whitelist Flow', () => {
