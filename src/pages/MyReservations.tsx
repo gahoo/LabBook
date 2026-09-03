@@ -25,6 +25,7 @@ import { format, isBefore, addMinutes, parseISO } from "date-fns";
 import clsx from "clsx";
 import toast from "react-hot-toast";
 import { generateICS, ICSReservation } from "../lib/ics";
+import { parseUTCDate } from "../lib/dateUtils";
 
 interface Reservation {
   id: number;
@@ -1127,16 +1128,19 @@ export default function MyReservations() {
                               - {format(new Date(resv.end_time), "HH:mm")}
                             </p>
                           </div>
-                          {resv.created_at && (
-                            <div>
-                              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
-                                提交时间
-                              </p>
-                              <p className="text-sm text-neutral-700">
-                                {format(new Date(resv.created_at + 'Z'), "yyyy-MM-dd HH:mm")}
-                              </p>
-                            </div>
-                          )}
+                          {resv.created_at && (() => {
+                            const parsed = parseUTCDate(resv.created_at);
+                            return (
+                              <div>
+                                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                                  提交时间
+                                </p>
+                                <p className="text-sm text-neutral-700">
+                                  {parsed ? format(parsed, "yyyy-MM-dd HH:mm") : resv.created_at}
+                                </p>
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="space-y-4">
                           <div>

@@ -38,7 +38,7 @@ export function listApplications(status?: string) {
   let apps;
   if (status) {
     apps = db.prepare(`
-      SELECT wa.*, e.name as equipment_name 
+      SELECT wa.*, strftime('%Y-%m-%dT%H:%M:%fZ', wa.created_at) AS created_at, e.name as equipment_name 
       FROM whitelist_applications wa
       JOIN equipment e ON wa.equipment_id = e.id
       WHERE wa.status = ?
@@ -46,7 +46,7 @@ export function listApplications(status?: string) {
     `).all(status);
   } else {
     apps = db.prepare(`
-      SELECT wa.*, e.name as equipment_name 
+      SELECT wa.*, strftime('%Y-%m-%dT%H:%M:%fZ', wa.created_at) AS created_at, e.name as equipment_name 
       FROM whitelist_applications wa
       JOIN equipment e ON wa.equipment_id = e.id
       ORDER BY wa.created_at DESC

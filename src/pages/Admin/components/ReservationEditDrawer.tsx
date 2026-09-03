@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { parseUTCDate } from '../../../lib/dateUtils';
 
 interface Props {
   isOpen: boolean;
@@ -242,9 +243,12 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
           {activeTab === 'info' && (
             <form onSubmit={e => { e.preventDefault(); handleUpdate('info'); }} className="space-y-4">
               <div className="bg-neutral-50 p-4 rounded-xl mb-6 space-y-1.5">
-                {formData.created_at && (
-                  <p className="text-sm text-neutral-500">提交时间: <span className="text-neutral-900">{format(new Date(formData.created_at + (formData.created_at.includes('Z') ? '' : 'Z')), 'yyyy-MM-dd HH:mm:ss')}</span></p>
-                )}
+                {formData.created_at && (() => {
+                  const parsed = parseUTCDate(formData.created_at);
+                  return (
+                    <p className="text-sm text-neutral-500">提交时间: <span className="text-neutral-900">{parsed ? format(parsed, 'yyyy-MM-dd HH:mm:ss') : formData.created_at}</span></p>
+                  );
+                })()}
                 <p className="text-sm text-neutral-500">预约码: <span className="font-mono text-neutral-900">{formData.booking_code}</span></p>
                 <p className="text-sm text-neutral-500">仪器: <span className="text-neutral-900">{formData.equipment_name}</span></p>
               </div>
@@ -367,7 +371,10 @@ export default function ReservationEditDrawer({ isOpen, onClose, reservation, to
                             {sv.violation_type === 'late' ? '迟到' : sv.violation_type === 'overdue' ? '超时' : '爽约'}
                           </span>
                           <span className="text-neutral-500 text-xs">
-                            (发生于 {format(new Date(sv.violation_time + (sv.violation_time.includes('Z') ? '' : 'Z')), 'yyyy-MM-dd HH:mm')})
+                            (发生于 {(() => {
+                              const parsed = parseUTCDate(sv.violation_time);
+                              return parsed ? format(parsed, 'yyyy-MM-dd HH:mm') : sv.violation_time;
+                            })()})
                           </span>
                         </div>
                         {sv.duration_minutes && <span className="text-xs font-mono">{sv.duration_minutes} 分钟</span>}

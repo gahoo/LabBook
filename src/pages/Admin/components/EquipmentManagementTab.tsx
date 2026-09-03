@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings2, Trash2, Filter, ChevronDown, AlertCircle, PlusCircle, X, Clock, FileCheck, Zap, Edit3, EyeOff, TimerReset, Calendar, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { parseUTCDate } from '../../../lib/dateUtils';
 import EquipmentForm from './EquipmentForm';
 import BatchEditEquipmentForm from './BatchEditEquipmentForm';
 
@@ -694,7 +695,7 @@ export default function EquipmentManagementTab({
                 let visibleApps = eqApps.filter(app => {
                   if (app.status === 'pending') return true;
                   if (showWhitelistHistory[eq.id]) {
-                    const createdTime = new Date(app.created_at).getTime();
+                    const createdTime = parseUTCDate(app.created_at)?.getTime() || 0;
                     return Date.now() - createdTime < 7 * 24 * 60 * 60 * 1000;
                   }
                   return false;
@@ -979,7 +980,7 @@ export default function EquipmentManagementTab({
                             </div>
                             <div className="flex justify-between items-center gap-4">
                               <span className="text-neutral-500">申请时间</span>
-                              <span className="text-neutral-900">{new Date(app.created_at).toLocaleDateString()}</span>
+                              <span className="text-neutral-900">{parseUTCDate(app.created_at)?.toLocaleDateString() || app.created_at}</span>
                             </div>
                             {app.reason && (
                               <div className="mt-1 pt-2 border-t border-neutral-100 whitespace-normal">

@@ -98,7 +98,7 @@ export function getAdminList(queryOptions: { student_name?: string, supervisor?:
   }
  
   const reservations = db.prepare(`
-    SELECT r.*, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee, e.availability_json as equipment_availability_json
+    SELECT r.*, strftime('%Y-%m-%dT%H:%M:%fZ', r.created_at) AS created_at, e.name as equipment_name, e.release_noshow_slots, e.price_type, e.price, e.consumable_fee, e.availability_json as equipment_availability_json
     FROM reservations r
     JOIN equipment e ON r.equipment_id = e.id
     ${whereClause}

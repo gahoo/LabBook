@@ -1,11 +1,11 @@
 import { db } from '../../db/index.js';
 
 export function getPublicRules() {
-  return db.prepare('SELECT * FROM penalty_rules WHERE is_active = 1 ORDER BY id DESC').all();
+  return db.prepare("SELECT *, strftime('%Y-%m-%dT%H:%M:%fZ', created_at) AS created_at, strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) AS updated_at FROM penalty_rules WHERE is_active = 1 ORDER BY id DESC").all();
 }
 
 export function getAdminRules() {
-  return db.prepare('SELECT * FROM penalty_rules ORDER BY id DESC').all();
+  return db.prepare("SELECT *, strftime('%Y-%m-%dT%H:%M:%fZ', created_at) AS created_at, strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) AS updated_at FROM penalty_rules ORDER BY id DESC").all();
 }
 
 export function createRule(data: any) {

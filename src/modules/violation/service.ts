@@ -8,7 +8,7 @@ export function getMyViolations(student_id: string, student_name: string, violat
   }
   
   let query = `
-    SELECT v.*, r.student_id, r.student_name, r.booking_code, e.name as equipment_name 
+    SELECT v.*, strftime('%Y-%m-%dT%H:%M:%fZ', v.created_at) AS created_at, r.student_id, r.student_name, r.booking_code, e.name as equipment_name 
     FROM violation_records v
     JOIN reservations r ON v.reservation_id = r.id
     JOIN equipment e ON r.equipment_id = e.id
@@ -46,7 +46,7 @@ export function submitAppeal(id: string, student_id: string, student_name: strin
   }
 
   const violation = db.prepare(`
-    SELECT v.*, r.student_id, r.student_name 
+    SELECT v.*, strftime('%Y-%m-%dT%H:%M:%fZ', v.created_at) AS created_at, r.student_id, r.student_name 
     FROM violation_records v
     JOIN reservations r ON v.reservation_id = r.id
     WHERE v.id = ?
@@ -81,7 +81,7 @@ export function getAdminViolations(queryParams: any) {
   const { startDate, endDate, ids, appealStatus, reservation_id } = queryParams;
 
   let query = `
-    SELECT v.*, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.actual_start_time, r.actual_end_time, r.phone, r.email, r.total_cost, r.consumable_quantity, r.notes as reservation_notes
+    SELECT v.*, strftime('%Y-%m-%dT%H:%M:%fZ', v.created_at) AS created_at, r.student_name, r.supervisor, r.booking_code, r.equipment_id, e.name as equipment_name, r.start_time, r.end_time, r.actual_start_time, r.actual_end_time, r.phone, r.email, r.total_cost, r.consumable_quantity, r.notes as reservation_notes
     FROM violation_records v
     LEFT JOIN reservations r ON v.reservation_id = r.id
     LEFT JOIN equipment e ON r.equipment_id = e.id

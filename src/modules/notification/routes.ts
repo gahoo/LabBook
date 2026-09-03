@@ -126,7 +126,8 @@ router.get('/delivery-logs', adminAuth, (req, res) => {
   try {
     const rawLimit = parseInt(limit as string) || 50;
     const safeLimit = Math.min(rawLimit, 500);
-    let query = `SELECT id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at FROM notifications WHERE 1=1`;
+    const columns = `id, event, channel, target, reference_code, status, retry_count, strftime('%Y-%m-%dT%H:%M:%fZ', next_retry_time) as next_retry_time, error_message, strftime('%Y-%m-%dT%H:%M:%fZ', created_at) as created_at, strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) as updated_at`;
+    let query = `SELECT ${columns} FROM notifications WHERE 1=1`;
     const params: any[] = [];
     
     if (status && status !== '全部' && status !== 'All') {
@@ -175,7 +176,7 @@ router.get('/delivery-logs', adminAuth, (req, res) => {
       params.push(`${endDate}T23:59:59.999Z`);
     }
 
-    const countQuery = query.replace('id, event, channel, target, reference_code, status, retry_count, next_retry_time, error_message, created_at, updated_at', 'count(*) as total');
+    const countQuery = query.replace(columns, 'count(*) as total');
     const totalRow = db.prepare(countQuery).get(...params) as any;
     const total = totalRow ? totalRow.total : 0;
 

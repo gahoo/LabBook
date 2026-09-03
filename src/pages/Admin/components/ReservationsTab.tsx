@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { format, subDays, startOfToday, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import ReservationEditDrawer from './ReservationEditDrawer';
 import toast from 'react-hot-toast';
+import { parseUTCDate } from '../../../lib/dateUtils';
 
 interface ReservationsTabProps {
   token: string | null;
@@ -732,7 +733,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
                           </div>
                           <div className="flex justify-between items-center gap-4">
                             <span className="text-neutral-500">申请时间</span>
-                            <span className="text-neutral-900">{new Date(app.created_at).toLocaleDateString()}</span>
+                            <span className="text-neutral-900">{parseUTCDate(app.created_at)?.toLocaleDateString() || app.created_at}</span>
                           </div>
                           {app.reason && (
                             <div className="mt-1 pt-2 border-t border-neutral-100 whitespace-normal">

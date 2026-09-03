@@ -9,7 +9,7 @@ export function recordAuditLog(action: string, newData: any, reservationId: numb
 
 export function getAuditLogs(startDate?: string, endDate?: string) {
   let query = `
-    SELECT a.*, r.booking_code 
+    SELECT a.*, strftime('%Y-%m-%dT%H:%M:%fZ', a.created_at) AS created_at, r.booking_code 
     FROM audit_logs a
     LEFT JOIN reservations r ON a.reservation_id = r.id
     WHERE 1=1

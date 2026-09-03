@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, FileText, Filter, X, Edit3, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, UserCheck, BarChart2, Calendar, ShieldAlert, CheckCircle, RefreshCw, Info, ArrowRight } from 'lucide-react';
 import { format, subDays, startOfToday } from 'date-fns';
 import toast from 'react-hot-toast';
+import { parseUTCDate } from '../../../lib/dateUtils';
 import PenaltyRulesTab from './PenaltyRulesTab';
 import ViolationParamsTab from './ViolationParamsTab';
 import { getViolationTypeLabel } from '../../../utils';
@@ -2028,16 +2029,17 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
                     <span>违规时间: {format(new Date(selectedRecord.violation_time), 'yyyy-MM-dd HH:mm:ss')}</span>
                   </div>
                   {(() => {
-                    const isLateRecord = selectedRecord.created_at && 
+                    const parsedCreated = parseUTCDate(selectedRecord.created_at);
+                    const isLateRecord = parsedCreated && 
                       Math.abs(
-                        new Date(selectedRecord.created_at + 'Z').getTime() - 
+                        parsedCreated.getTime() - 
                         new Date(selectedRecord.violation_time).getTime()
                       ) > 60000;
                       
                     if (isLateRecord) {
                       return (
                         <div className="flex items-center gap-4">
-                          <span>记录时间: {format(new Date(selectedRecord.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}</span>
+                          <span>记录时间: {format(parsedCreated, 'yyyy-MM-dd HH:mm:ss')}</span>
                         </div>
                       );
                     }

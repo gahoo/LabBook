@@ -25,7 +25,8 @@ export class ReservationService {
       SELECT 
         r.id, r.equipment_id, r.student_name, r.student_id, r.supervisor, 
         r.start_time, r.end_time, r.status, r.booking_code,
-        r.total_cost, r.consumable_quantity, r.modified_count, r.created_at,
+        r.total_cost, r.consumable_quantity, r.modified_count,
+        strftime('%Y-%m-%dT%H:%M:%fZ', r.created_at) AS created_at,
         e.name as equipment_name, e.price_type, e.price, e.consumable_fee
       FROM reservations r
       JOIN equipment e ON r.equipment_id = e.id

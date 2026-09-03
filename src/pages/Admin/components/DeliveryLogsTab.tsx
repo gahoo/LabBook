@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { RefreshCw, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCcw, Filter, X } from 'lucide-react';
 import { format, subDays, startOfToday } from 'date-fns';
+import { parseUTCDate } from '../../../lib/dateUtils';
 
 interface DeliveryLogsTabProps {
   token: string | null;
@@ -338,8 +339,16 @@ export default function DeliveryLogsTab({ token }: DeliveryLogsTabProps) {
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                     <span className="md:hidden font-medium text-neutral-500 mr-2 w-full block mb-1">投递时间:</span>
-                    <div className="text-neutral-700">{format(new Date(log.created_at + 'Z'), 'MM-dd HH:mm:ss')}</div>
-                    {log.status === 'retrying' && <div className="text-xs text-orange-500 mt-0.5">计划: {format(new Date(log.next_retry_time + 'Z'), 'HH:mm:ss')}</div>}
+                    {(() => {
+                      const parsedCreated = parseUTCDate(log.created_at);
+                      const parsedRetry = parseUTCDate(log.next_retry_time);
+                      return (
+                        <>
+                          <div className="text-neutral-700">{parsedCreated ? format(parsedCreated, 'MM-dd HH:mm:ss') : log.created_at}</div>
+                          {log.status === 'retrying' && <div className="text-xs text-orange-500 mt-0.5">计划: {parsedRetry ? format(parsedRetry, 'HH:mm:ss') : log.next_retry_time}</div>}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none text-right">
                     {(log.status === 'failed' || log.status === 'retrying') && (

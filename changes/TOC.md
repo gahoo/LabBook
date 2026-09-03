@@ -57,3 +57,4 @@
 - [x] 自动化测试集基建与核心用例补全 (test-suite-setup)
 - [x] 重构后评估与治理，解决违规模块分层与类型安全问题 (refactor-post-evaluation)
 - [x] 白名单快捷审批与状态翻转功能 (feature-whitelist-quick-toggle)
+- [x] 修复 iOS Safari 展开预约详情报 Invalid time value 的问题 (bugfix-safari-invalid-time-value)

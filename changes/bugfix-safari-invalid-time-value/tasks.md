@@ -1,0 +1,22 @@
+# 任务清单
+
+- [x] 1. **工具函数基建**：在 `src/lib/dateUtils.ts` 封装通用、具备跨端容错能力的 `parseUTCDate(dateStr?: string | null): Date | null` 函数，并确保在浏览器端无 `process.env` 等 Node 环境依赖报错。
+- [x] 2. **核心缺陷修复**：修改 `src/pages/MyReservations.tsx`，将卡片详情展开处的 `format(new Date(resv.created_at + 'Z'), ...)` 替换为使用 `parseUTCDate` 的安全格式化逻辑。
+- [x] 3. **前端同类隐患清理**：
+  - [x] 3.1 修改 `src/pages/Admin/components/ReservationEditDrawer.tsx`，消除 `created_at` 的 `+ 'Z'` 拼接。
+  - [x] 3.2 修改 `src/pages/Admin/components/AuditLogsTab.tsx`，替换 `log.created_at + 'Z'` 为 `parseUTCDate`。
+  - [x] 3.3 修改 `src/pages/Admin/components/DeliveryLogsTab.tsx`，替换 `log.created_at + 'Z'` 和 `log.next_retry_time + 'Z'` 为 `parseUTCDate`。
+  - [x] 3.4 修改 `src/pages/Admin/components/ViolationsAndPenaltiesTab.tsx`，替换 `selectedRecord.created_at + 'Z'` 为 `parseUTCDate`。
+  - [x] 3.5 检查并替换 `EquipmentManagementTab.tsx` 及 `ReservationsTab.tsx` 中的 `new Date(app.created_at)`。
+  - [x] 3.6 修改 `PenaltyRulesTab.tsx` 中的 `rule.updated_at + 'Z'`，以及 `ReservationEditDrawer.tsx` 中的 `sv.violation_time` 脆弱拼接为 `parseUTCDate`。
+- [x] 4. **后端查询出口标准化（B为主）**：
+  - [x] 4.1 修改 `src/modules/reservation/service.ts` 的 `ReservationService.getBatch`，在 SQL 中对 `r.created_at` 使用 `strftime('%Y-%m-%dT%H:%M:%fZ', r.created_at) AS created_at`。
+  - [x] 4.2 修改 `src/modules/reservation/routes.ts` 的 `GET /:code` 接口，在 SQL 中对 `r.created_at` 采用相同的 `strftime` 转换。
+  - [x] 4.3 修改 `src/modules/reservation/stats.ts` 的 `getAdminList`，确保管理员预约列表查询返回标准的 ISO `created_at`。
+  - [x] 4.4 修改 `src/modules/audit/service.ts` 的 `getAuditLogs`，将 `a.created_at` 标准化为 ISO 格式。
+  - [x] 4.5 修改 `src/modules/notification/routes.ts` 的 `GET /` 接口，将 `created_at`、`updated_at`、`next_retry_time` 标准化。
+  - [x] 4.6 修改 `src/modules/whitelist/service.ts` 的 `listApplications`，将 `wa.created_at` 标准化。
+  - [x] 4.7 修改 `src/modules/violation/rules.ts` 的 `getPublicRules` 和 `getAdminRules`，将 `penalty_rules` 的 `created_at` 和 `updated_at` 标准化。
+- [x] 5. **验证与回归测试**：
+  - [x] 5.1 运行 TypeScript 类型检查与构建验证 (`npm run build`)。
+  - [x] 5.2 模拟旧版 Safari（WebKit）对空格日期字符串、标准 ISO 字符串、含 Z 与不含 Z 字符串的解析，确保不抛出 `RangeError`。

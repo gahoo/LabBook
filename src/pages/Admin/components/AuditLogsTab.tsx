@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Filter, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { parseUTCDate } from '../../../lib/dateUtils';
 
 interface AuditLogsTabProps {
   token: string;
@@ -285,7 +286,10 @@ export default function AuditLogsTab({ token, handleLogout }: AuditLogsTabProps)
                 <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">
                   <div className="flex justify-between items-center md:block">
                     <span className="md:hidden font-medium text-neutral-500 text-xs">时间</span>
-                    <span className="text-xs text-neutral-500">{format(new Date(log.created_at + 'Z'), 'yyyy-MM-dd HH:mm:ss')}</span>
+                    {(() => {
+                      const parsed = parseUTCDate(log.created_at);
+                      return <span className="text-xs text-neutral-500">{parsed ? format(parsed, 'yyyy-MM-dd HH:mm:ss') : log.created_at}</span>;
+                    })()}
                   </div>
                 </td>
                 <td className="px-4 py-3 md:py-4 block md:table-cell border-b border-neutral-100 md:border-none">

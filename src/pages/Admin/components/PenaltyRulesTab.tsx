@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Edit2, Trash2, AlertCircle, X, Search, History, Info, CheckSquare } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import { parseUTCDate } from '../../../lib/dateUtils';
 import ViolationsPreviewDrawer from './ViolationsPreviewDrawer';
 
 interface TriggerConfig {
@@ -409,11 +410,14 @@ export default function PenaltyRulesTab({ token }: PenaltyRulesTabProps) {
                         <div className="text-right md:text-left">
                           <div className="font-medium text-neutral-900">{rule.name}</div>
                           {rule.description && <div className="text-neutral-500 text-xs mt-1">{rule.description}</div>}
-                          {rule.updated_at && (
-                            <div className="text-neutral-400 text-[10px] mt-1">
-                              最后修改: {format(new Date(rule.updated_at + 'Z'), 'yyyy-MM-dd HH:mm')}
-                            </div>
-                          )}
+                          {rule.updated_at && (() => {
+                            const parsed = parseUTCDate(rule.updated_at);
+                            return (
+                              <div className="text-neutral-400 text-[10px] mt-1">
+                                最后修改: {parsed ? format(parsed, 'yyyy-MM-dd HH:mm') : rule.updated_at}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </td>
