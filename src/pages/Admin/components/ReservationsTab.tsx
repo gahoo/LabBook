@@ -104,19 +104,51 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
   const [syncStatsWithFilters, setSyncStatsWithFilters] = useState(false);
   const [showSyncChartTooltip, setShowSyncChartTooltip] = useState(false);
   const [showSyncStatsTooltip, setShowSyncStatsTooltip] = useState(false);
-  const [reportStartDate, setReportStartDate] = useState(initialDate || format(subDays(startOfToday(), 7), 'yyyy-MM-dd'));
-  const [reportEndDate, setReportEndDate] = useState(initialDate || format(startOfToday(), 'yyyy-MM-dd'));
+
+  const savedFilters = useMemo(() => {
+    try {
+      const data = localStorage.getItem('admin_reservations_filters');
+      return data ? JSON.parse(data) : {};
+    } catch(e) {
+      return {};
+    }
+  }, []);
+
+  const initFromToday = savedFilters.reportFilterFromToday ?? false;
+  const [reportStartDate, setReportStartDate] = useState(() => {
+    if (initialDate) return initialDate;
+    const today = new Date();
+    const todayStr = format(today, 'yyyy-MM-dd');
+    if (savedFilters.timePreset === 'week') {
+      return initFromToday ? todayStr : format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    }
+    if (savedFilters.timePreset === 'month') {
+      return initFromToday ? todayStr : format(startOfMonth(today), 'yyyy-MM-dd');
+    }
+    return format(subDays(startOfToday(), 7), 'yyyy-MM-dd');
+  });
+  const [reportEndDate, setReportEndDate] = useState(() => {
+    if (initialDate) return initialDate;
+    const today = new Date();
+    if (savedFilters.timePreset === 'week') {
+      return initFromToday ? format(addDays(today, 6), 'yyyy-MM-dd') : format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    }
+    if (savedFilters.timePreset === 'month') {
+      return initFromToday ? format(addDays(today, 29), 'yyyy-MM-dd') : format(endOfMonth(today), 'yyyy-MM-dd');
+    }
+    return format(startOfToday(), 'yyyy-MM-dd');
+  });
   const [reportFilterUser, setReportFilterUser] = useState('');
-  const [reportFilterEquipment, setReportFilterEquipment] = useState('');
+  const [reportFilterEquipment, setReportFilterEquipment] = useState(savedFilters.reportFilterEquipment || '');
   const [reportFilterDurationMin, setReportFilterDurationMin] = useState('');
   const [reportFilterDurationMax, setReportFilterDurationMax] = useState('');
   const [reportFilterCostMin, setReportFilterCostMin] = useState('');
   const [reportFilterCostMax, setReportFilterCostMax] = useState('');
   const [reportFilterUtilizationMin, setReportFilterUtilizationMin] = useState('');
   const [reportFilterUtilizationMax, setReportFilterUtilizationMax] = useState('');
-  const [reportFilterStatus, setReportFilterStatus] = useState<string[]>([]);
+  const [reportFilterStatus, setReportFilterStatus] = useState<string[]>(Array.isArray(savedFilters.reportFilterStatus) ? savedFilters.reportFilterStatus : []);
   const [reportFilterNotes, setReportFilterNotes] = useState('');
-  const [reportFilterFromToday, setReportFilterFromToday] = useState(false);
+  const [reportFilterFromToday, setReportFilterFromToday] = useState(initFromToday);
   const [reportFilterCode, setReportFilterCode] = useState(initialBookingCode || '');
   const [reportCurrentPage, setReportCurrentPage] = useState(1);
   const reportPageSize = 20;
@@ -172,6 +204,29 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+
+  useEffect(() => {
+    if (initialDate || initialBookingCode) return; // do not overwrite habits when entering via specific links
+    const today = new Date();
+    const todayStr = format(today, 'yyyy-MM-dd');
+    const currentWeekStart = reportFilterFromToday ? todayStr : format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    const currentWeekEnd = reportFilterFromToday ? format(addDays(today, 6), 'yyyy-MM-dd') : format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    const currentMonthStart = reportFilterFromToday ? todayStr : format(startOfMonth(today), 'yyyy-MM-dd');
+    const currentMonthEnd = reportFilterFromToday ? format(addDays(today, 29), 'yyyy-MM-dd') : format(endOfMonth(today), 'yyyy-MM-dd');
+
+    let timePreset = 'none';
+    if (reportStartDate === currentWeekStart && reportEndDate === currentWeekEnd) timePreset = 'week';
+    else if (reportStartDate === currentMonthStart && reportEndDate === currentMonthEnd) timePreset = 'month';
+
+    const filtersToSave = {
+      reportFilterFromToday,
+      timePreset,
+      reportFilterEquipment,
+      reportFilterStatus
+    };
+    localStorage.setItem('admin_reservations_filters', JSON.stringify(filtersToSave));
+  }, [reportFilterFromToday, reportStartDate, reportEndDate, reportFilterEquipment, reportFilterStatus, initialDate, initialBookingCode]);
 
   const fetchReports = async () => {
     setLoadingReports(true);
