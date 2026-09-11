@@ -236,49 +236,54 @@ export default function EquipmentForm({
             </div>
           </div>
           
+          {/* 预约与取消时间窗口 */}
           <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold text-neutral-900">开放时间设置</h3>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                <div>
-                  <label className="block text-xs text-neutral-500 mb-1">最少提前时间(分)</label>
-                  <input type="number" min="0" value={formData.atLeastAdvanceMinutes} onChange={e => setFormData({...formData, atLeastAdvanceMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-neutral-500 mb-1">最多提前天数</label>
-                  <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-neutral-500 mb-1">单次最小时长 (分)</label>
-                  <input type="number" min="1" value={formData.minDurationMinutes} onChange={e => setFormData({...formData, minDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
-                </div>
-                <div className="relative group">
-                  <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
-                    单次时长上限 (分)
-                    <div className="hidden group-hover:block absolute z-10 w-48 p-2 bg-neutral-800 text-white text-xs rounded-lg shadow-lg -top-10 left-0">
-                      单次预约的最大时长，可通过下方开关控制是否允许超额
-                    </div>
-                  </label>
-                  <input type="number" min="1" value={formData.maxDurationMinutes} onChange={e => setFormData({...formData, maxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-neutral-500 mb-1">单日时长上限 (0表示无限制)</label>
-                  <input type="number" min="0" value={formData.dailyMaxDurationMinutes} onChange={e => setFormData({...formData, dailyMaxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
-                </div>
-                <div className="relative group">
-                  <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
-                    临期取消阈值 (分)
-                    <div className="hidden group-hover:block absolute z-10 w-48 p-2 bg-neutral-800 text-white text-xs rounded-lg shadow-lg -top-10 left-0">
-                      留空则使用全局默认设置
-                    </div>
-                  </label>
-                  <input type="number" min="0" value={formData.lateCancellationMinutes} onChange={e => setFormData({...formData, lateCancellationMinutes: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" placeholder="默认" />
-                </div>
+            <h3 className="text-sm font-bold text-neutral-900">预约与取消时间窗口</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">最少提前时间(分)</label>
+                <input type="number" min="0" value={formData.atLeastAdvanceMinutes} onChange={e => setFormData({...formData, atLeastAdvanceMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
               </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">最多提前天数</label>
+                <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+              </div>
+              <div className="relative group">
+                <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                  临期取消阈值 (分)
+                  <div className="hidden group-hover:block absolute z-10 w-48 p-2 bg-neutral-800 text-white text-xs rounded-lg shadow-lg -top-10 left-0">
+                    留空则使用全局默认设置
+                  </div>
+                </label>
+                <input type="number" min="0" value={formData.lateCancellationMinutes} onChange={e => setFormData({...formData, lateCancellationMinutes: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" placeholder="默认" />
+              </div>
+            </div>
+          </div>
 
+          {/* 预约时长限制 */}
+          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
+            <h3 className="text-sm font-bold text-neutral-900">预约时长限制</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">单次最小时长 (分)</label>
+                <input type="number" min="1" value={formData.minDurationMinutes} onChange={e => setFormData({...formData, minDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+              </div>
+              <div className="relative group">
+                <label className="block text-xs text-neutral-500 mb-1 flex items-center gap-1">
+                  单次时长上限 (分)
+                  <div className="hidden group-hover:block absolute z-10 w-48 p-2 bg-neutral-800 text-white text-xs rounded-lg shadow-lg -top-10 left-0">
+                    单次预约的最大时长，可通过下方开关控制是否允许超额
+                  </div>
+                </label>
+                <input type="number" min="1" value={formData.maxDurationMinutes} onChange={e => setFormData({...formData, maxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">单日时长上限 (0表示无限制)</label>
+                <input type="number" min="0" value={formData.dailyMaxDurationMinutes} onChange={e => setFormData({...formData, dailyMaxDurationMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-neutral-200 space-y-4">
               <div>
                 <label className="block text-xs text-neutral-500 mb-2">忙时时段 (全周通用)</label>
                 <div className="space-y-2">
@@ -320,120 +325,6 @@ export default function EquipmentForm({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs text-neutral-500 mb-2">开放规则</label>
-                <div className="space-y-2">
-                  {formData.rules.sort((a: any, b: any) => a.day - b.day || a.start.localeCompare(b.start)).map((rule: any, idx: number) => (
-                    <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-neutral-200">
-                      <span className="text-xs font-medium w-12">{daysOfWeek.find(d => d.value === rule.day)?.label}</span>
-                      <span className="text-xs text-neutral-500">{rule.start} - {rule.end}</span>
-                      <button 
-                        type="button" 
-                        onClick={() => setFormData({...formData, rules: formData.rules.filter((_: any, i: number) => i !== idx)})}
-                        className="ml-auto text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  
-                  <div className="p-3 bg-white rounded-xl border border-neutral-200 space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      {daysOfWeek.map(d => (
-                        <button
-                          key={d.value}
-                          type="button"
-                          onClick={() => {
-                            if (selectedDays.includes(d.value)) {
-                              setSelectedDays(selectedDays.filter(v => v !== d.value));
-                            } else {
-                              setSelectedDays([...selectedDays, d.value]);
-                            }
-                          }}
-                          className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-red-600 border-red-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-red-300'}`}
-                        >
-                          {d.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                      <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
-                        <input id="new-rule-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
-                        <span className="text-xs">至</span>
-                        <input id="new-rule-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (selectedDays.length === 0) return toast.error('请至少选择一天');
-                          const start = (document.getElementById('new-rule-start') as HTMLInputElement).value;
-                          const end = (document.getElementById('new-rule-end') as HTMLInputElement).value;
-                          if (start >= end) return toast.error('结束时间必须晚于开始时间');
-                          
-                          const newRules = selectedDays.map(day => ({ day, start, end }));
-                          setFormData({...formData, rules: [...formData.rules, ...newRules]});
-                          setSelectedDays([]);
-                        }}
-                        className="w-full sm:w-auto px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
-                      >
-                        批量添加
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
-                    <FileCheck className="w-4 h-4 text-neutral-500" />
-                    人员白名单
-                  </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">仅允许白名单内的人员预约此仪器</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, whitelist_enabled: !formData.whitelist_enabled})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-red-600' : 'bg-neutral-200'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.whitelist_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-              
-              {formData.whitelist_enabled && (
-                <div>
-                  <label className="block text-xs text-neutral-500 mb-1">白名单人员名单 (按姓名，逗号或换行分隔)</label>
-                  <textarea
-                    value={formData.whitelist_data}
-                    onChange={e => setFormData({...formData, whitelist_data: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all text-sm"
-                    rows={3}
-                    placeholder="例如：张三, 李四, 王五"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="pt-4 border-t border-neutral-200 mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
-                    <Zap className="w-4 h-4 text-neutral-500" />
-                    自动审批
-                  </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">开启后，该仪器的预约将自动通过（非开放时段除外）</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, auto_approve: !formData.auto_approve})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-red-600' : 'bg-neutral-200'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
@@ -467,7 +358,73 @@ export default function EquipmentForm({
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.allowExceedDurationOffPeak ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
+            </div>
+          </div>
 
+          {/* 开放规则 */}
+          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
+            <h3 className="text-sm font-bold text-neutral-900">开放规则</h3>
+            <div className="space-y-2">
+              {formData.rules.sort((a: any, b: any) => a.day - b.day || a.start.localeCompare(b.start)).map((rule: any, idx: number) => (
+                <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-neutral-200">
+                  <span className="text-xs font-medium w-12">{daysOfWeek.find(d => d.value === rule.day)?.label}</span>
+                  <span className="text-xs text-neutral-500">{rule.start} - {rule.end}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => setFormData({...formData, rules: formData.rules.filter((_: any, i: number) => i !== idx)})}
+                    className="ml-auto text-red-500 hover:text-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              
+              <div className="p-3 bg-white rounded-xl border border-neutral-200 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {daysOfWeek.map(d => (
+                    <button
+                      key={d.value}
+                      type="button"
+                      onClick={() => {
+                        if (selectedDays.includes(d.value)) {
+                          setSelectedDays(selectedDays.filter(v => v !== d.value));
+                        } else {
+                          setSelectedDays([...selectedDays, d.value]);
+                        }
+                      }}
+                      className={`px-2 py-1 text-xs rounded-md border transition-colors ${selectedDays.includes(d.value) ? 'bg-red-600 border-red-600 text-white' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:border-red-300'}`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                    <input id="new-rule-start" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="08:00" />
+                    <span className="text-xs">至</span>
+                    <input id="new-rule-end" type="time" className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 rounded bg-white" defaultValue="18:00" />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (selectedDays.length === 0) return toast.error('请至少选择一天');
+                      const start = (document.getElementById('new-rule-start') as HTMLInputElement).value;
+                      const end = (document.getElementById('new-rule-end') as HTMLInputElement).value;
+                      if (start >= end) return toast.error('结束时间必须晚于开始时间');
+                      
+                      const newRules = selectedDays.map(day => ({ day, start, end }));
+                      setFormData({...formData, rules: [...formData.rules, ...newRules]});
+                      setSelectedDays([]);
+                    }}
+                    className="w-full sm:w-auto px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-lg hover:bg-neutral-800"
+                  >
+                    批量添加
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-neutral-200">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
@@ -484,39 +441,94 @@ export default function EquipmentForm({
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.allow_out_of_hours ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
+            </div>
+          </div>
 
+          {/* 权限与审批设置 */}
+          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
+            <h3 className="text-sm font-bold text-neutral-900">权限与审批设置</h3>
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
-                    <EyeOff className="w-4 h-4 text-neutral-500" />
-                    隐藏仪器
+                    <FileCheck className="w-4 h-4 text-neutral-500" />
+                    人员白名单
                   </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">开启后，该仪器将在用户端隐藏，且无法被预约</p>
+                  <p className="text-xs text-neutral-500 mt-0.5">仅允许白名单内的人员预约此仪器</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, is_hidden: !formData.is_hidden})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.is_hidden ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  onClick={() => setFormData({...formData, whitelist_enabled: !formData.whitelist_enabled})}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.whitelist_enabled ? 'bg-red-600' : 'bg-neutral-200'}`}
                 >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_hidden ? 'translate-x-6' : 'translate-x-1'}`} />
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.whitelist_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
-
-              <div className="flex items-center justify-between">
+              
+              {formData.whitelist_enabled && (
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
-                    <TimerReset className="w-4 h-4 text-neutral-500" />
-                    自动释放爽约时段
-                  </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">开启后，若预约爽约(超过开始时间30分钟未上机)，该时段将自动释放给其他人预约</p>
+                  <label className="block text-xs text-neutral-500 mb-1">白名单人员名单 (按姓名，逗号或换行分隔)</label>
+                  <textarea
+                    value={formData.whitelist_data}
+                    onChange={e => setFormData({...formData, whitelist_data: e.target.value})}
+                    className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-red-600 focus:border-transparent outline-none transition-all text-sm"
+                    rows={3}
+                    placeholder="例如：张三, 李四, 王五"
+                  />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, release_noshow_slots: !formData.release_noshow_slots})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.release_noshow_slots ? 'bg-red-600' : 'bg-neutral-200'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.release_noshow_slots ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
+              )}
+
+              <div className="pt-4 border-t border-neutral-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-neutral-500" />
+                      自动审批
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">开启后，该仪器的预约将自动通过（非开放时段除外）</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, auto_approve: !formData.auto_approve})}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.auto_approve ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.auto_approve ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                      <EyeOff className="w-4 h-4 text-neutral-500" />
+                      隐藏仪器
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">开启后，该仪器将在用户端隐藏，且无法被预约</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, is_hidden: !formData.is_hidden})}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.is_hidden ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_hidden ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                      <TimerReset className="w-4 h-4 text-neutral-500" />
+                      自动释放爽约时段
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">开启后，若预约爽约(超过开始时间30分钟未上机)，该时段将自动释放给其他人预约</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, release_noshow_slots: !formData.release_noshow_slots})}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.release_noshow_slots ? 'bg-red-600' : 'bg-neutral-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.release_noshow_slots ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
