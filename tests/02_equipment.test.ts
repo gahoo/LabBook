@@ -198,6 +198,7 @@ describe('Equipment Module (02_equipment.test.ts)', () => {
       expect(eq).toBeDefined();
       expect(eq.availableSlots).toBeDefined();
       expect(eq.reservations).toBeDefined();
+      expect(eq.atLeastAdvanceMinutes).toBeDefined();
     });
 
     it('GET /api/equipment/:id/availability - should return 400 if date is missing', async () => {

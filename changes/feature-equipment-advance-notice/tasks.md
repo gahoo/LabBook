@@ -11,3 +11,6 @@
 - [x] 前端 Booking 页面提示与限制
   - [x] 在 `Booking.tsx`，计算并屏蔽早于 `now + atLeastAdvanceMinutes` 的时间槽。
   - [x] 在确认预约时，前端加上前置校验并给予用户友好的提示（“需至少提前X分钟，请选择更晚的时间”）。
+- [x] 首页可用时间概览联动
+  - [x] 在 `src/modules/equipment/service.ts` 的 `getEquipmentAvailabilityToday` 中返回 `atLeastAdvanceMinutes`。
+  - [x] 在 `src/pages/Home.tsx` 中，今日概览将早于 `now + atLeastAdvanceMinutes` 的时间槽置灰并设为不可点击。

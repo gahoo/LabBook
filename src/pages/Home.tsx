@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Clock, DollarSign, Zap, QrCode, X, MapPin, Search, Calendar as CalendarIcon, Star } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -66,35 +66,44 @@ export default function Home() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   });
 
-  const gridData = availabilityToday
-    .filter(eqData => {
-      const eq = equipment.find(e => e.id === eqData.equipment_id);
-      return eq && !eq.is_hidden;
-    })
-    .map(eqData => {
-    const slots = eqData.availableSlots || [];
-    const resvs = eqData.reservations || [];
+  const gridData = useMemo(() => {
+    const eqMap = new Map(equipment.map(e => [e.id, e]));
     const dateStr = format(new Date(), 'yyyy-MM-dd');
-    
-    return {
-      equipment_id: eqData.equipment_id,
-      equipment_name: eqData.equipment_name,
-      times: timeSteps.map(t => {
-        const timeDate = new Date(`${dateStr}T${t}`);
-        const isAvailable = slots.some((s: any) => {
-          const start = new Date(s.start);
-          const end = new Date(s.end);
-          return timeDate >= start && timeDate < end;
-        });
-        const isBooked = resvs.some((r: any) => {
-          const start = new Date(r.start_time);
-          const end = new Date(r.end_time);
-          return timeDate >= start && timeDate < end;
-        });
-        return { time: t, isAvailable, isBooked };
-      })
-    };
-  });
+
+    return availabilityToday.flatMap(eqData => {
+      const eq = eqMap.get(eqData.equipment_id);
+      if (!eq || eq.is_hidden) return [];
+
+      let atLeastAdvanceMinutes = eqData.atLeastAdvanceMinutes || 0;
+      if (!atLeastAdvanceMinutes && eq.availability_json) {
+        try {
+          atLeastAdvanceMinutes = JSON.parse(eq.availability_json).atLeastAdvanceMinutes || 0;
+        } catch (e) {}
+      }
+      const slots = eqData.availableSlots || [];
+      const resvs = eqData.reservations || [];
+
+      return [{
+        equipment_id: eqData.equipment_id,
+        equipment_name: eqData.equipment_name,
+        atLeastAdvanceMinutes,
+        times: timeSteps.map(t => {
+          const timeDate = new Date(`${dateStr}T${t}`);
+          const isAvailable = slots.some((s: any) => {
+            const start = new Date(s.start);
+            const end = new Date(s.end);
+            return timeDate >= start && timeDate < end;
+          });
+          const isBooked = resvs.some((r: any) => {
+            const start = new Date(r.start_time);
+            const end = new Date(r.end_time);
+            return timeDate >= start && timeDate < end;
+          });
+          return { time: t, isAvailable, isBooked };
+        })
+      }];
+    });
+  }, [availabilityToday, equipment, timeSteps]);
 
   const getAvailabilitySummary = (jsonStr: string) => {
     try {
@@ -174,7 +183,7 @@ export default function Home() {
                   <div className="flex-1 flex gap-px h-6 bg-neutral-50 rounded-md overflow-hidden p-0.5">
                     {row.times.map((t, i) => {
                       const timeDate = new Date(`${format(new Date(), 'yyyy-MM-dd')}T${t.time}`);
-                      const isPast = timeDate < new Date();
+                      const isPast = timeDate < new Date(Date.now() + (row.atLeastAdvanceMinutes || 0) * 60000);
                       return (
                         <div 
                           key={i}

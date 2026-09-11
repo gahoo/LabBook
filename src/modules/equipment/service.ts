@@ -187,7 +187,8 @@ export function getEquipmentAvailabilityToday(dateStr: string) {
       availableSlots,
       reservations: reservations.map(r => ({ start_time: r.start_time, end_time: r.end_time })),
       maxDurationMinutes: availability.maxDurationMinutes || 60,
-      minDurationMinutes: availability.minDurationMinutes || 30
+      minDurationMinutes: availability.minDurationMinutes || 30,
+      atLeastAdvanceMinutes: availability.atLeastAdvanceMinutes || 0
     };
   });
 
