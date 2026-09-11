@@ -358,3 +358,22 @@ export function rejectAppeal(id: string, remark: string) {
     }, violationRecord.email || undefined);
   }
 }
+
+export function undoAppeal(id: string) {
+  const violation = db.prepare('SELECT student_id, remark FROM violation_records WHERE id = ?').get(id) as any;
+  if (!violation) {
+    throw new Error('违规记录不存在');
+  }
+  let remarkObj: any = {};
+  if (violation.remark) {
+    try {
+      remarkObj = JSON.parse(violation.remark);
+    } catch (e) {
+      remarkObj = {};
+    }
+  }
+  delete remarkObj.appeal_reply;
+  db.prepare("UPDATE violation_records SET status = 'active', remark = ? WHERE id = ?").run(JSON.stringify(remarkObj), id);
+  evaluatePenaltiesOnViolation(violation.student_id);
+}
+

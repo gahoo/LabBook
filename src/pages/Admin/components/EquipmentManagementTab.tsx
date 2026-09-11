@@ -136,6 +136,14 @@ export default function EquipmentManagementTab({
   }, [token]);
 
   useEffect(() => {
+    const handler = () => {
+      fetchWhitelistApps();
+    };
+    window.addEventListener('admin-approval-resolved', handler);
+    return () => window.removeEventListener('admin-approval-resolved', handler);
+  }, []);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (eqPricePopupRef.current && !eqPricePopupRef.current.contains(event.target as Node)) {
         setShowEqPricePopup(false);

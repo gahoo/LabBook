@@ -369,4 +369,43 @@ describe('Violation Evaluator (12_violation_evaluator.test.ts)', () => {
       expect(result.reason).toContain(`解封时间：${expectedStr}`);
     });
   });
+
+  describe('3.2.7 undoAppeal', () => {
+    it('should throw error when violation record does not exist', async () => {
+      const { undoAppeal } = await import('../src/modules/violation/service.js');
+      expect(() => undoAppeal('999999')).toThrow('违规记录不存在');
+    });
+
+    it('should reset approved or rejected appeal back to active, clear appeal_reply, and re-evaluate penalties', async () => {
+      const { undoAppeal } = await import('../src/modules/violation/service.js');
+      createRule({ trigger_config: { window_type: 'rolling', period_days: 30, metric: 'count', threshold: 3 }, action_config: { type: 'ban' } });
+
+      // Create 3 violations for STU_1
+      createViolation('STU_1', 'late', fixedNow, 1);
+      createViolation('STU_1', 'late', fixedNow, 2);
+      const v3Id = createViolation('STU_1', 'late', fixedNow, 3, { status: 'revoked' });
+
+      // Before undo: only 2 active violations -> not banned
+      expect(checkUserPenalty('STU_1').isPenalized).toBe(false);
+
+      db.prepare("UPDATE violation_records SET status = 'revoked', remark = ? WHERE id = ?").run(
+        JSON.stringify({ appeal_reason: '申请撤销', appeal_reply: '已批准撤销' }),
+        v3Id
+      );
+
+      // Call undoAppeal on v3
+      undoAppeal(String(v3Id));
+
+      const updated = db.prepare('SELECT status, remark FROM violation_records WHERE id = ?').get(v3Id) as any;
+      expect(updated.status).toBe('active');
+      const remarkObj = JSON.parse(updated.remark);
+      expect(remarkObj.appeal_reply).toBeUndefined();
+      expect(remarkObj.appeal_reason).toBe('申请撤销');
+
+      // Now 3 active violations -> penalty evaluator should have automatically re-banned user!
+      const penaltyCheck = checkUserPenalty('STU_1');
+      expect(penaltyCheck.isPenalized).toBe(true);
+      expect(penaltyCheck.penaltyMethod).toBe('BAN');
+    });
+  });
 });

@@ -452,6 +452,16 @@ export class ReservationService {
         start_time,
         end_time
       }, oldRes.email);
+    } else if (oldRes.status === 'pending' && status === 'rejected') {
+      notifyEvent(db, 'booking_rejected', {
+        booking_id: oldRes.id,
+        booking_code: oldRes.booking_code,
+        student_name,
+        equipment_name: oldRes.equipment_name,
+        start_time,
+        end_time,
+        reject_reason: updates.reject_reason || ''
+      }, oldRes.email);
     }
   }
 

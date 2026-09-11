@@ -145,12 +145,13 @@ reservationRouter.post('/checkout', (req, res) => {
  
  
 reservationAdminRouter.get('/', (req, res) => {
-  const { student_name, supervisor, startDate, endDate } = req.query;
+  const { student_name, supervisor, startDate, endDate, status } = req.query;
   const enrichedReservations = getAdminList({ 
     student_name: student_name as string, 
     supervisor: supervisor as string, 
     startDate: startDate as string, 
-    endDate: endDate as string 
+    endDate: endDate as string,
+    status: status as string
   });
   res.json(enrichedReservations);
 });

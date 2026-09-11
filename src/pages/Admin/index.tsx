@@ -5,6 +5,7 @@ import ReservationsTab from './components/ReservationsTab';
 import EquipmentManagementTab from './components/EquipmentManagementTab';
 import SettingsTab from './components/SettingsTab';
 import ViolationsAndPenaltiesTab from './components/ViolationsAndPenaltiesTab';
+import UnifiedApprovalBanner from './components/UnifiedApprovalBanner';
 
 export default function Admin() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
@@ -136,6 +137,13 @@ export default function Admin() {
           <button onClick={handleLogout} className="text-sm text-neutral-500 hover:text-neutral-900 underline shrink-0">退出</button>
         </div>
       </div>
+      
+      {token && (
+        <UnifiedApprovalBanner 
+          token={token} 
+          activeTab={activeTab} 
+        />
+      )}
 
       {activeTab === 'equipment' && (
         <EquipmentManagementTab 

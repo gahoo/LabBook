@@ -19,84 +19,13 @@ interface ReservationsTabProps {
 export default function ReservationsTab({ token, onLogout, initialBookingCode, initialDate, onClearInitialBookingCode, statusMap }: ReservationsTabProps) {
   const [reports, setReports] = useState<any>(null);
   const [loadingReports, setLoadingReports] = useState(false);
-  const [pendingWhitelistApps, setPendingWhitelistApps] = useState<any[]>([]);
-  const [actionStack, setActionStack] = useState<{id: number, action: 'approve' | 'reject', name: string}[]>([]);
-
-  const fetchWhitelistApps = async () => {
-    try {
-      const res = await fetch('/api/admin/whitelist/applications?status=pending', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPendingWhitelistApps(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch whitelist apps:', err);
-    }
-  };
-
-  const handleApproveWhitelist = async (id: number, studentName: string) => {
-    try {
-      const res = await fetch(`/api/admin/whitelist/applications/${id}/approve`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        toast.success('已通过');
-        setActionStack(prev => [...prev, { id, action: 'approve', name: studentName }]);
-        fetchWhitelistApps();
-      } else {
-        const data = await res.json();
-        toast.error(data.error || '操作失败');
-      }
-    } catch (error) {
-      toast.error('操作失败');
-    }
-  };
-
-  const handleRejectWhitelist = async (id: number, studentName: string) => {
-    try {
-      const res = await fetch(`/api/admin/whitelist/applications/${id}/reject`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        toast.success('已驳回');
-        setActionStack(prev => [...prev, { id, action: 'reject', name: studentName }]);
-        fetchWhitelistApps();
-      } else {
-        const data = await res.json();
-        toast.error(data.error || '操作失败');
-      }
-    } catch (error) {
-      toast.error('操作失败');
-    }
-  };
-
-  const handleUndoLastAction = async () => {
-    if (actionStack.length === 0) return;
-    const lastAction = actionStack[actionStack.length - 1];
-    
-    try {
-      const res = await fetch(`/api/admin/whitelist/applications/${lastAction.id}/undo`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        toast.success(`已撤销操作，恢复为待审批`);
-        setActionStack(prev => prev.slice(0, -1));
-        fetchWhitelistApps();
-      } else {
-        toast.error('撤销失败');
-      }
-    } catch (error) {
-      toast.error('撤销失败');
-    }
-  };
 
   useEffect(() => {
-    fetchWhitelistApps();
+    const handler = () => {
+      fetchReports();
+    };
+    window.addEventListener('admin-approval-resolved', handler);
+    return () => window.removeEventListener('admin-approval-resolved', handler);
   }, []);
   const [reportPeriod, setReportPeriod] = useState(initialDate ? 'day' : 'day');
   const [reportChartType, setReportChartType] = useState<'bar' | 'line'>('bar');
@@ -724,89 +653,6 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
         ))}
       </datalist>
       <div className="space-y-4">
-        {(pendingWhitelistApps.length > 0 || actionStack.length > 0) && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-amber-800 shrink-0">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="font-medium text-sm">白名单待审批 ({pendingWhitelistApps.length})</span>
-              </div>
-              {actionStack.length > 0 && (
-                <button 
-                  onClick={handleUndoLastAction}
-                  className="ml-auto text-xs px-2 py-1 bg-white border border-amber-200 text-amber-700 rounded shadow-sm hover:bg-amber-50 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-                >
-                  撤销
-                </button>
-              )}
-              <div className="flex items-center flex-wrap gap-1 w-full">
-                <AnimatePresence mode="popLayout">
-                {pendingWhitelistApps.map(app => (
-                  <motion.div 
-                    layout
-                    initial={{ opacity: 0, scale: 0.8, x: -20 }}
-                    animate={{ opacity: 1, scale: 1, x: 0 }}
-                    exit={{ opacity: 0, scale: 0.8, x: -20, transition: { duration: 0.2 } }}
-                    key={app.id} 
-                    tabIndex={0}
-                    className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-3 py-2 md:px-2 md:py-1 shadow-sm flex items-center shrink-0 cursor-pointer md:cursor-default"
-                  >
-                    <span className="font-medium text-sm text-neutral-900">{app.student_name}</span>
-                    <div className="flex items-center border-l border-amber-100 pl-2 ml-2">
-                      <button onClick={() => handleApproveWhitelist(app.id, app.student_name)} className="p-1 text-emerald-500 hover:text-emerald-700 rounded transition-colors" title="通过">
-                        <UserCheck className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleRejectWhitelist(app.id, app.student_name)} className="p-1 text-red-400 hover:text-red-600 rounded transition-colors" title="驳回">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50">
-                      <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3 py-2 whitespace-nowrap min-w-[200px]">
-                        <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
-                          申请明细
-                        </div>
-                        <div className="flex flex-col gap-1.5 mt-1">
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-neutral-500">申请仪器</span>
-                            <span className="text-neutral-900 font-medium">{app.equipment_name}</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-neutral-500">申请人</span>
-                            <span className="text-neutral-900">{app.student_name} ({app.student_id})</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-neutral-500">所属导师</span>
-                            <span className="text-neutral-900">{app.supervisor}</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-neutral-500">手机</span>
-                            <span className="text-neutral-900">{app.phone || '无'}</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-neutral-500">Email</span>
-                            <span className="text-neutral-900">{app.email || '无'}</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-neutral-500">申请时间</span>
-                            <span className="text-neutral-900">{parseUTCDate(app.created_at)?.toLocaleDateString() || app.created_at}</span>
-                          </div>
-                          {app.reason && (
-                            <div className="mt-1 pt-2 border-t border-neutral-100 whitespace-normal">
-                              <div className="text-neutral-500 mb-1">申请理由:</div>
-                              <div className="text-neutral-900">{app.reason}</div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="w-3 h-3 bg-white border-t border-l border-neutral-200 rotate-45 absolute -top-1.5 left-1/2 -translate-x-1/2"></div>
-                    </div>
-                                    </motion.div>
-                ))}
-                </AnimatePresence>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="flex justify-end items-center gap-3">
           {(() => {

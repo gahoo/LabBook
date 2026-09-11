@@ -3,6 +3,7 @@ import { db } from '../src/db/index.js';
 import { addHours, addMinutes } from 'date-fns';
 import { resetTestDatabase } from './utils/db-helper.js';
 import { ReservationService } from '../src/modules/reservation/service.js';
+import { getAdminList } from '../src/modules/reservation/stats.js';
 import { OperationRejectError } from '../src/lib/errors.js';
 
 const toIso = (d: Date) => d.toISOString().split('.')[0] + 'Z';
@@ -592,11 +593,58 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
         expect(saved.status).toBe('cancelled');
       });
 
+      it('should approve pending reservation via adminUpdate', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        db.prepare("UPDATE reservations SET status = 'pending' WHERE id = ?").run(res.id);
+        ReservationService.adminUpdate(res.id, { status: 'approved' });
+        const saved = db.prepare('SELECT status FROM reservations WHERE id = ?').get(res.id) as any;
+        expect(saved.status).toBe('approved');
+      });
+
+      it('should reject pending reservation and retain record with status rejected via adminUpdate', () => {
+        const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        db.prepare("UPDATE reservations SET status = 'pending' WHERE id = ?").run(res.id);
+        ReservationService.adminUpdate(res.id, { status: 'rejected' });
+        const saved = db.prepare('SELECT status FROM reservations WHERE id = ?').get(res.id) as any;
+        expect(saved).toBeDefined();
+        expect(saved.status).toBe('rejected');
+      });
+
       it('should successfully adminDelete', () => {
         const res = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
         ReservationService.adminDelete(res.id, 'Test delete');
         const saved = db.prepare('SELECT * FROM reservations WHERE booking_code = ?').get(res.booking_code) as any;
         expect(saved).toBeUndefined();
+      });
+    });
+
+    describe('3.4.5 getAdminList filtering', () => {
+      it('should filter strictly by status when status parameter is passed', () => {
+        const res1 = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        const res2 = ReservationService.create(createResData(eqId, t(3), t(4)), -480);
+        db.prepare("UPDATE reservations SET status = 'pending' WHERE id = ?").run(res1.id);
+        db.prepare("UPDATE reservations SET status = 'completed' WHERE id = ?").run(res2.id);
+
+        const pendingList = getAdminList({ status: 'pending' });
+        expect(pendingList.some((r: any) => r.id === res1.id)).toBe(true);
+        expect(pendingList.some((r: any) => r.id === res2.id)).toBe(false);
+      });
+
+      it('should filter by startDate excluding records before that day', () => {
+        // Create a pending reservation and update to past date in db
+        const resPast = ReservationService.create(createResData(eqId, t(1), t(2)), -480);
+        const pastStart = new Date(fixedNow.getTime() - 48 * 3600 * 1000).toISOString();
+        const pastEnd = new Date(fixedNow.getTime() - 46 * 3600 * 1000).toISOString();
+        db.prepare("UPDATE reservations SET start_time = ?, end_time = ?, status = 'pending' WHERE id = ?").run(pastStart, pastEnd, resPast.id);
+
+        // Create a future pending reservation (t(1) -> t(2))
+        const resFuture = ReservationService.create(createResData(eqId, t(3), t(4)), -480);
+        db.prepare("UPDATE reservations SET status = 'pending' WHERE id = ?").run(resFuture.id);
+
+        const todayStr = fixedNow.toISOString().split('T')[0];
+        const listFromToday = getAdminList({ status: 'pending', startDate: todayStr });
+        expect(listFromToday.some((r: any) => r.id === resPast.id)).toBe(false);
+        expect(listFromToday.some((r: any) => r.id === resFuture.id)).toBe(true);
       });
     });
   });

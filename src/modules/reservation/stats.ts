@@ -74,8 +74,8 @@ export function calculateReportStatus(res: any, prevRes: any, settings: any) {
   return '正常';
 }
 
-export function getAdminList(queryOptions: { student_name?: string, supervisor?: string, startDate?: string, endDate?: string }) {
-  const { student_name, supervisor, startDate, endDate } = queryOptions;
+export function getAdminList(queryOptions: { student_name?: string, supervisor?: string, startDate?: string, endDate?: string, status?: string }) {
+  const { student_name, supervisor, startDate, endDate, status } = queryOptions;
   
   let whereClause = "WHERE 1=1";
   const params: any[] = [];
@@ -87,6 +87,10 @@ export function getAdminList(queryOptions: { student_name?: string, supervisor?:
   if (supervisor) {
     whereClause += " AND r.supervisor LIKE ?";
     params.push(`%${supervisor}%`);
+  }
+  if (status) {
+    whereClause += " AND r.status = ?";
+    params.push(status);
   }
   if (startDate) {
     whereClause += " AND r.start_time >= ?";

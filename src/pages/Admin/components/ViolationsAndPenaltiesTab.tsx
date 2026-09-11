@@ -71,6 +71,14 @@ export default function ViolationsAndPenaltiesTab({ token, onLogout, onNavigateT
   }, []);
 
   useEffect(() => {
+    const handler = () => {
+      fetchRecords();
+    };
+    window.addEventListener('admin-approval-resolved', handler);
+    return () => window.removeEventListener('admin-approval-resolved', handler);
+  }, [startDate, endDate, penaltyContext, appealStatusFilter]);
+
+  useEffect(() => {
     if (activeSubTab === 'records') {
       fetchRecords();
     } else if (activeSubTab === 'stats') {

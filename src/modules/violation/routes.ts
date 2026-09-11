@@ -3,7 +3,7 @@ import { adminAuth } from '../../middleware/auth.js';
 import { checkUserPenalty } from './evaluator.js';
 import { getPublicRules, getAdminRules, createRule, updateRule, deleteRule, simulateRule } from './rules.js';
 import { batchPenalties, waivePenalty, getActivePenalties } from './penalty.js';
-import { getMyViolations, submitAppeal, getAdminViolations, createViolation, updateViolation, revokeViolation, restoreViolation, rejectAppeal } from './service.js';
+import { getMyViolations, submitAppeal, getAdminViolations, createViolation, updateViolation, revokeViolation, restoreViolation, rejectAppeal, undoAppeal } from './service.js';
 import { validateTimeRange } from '../../lib/validators.js';
 import { getViolationStats, getViolationParams } from './stats.js';
 
@@ -103,8 +103,8 @@ router.post('/api/violations/:id/appeal', (req, res) => {
 });
 
 router.get('/api/admin/violations', adminAuth, (req, res) => {
-  const { ids, reservation_id } = req.query;
-  const hasSpecificId = reservation_id || (ids && typeof ids === 'string' && ids.trim() !== '');
+  const { ids, reservation_id, appealStatus } = req.query;
+  const hasSpecificId = reservation_id || (ids && typeof ids === 'string' && ids.trim() !== '') || appealStatus === 'appealing';
   if (!hasSpecificId) {
     if (!validateTimeRange(req, res)) return;
   }
@@ -187,6 +187,19 @@ router.post('/api/admin/violations/:id/reject-appeal', adminAuth, (req, res) => 
   } catch (err) {
     console.error('Error rejecting appeal:', err);
     res.status(500).json({ error: 'Failed to reject appeal' });
+  }
+});
+
+router.post('/api/admin/violations/:id/undo-appeal', adminAuth, (req, res) => {
+  try {
+    undoAppeal(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error undoing appeal:', err);
+    if (err.message === '违规记录不存在') {
+      return res.status(404).json({ error: '违规记录不存在' });
+    }
+    res.status(500).json({ error: 'Failed to undo appeal' });
   }
 });
 

@@ -61,4 +61,4 @@
 - [x] 详细预约记录表记录用户筛选习惯 (feature-persist-reservation-filters)
 - [x] 限制仪器临时预约时间 (feature-equipment-advance-notice)
 - [x] 重构仪器编辑表单开放时间与规则布局 (refactor-equipment-form-layout)
-- [ ] 集中展示未处理的申诉 (feature-appeal-banner)
+- [ ] 全局统一审批与待办看板 (feature-unified-banner)

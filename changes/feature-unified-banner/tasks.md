@@ -1,0 +1,21 @@
+# 任务拆解 (Tasks)
+
+- [x] 后端接口微调与支持 (Backend Support)
+  - [x] 确保 `GET /api/admin/violations` 支持全量获取 `appealStatus=appealing` 的待审申诉（不受限狭窄日期范围）。
+  - [x] 确保预约快捷通过与快捷驳回（及状态翻转撤销）顺畅触发邮件/通知通知链路。
+  - [x] 增加申诉撤销（`undoAppeal`）端点 `POST /api/admin/violations/:id/undo-appeal`。
+- [x] 通用组件开发 (`src/pages/Admin/components/UnifiedApprovalBanner.tsx`)
+  - [x] 组件基础框架：聚合拉取三大待办数据源（预约、白名单、申诉）。
+  - [x] 实现 Tab 感知与自动优先切换逻辑（根据 `activeTab` 智能优先高亮对应类别，无待办时自动兜底）。
+  - [x] 渲染三大类别的胶囊（Pill/Capsule）与浮层卡片（Tooltip/Popover）。
+  - [x] 实现统一的审核动作处理器（通过、驳回）。
+  - [x] 实现跨类别的全局撤销操作栈（Undo Stack）。
+- [x] 页面装配与重构 (`src/pages/Admin/index.tsx` & `ReservationsTab.tsx`)
+  - [x] 在 `Admin/index.tsx` 页面顶部引入并挂载 `UnifiedApprovalBanner`。
+  - [x] 清理 `ReservationsTab.tsx` 顶部原本内联的白名单 Banner 代码。
+  - [x] 在待办审批完成后，派发 `admin-approval-resolved` 事件，通知各子 Tab 刷新下方对应表格列表。
+- [x] 验证与测试 (Verification)
+  - [x] 验证无待办时 Banner 自动隐去（0 像素）。
+  - [x] 验证不同 Tab 切换时优先高亮对应分类，以及手动点击分类切换。
+  - [x] 验证待审预约、白名单、违规申诉的“通过”、“驳回”及“撤销”全流程。
+  - [x] 运行测试套件与 `gitnexus_detect_changes()` 验证无回归。
