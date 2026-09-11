@@ -295,11 +295,33 @@ describe('ReservationService (11_reservation_service.test.ts)', () => {
     });
   });
 
-  describe('3.1.4 Advance Days limit', () => {
+  describe('3.1.4 Advance Days and Minimum Notice limit', () => {
     it('should reject if booking exceeds advanceDays', () => {
        const eqId = setupEquipment({ advanceDays: 7 });
        const data = createResData(eqId, t(24 * 8), t(24 * 8 + 1));
        expect(() => ReservationService.create(data, -480)).toThrowError(/只能提前 7 天预约/);
+    });
+
+    it('should reject if booking does not meet atLeastAdvanceMinutes', () => {
+       const eqId = setupEquipment({ atLeastAdvanceMinutes: 120 });
+       const data = createResData(eqId, tMin(60), tMin(120));
+       expect(() => ReservationService.create(data, -480)).toThrowError(/该仪器要求至少提前 120 分钟预约/);
+    });
+
+    it('should allow booking if it satisfies atLeastAdvanceMinutes', () => {
+       const eqId = setupEquipment({ atLeastAdvanceMinutes: 120 });
+       const data = createResData(eqId, tMin(180), tMin(240));
+       const res = ReservationService.create(data, -480);
+       expect(res).toBeDefined();
+       expect(res.id).toBeTypeOf('number');
+    });
+
+    it('should allow booking if atLeastAdvanceMinutes is 0 or unset', () => {
+       const eqId = setupEquipment({ atLeastAdvanceMinutes: 0 });
+       const data = createResData(eqId, tMin(10), tMin(40));
+       const res = ReservationService.create(data, -480);
+       expect(res).toBeDefined();
+       expect(res.id).toBeTypeOf('number');
     });
   });
 
