@@ -201,6 +201,11 @@ export function validateReservationRules(
   } catch (e) {}
 
   const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+
+  const atLeastAdvanceMinutes = availability.atLeastAdvanceMinutes || 0;
+  if (reservationId === null && (start.getTime() - now.getTime()) / 60000 < atLeastAdvanceMinutes) {
+    throw new OperationRejectError(`该仪器要求至少提前 ${atLeastAdvanceMinutes} 分钟预约`, 400);
+  }
   const minDuration = availability.minDurationMinutes || 30;
 
   if (durationMinutes < minDuration) throw new OperationRejectError(`预约时长不能少于 ${minDuration} 分钟`, 400);

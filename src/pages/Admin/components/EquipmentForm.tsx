@@ -27,7 +27,7 @@ export default function EquipmentForm({
 }: EquipmentFormProps) {
   const [formData, setFormData] = useState(() => {
     if (editingEquipment) {
-      let avail = { advanceDays: 7, maxDurationMinutes: 60, dailyMaxDurationMinutes: 0, allowExceedDuration: false, allowExceedDurationOffPeak: false, minDurationMinutes: 30, lateCancellationMinutes: '' as number | string, rules: [] as any[], peakHours: [] as any[], allowOutOfHours: false };
+      let avail = { advanceDays: 7, atLeastAdvanceMinutes: 0, maxDurationMinutes: 60, dailyMaxDurationMinutes: 0, allowExceedDuration: false, allowExceedDurationOffPeak: false, minDurationMinutes: 30, lateCancellationMinutes: '' as number | string, rules: [] as any[], peakHours: [] as any[], allowOutOfHours: false };
       try {
         if (editingEquipment.availability_json) {
           const parsed = JSON.parse(editingEquipment.availability_json);
@@ -53,6 +53,7 @@ export default function EquipmentForm({
         is_hidden: editingEquipment.is_hidden || false,
         release_noshow_slots: editingEquipment.release_noshow_slots || false,
         advanceDays: avail.advanceDays || 7,
+        atLeastAdvanceMinutes: avail.atLeastAdvanceMinutes || 0,
         maxDurationMinutes: avail.maxDurationMinutes || 60,
         dailyMaxDurationMinutes: avail.dailyMaxDurationMinutes ?? 0,
         allowExceedDuration: avail.allowExceedDuration || false, allowExceedDurationOffPeak: avail.allowExceedDurationOffPeak || false,
@@ -77,6 +78,7 @@ export default function EquipmentForm({
       is_hidden: false,
       release_noshow_slots: false,
       advanceDays: 7,
+      atLeastAdvanceMinutes: 0,
       maxDurationMinutes: 60,
       dailyMaxDurationMinutes: 0,
       allowExceedDuration: false, allowExceedDurationOffPeak: false,
@@ -140,6 +142,7 @@ export default function EquipmentForm({
     const availability_json = JSON.stringify({
       rules: formData.rules,
       advanceDays: formData.advanceDays,
+      atLeastAdvanceMinutes: formData.atLeastAdvanceMinutes,
       maxDurationMinutes: formData.maxDurationMinutes,
       dailyMaxDurationMinutes: formData.dailyMaxDurationMinutes,
       allowExceedDuration: formData.allowExceedDuration, allowExceedDurationOffPeak: formData.allowExceedDurationOffPeak,
@@ -239,9 +242,13 @@ export default function EquipmentForm({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div>
-                  <label className="block text-xs text-neutral-500 mb-1">提前预约天数</label>
+                  <label className="block text-xs text-neutral-500 mb-1">最少提前时间(分)</label>
+                  <input type="number" min="0" value={formData.atLeastAdvanceMinutes} onChange={e => setFormData({...formData, atLeastAdvanceMinutes: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">最多提前天数</label>
                   <input type="number" min="1" value={formData.advanceDays} onChange={e => setFormData({...formData, advanceDays: Number(e.target.value)})} className="w-full px-3 py-2 rounded-lg border border-neutral-300 bg-white text-sm" />
                 </div>
                 <div>

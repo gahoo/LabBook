@@ -362,6 +362,11 @@ export default function Booking() {
       return toast.error("结束时间必须晚于开始时间");
     }
 
+    // atLeastAdvanceMinutes is already derived from useMemo above
+    if ((start.getTime() - Date.now()) / 60000 < atLeastAdvanceMinutes) {
+      return toast.error(`该仪器要求至少提前 ${atLeastAdvanceMinutes} 分钟预约`);
+    }
+
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     
     if (dailyMaxDuration > 0 && durationMinutes > dailyMaxDuration)
@@ -602,6 +607,18 @@ export default function Booking() {
       }
     }
   }, [loadingAll, minHour, maxHour]);
+
+  const atLeastAdvanceMinutes = useMemo(() => {
+    if (equipment && equipment.availability_json) {
+      try {
+        const avail = JSON.parse(equipment.availability_json);
+        return avail.atLeastAdvanceMinutes || 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+    return 0;
+  }, [equipment]);
 
   const gridData = allAvailability.map((dayData) => {
     const dateStr = dayData.date;
@@ -1279,7 +1296,7 @@ export default function Booking() {
                                   const timeDate = new Date(
                                     `${row.date}T${t.time}`,
                                   );
-                                  const isPast = timeDate < new Date();
+                                  const isPast = timeDate < new Date(Date.now() + atLeastAdvanceMinutes * 60000);
 
                                   let isSelectedBlock = false;
                                   let isFirstSelected = false;

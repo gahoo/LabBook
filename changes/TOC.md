@@ -59,5 +59,5 @@
 - [x] 白名单快捷审批与状态翻转功能 (feature-whitelist-quick-toggle)
 - [x] 修复 iOS Safari 展开预约详情报 Invalid time value 的问题 (bugfix-safari-invalid-time-value)
 - [x] 详细预约记录表记录用户筛选习惯 (feature-persist-reservation-filters)
-- [ ] 限制仪器临时预约时间 (feature-equipment-advance-notice)
+- [x] 限制仪器临时预约时间 (feature-equipment-advance-notice)
 - [ ] 集中展示未处理的申诉 (feature-appeal-banner)
