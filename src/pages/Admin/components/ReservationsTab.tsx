@@ -654,7 +654,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
       </datalist>
       <div className="space-y-4">
 
-        <div className="flex justify-end items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:justify-end sm:items-center gap-2.5">
           {(() => {
             const today = new Date();
             const todayStr = format(today, 'yyyy-MM-dd');
@@ -667,7 +667,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
             const isThisMonth = reportStartDate === currentMonthStart && reportEndDate === currentMonthEnd;
 
             return (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 justify-end sm:justify-start">
                 {(isThisWeek || isThisMonth) && (
                   <label className="flex items-center gap-1.5 cursor-pointer select-none">
                     <div className={`relative w-8 h-4 rounded-full transition-colors ${reportFilterFromToday ? 'bg-red-500' : 'bg-neutral-300'}`}>
@@ -709,7 +709,7 @@ export default function ReservationsTab({ token, onLogout, initialBookingCode, i
               </div>
             );
           })()}
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-neutral-200 shadow-sm w-fit">
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-neutral-200 shadow-sm w-fit self-end sm:self-auto">
             <Calendar className="w-4 h-4 text-neutral-400" />
             <span className="hidden sm:inline text-sm font-medium text-neutral-500">统计区间</span>
             <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-neutral-700 font-medium w-[110px]" />

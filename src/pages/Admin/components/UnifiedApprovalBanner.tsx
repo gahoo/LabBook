@@ -38,6 +38,7 @@ interface ActionHistoryItem {
   id: string | number;
   name: string;
   action: 'approve' | 'reject';
+  originalItem?: any;
 }
 
 const violationTypeMap: Record<string, string> = {
@@ -64,7 +65,18 @@ export default function UnifiedApprovalBanner({
   const [isCompact, setIsCompact] = useState<boolean>(() => {
     return getCookie('admin_banner_compact') === 'true';
   });
+  const [tooltipAlign, setTooltipAlign] = useState<'left' | 'right'>('left');
   const lastActiveTabRef = useRef(activeTab);
+
+  const handleCapsulePointerEnter = (e: React.MouseEvent<HTMLDivElement> | React.FocusEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    if (center < window.innerWidth / 2) {
+      setTooltipAlign('left');
+    } else {
+      setTooltipAlign('right');
+    }
+  };
 
   const toggleCompactMode = () => {
     setIsCompact(prev => {
@@ -149,18 +161,19 @@ export default function UnifiedApprovalBanner({
 
     const preferred = tabPriorityMap[activeTab];
 
-    // If activeTab just changed, try to switch to its preferred category if it has items
+    // If activeTab just changed, unconditionally switch to its preferred category if defined
     if (lastActiveTabRef.current !== activeTab) {
       lastActiveTabRef.current = activeTab;
-      if (preferred && counts[preferred] > 0) {
+      if (preferred) {
         setSelectedCategory(preferred);
+        setInitialVisibleCategories(prev => new Set(prev).add(preferred));
         return;
       }
     }
 
-    // Fallback: If current selected has 0 items AND no actions in actionStack for this category
+    // Fallback: If current selected has 0 items AND no actions in actionStack for this category AND not preferred
     const hasActionsForCurrent = actionStack.some(a => a.type === selectedCategory);
-    if (counts[selectedCategory] === 0 && !hasActionsForCurrent) {
+    if (counts[selectedCategory] === 0 && !hasActionsForCurrent && selectedCategory !== preferred) {
       if (preferred && counts[preferred] > 0) {
         setSelectedCategory(preferred);
       } else if (counts.whitelist > 0) {
@@ -180,8 +193,20 @@ export default function UnifiedApprovalBanner({
     return null;
   }
 
-  // Handle Approve
+  // Handle Approve (Optimistic Update)
   const handleApprove = async (type: 'reservations' | 'whitelist' | 'appeals', id: string | number, name: string) => {
+    let originalItem: any = undefined;
+    if (type === 'reservations') {
+      originalItem = pendingReservations.find(item => item.id === id);
+      setPendingReservations(prev => prev.filter(item => item.id !== id));
+    } else if (type === 'whitelist') {
+      originalItem = pendingWhitelist.find(item => item.id === id);
+      setPendingWhitelist(prev => prev.filter(item => item.id !== id));
+    } else if (type === 'appeals') {
+      originalItem = pendingAppeals.find(item => item.id === id);
+      setPendingAppeals(prev => prev.filter(item => item.id !== id));
+    }
+
     try {
       const headers = { 
         'Authorization': `Bearer ${token}`,
@@ -210,18 +235,34 @@ export default function UnifiedApprovalBanner({
         if (!res.ok) throw new Error();
       }
 
-      setActionStack(prev => [...prev, { type, id, name, action: 'approve' }]);
+      setActionStack(prev => [...prev, { type, id, name, action: 'approve', originalItem }]);
       toast.success(`已通过: ${name}`);
-      fetchAllPending();
       onActionResolved?.(type);
       window.dispatchEvent(new CustomEvent('admin-approval-resolved', { detail: { type } }));
     } catch (err) {
+      if (originalItem) {
+        if (type === 'reservations') setPendingReservations(prev => [originalItem, ...prev]);
+        else if (type === 'whitelist') setPendingWhitelist(prev => [originalItem, ...prev]);
+        else if (type === 'appeals') setPendingAppeals(prev => [originalItem, ...prev]);
+      }
       toast.error('操作失败');
     }
   };
 
-  // Handle Reject
+  // Handle Reject (Optimistic Update)
   const handleReject = async (type: 'reservations' | 'whitelist' | 'appeals', id: string | number, name: string) => {
+    let originalItem: any = undefined;
+    if (type === 'reservations') {
+      originalItem = pendingReservations.find(item => item.id === id);
+      setPendingReservations(prev => prev.filter(item => item.id !== id));
+    } else if (type === 'whitelist') {
+      originalItem = pendingWhitelist.find(item => item.id === id);
+      setPendingWhitelist(prev => prev.filter(item => item.id !== id));
+    } else if (type === 'appeals') {
+      originalItem = pendingAppeals.find(item => item.id === id);
+      setPendingAppeals(prev => prev.filter(item => item.id !== id));
+    }
+
     try {
       const headers = { 
         'Authorization': `Bearer ${token}`,
@@ -250,17 +291,21 @@ export default function UnifiedApprovalBanner({
         if (!res.ok) throw new Error();
       }
 
-      setActionStack(prev => [...prev, { type, id, name, action: 'reject' }]);
+      setActionStack(prev => [...prev, { type, id, name, action: 'reject', originalItem }]);
       toast.success(`已驳回: ${name}`);
-      fetchAllPending();
       onActionResolved?.(type);
       window.dispatchEvent(new CustomEvent('admin-approval-resolved', { detail: { type } }));
     } catch (err) {
+      if (originalItem) {
+        if (type === 'reservations') setPendingReservations(prev => [originalItem, ...prev]);
+        else if (type === 'whitelist') setPendingWhitelist(prev => [originalItem, ...prev]);
+        else if (type === 'appeals') setPendingAppeals(prev => [originalItem, ...prev]);
+      }
       toast.error('操作失败');
     }
   };
 
-  // Handle Undo Last Action
+  // Handle Undo Last Action (Optimistic Update)
   const handleUndo = async () => {
     if (actionStack.length === 0) return;
     const last = actionStack[actionStack.length - 1];
@@ -278,23 +323,31 @@ export default function UnifiedApprovalBanner({
           body: JSON.stringify({ status: 'pending' })
         });
         if (!res.ok) throw new Error();
+        if (last.originalItem) {
+          setPendingReservations(prev => [last.originalItem, ...prev]);
+        }
       } else if (last.type === 'whitelist') {
         const res = await fetch(`/api/admin/whitelist/applications/${last.id}/undo`, {
           method: 'POST',
           headers
         });
         if (!res.ok) throw new Error();
+        if (last.originalItem) {
+          setPendingWhitelist(prev => [last.originalItem, ...prev]);
+        }
       } else if (last.type === 'appeals') {
         const res = await fetch(`/api/admin/violations/${last.id}/undo-appeal`, {
           method: 'POST',
           headers
         });
         if (!res.ok) throw new Error();
+        if (last.originalItem) {
+          setPendingAppeals(prev => [last.originalItem, ...prev]);
+        }
       }
 
       setActionStack(prev => prev.slice(0, -1));
       toast.success(`已撤销对 ${last.name} 的操作`);
-      fetchAllPending();
       onActionResolved?.(last.type);
       window.dispatchEvent(new CustomEvent('admin-approval-resolved', { detail: { type: last.type } }));
     } catch (err) {
@@ -320,12 +373,29 @@ export default function UnifiedApprovalBanner({
     }
   };
 
+  // Format date-time helper
+  const formatDateTime = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const h = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${day} ${h}:${min}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6 transition-all duration-200 shadow-sm">
       <div className="flex items-center gap-2 justify-between">
         
         {/* Left: Categories Switcher */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 min-w-0 flex-1">
           <div className="hidden md:flex items-center gap-1.5 text-amber-900 font-semibold text-sm mr-2 shrink-0">
             <AlertTriangle className="w-4 h-4 text-amber-600" />
             <span>待办事项</span>
@@ -399,31 +469,36 @@ export default function UnifiedApprovalBanner({
         </div>
 
         {/* Undo button */}
-        {actionStack.length > 0 && (
-          <button 
-            type="button"
-            onClick={handleUndo}
-            className="ml-auto text-xs px-2.5 py-1 bg-white border border-amber-300 text-amber-800 rounded-md shadow-xs hover:bg-amber-50 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-          >
-            <RotateCcw className="w-3 h-3 text-amber-700" />
-            撤销 ({actionStack[actionStack.length - 1].name})
-          </button>
-        )}
+        {actionStack.length > 0 && (() => {
+          const rawName = actionStack[actionStack.length - 1].name;
+          const personName = rawName.replace(/ 的.*$/, '');
+          return (
+            <button 
+              type="button"
+              onClick={handleUndo}
+              className="ml-auto text-xs px-2.5 py-1 bg-white border border-amber-300 text-amber-800 rounded-md shadow-xs hover:bg-amber-50 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+            >
+              <RotateCcw className="w-3 h-3 text-amber-700" />
+              <span className="sm:hidden">撤销 {personName}</span>
+              <span className="hidden sm:inline">撤销 ({personName})</span>
+            </button>
+          );
+        })()}
       </div>
 
       {/* Right / Flow: Capsules Stream */}
-      <div className="flex items-center flex-wrap gap-2 mt-3 pt-2.5 border-t border-amber-200/70">
+      <div className="flex items-center flex-wrap gap-2 mt-1 pt-2.5 border-t border-amber-200/70">
         {/* View Density Toggle Button */}
         <button
           type="button"
           onClick={toggleCompactMode}
-          className="p-1.5 rounded-lg text-amber-800 hover:text-amber-950 bg-amber-200/60 hover:bg-amber-200/90 border border-amber-300/70 transition-colors shadow-2xs flex items-center justify-center shrink-0 cursor-pointer"
+          className="p-2 md:p-1.5 min-w-[32px] min-h-[32px] md:min-w-0 md:min-h-0 rounded-lg text-amber-800 hover:text-amber-950 bg-amber-200/60 hover:bg-amber-200/90 border border-amber-300/70 transition-colors shadow-2xs flex items-center justify-center shrink-0 cursor-pointer"
           title={isCompact ? '切换为详细视图' : '切换为极简视图'}
           aria-label={isCompact ? '切换为详细视图' : '切换为极简视图'}
         >
-          {isCompact ? <LayoutList className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
+          {isCompact ? <LayoutList className="w-4 h-4 md:w-3.5 md:h-3.5" /> : <List className="w-4 h-4 md:w-3.5 md:h-3.5" />}
         </button>
-        <div className="w-[1px] h-4.5 bg-amber-300/70 shrink-0 mx-0.5" />
+        <div className="w-[1px] h-5 md:h-4.5 bg-amber-300/70 shrink-0 mx-0.5" />
 
         <AnimatePresence mode="popLayout">
           {selectedCategory === 'whitelist' && (
@@ -438,9 +513,11 @@ export default function UnifiedApprovalBanner({
                   exit={{ opacity: 0, scale: 0.8, x: -20, transition: { duration: 0.2 } }}
                   key={`white-${app.id}`}
                   tabIndex={0}
-                  className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-2.5 py-1 shadow-xs flex items-center shrink-0 cursor-default"
+                  onMouseEnter={handleCapsulePointerEnter}
+                  onFocus={handleCapsulePointerEnter}
+                  className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-2 py-0.5 md:px-2.5 md:py-1 shadow-xs flex items-center shrink-0 cursor-default"
                 >
-                  <div className="flex items-center gap-1.5 text-xs text-neutral-800">
+                  <div className="flex items-center gap-1 text-sm md:text-xs text-neutral-800">
                     <span className="font-semibold text-neutral-900">{app.student_name}</span>
                     {!isCompact && (
                       <>
@@ -450,27 +527,27 @@ export default function UnifiedApprovalBanner({
                     )}
                   </div>
 
-                  <div className="flex items-center border-l border-amber-100 pl-1.5 ml-2">
+                  <div className="flex items-center border-l border-amber-100 pl-1 ml-1.5 md:pl-1.5 md:ml-2">
                     <button 
                       type="button"
                       onClick={() => handleApprove('whitelist', app.id, app.student_name)}
-                      className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
+                      className="p-1.5 md:p-1 min-w-[28px] min-h-[28px] md:min-w-0 md:min-h-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors flex items-center justify-center"
                       title="通过"
                     >
-                      <UserCheck className="w-3.5 h-3.5" />
+                      <UserCheck className="w-4 h-4 md:w-3.5 md:h-3.5" />
                     </button>
                     <button 
                       type="button"
                       onClick={() => handleReject('whitelist', app.id, app.student_name)}
-                      className="p-1 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                      className="p-1.5 md:p-1 min-w-[28px] min-h-[28px] md:min-w-0 md:min-h-0 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex items-center justify-center"
                       title="驳回"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4 md:w-3.5 md:h-3.5" />
                     </button>
                   </div>
 
                   {/* Tooltip Card */}
-                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50 pointer-events-none">
+                  <div className={`absolute top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50 pointer-events-none ${tooltipAlign === 'right' ? 'right-0 md:left-1/2 md:-translate-x-1/2 md:right-auto' : 'left-0 md:left-1/2 md:-translate-x-1/2'}`}>
                     <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3.5 py-2.5 whitespace-nowrap min-w-[220px] max-w-[calc(100vw-2rem)]">
                       <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
                         白名单申请明细
@@ -514,9 +591,11 @@ export default function UnifiedApprovalBanner({
                   exit={{ opacity: 0, scale: 0.8, x: -20, transition: { duration: 0.2 } }}
                   key={`res-${res.id}`}
                   tabIndex={0}
-                  className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-2.5 py-1 shadow-xs flex items-center shrink-0 cursor-default"
+                  onMouseEnter={handleCapsulePointerEnter}
+                  onFocus={handleCapsulePointerEnter}
+                  className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-2 py-0.5 md:px-2.5 md:py-1 shadow-xs flex items-center shrink-0 cursor-default"
                 >
-                  <div className="flex items-center gap-1.5 text-xs text-neutral-800">
+                  <div className="flex items-center gap-1 text-sm md:text-xs text-neutral-800">
                     <span className="font-semibold text-neutral-900">{res.student_name}</span>
                     {!isCompact && (
                       <>
@@ -528,27 +607,27 @@ export default function UnifiedApprovalBanner({
                     )}
                   </div>
 
-                  <div className="flex items-center border-l border-amber-100 pl-1.5 ml-2">
+                  <div className="flex items-center border-l border-amber-100 pl-1 ml-1.5 md:pl-1.5 md:ml-2">
                     <button 
                       type="button"
                       onClick={() => handleApprove('reservations', res.id, `${res.student_name} 的预约`)}
-                      className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
+                      className="p-1.5 md:p-1 min-w-[28px] min-h-[28px] md:min-w-0 md:min-h-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors flex items-center justify-center"
                       title="通过预约"
                     >
-                      <Check className="w-3.5 h-3.5" />
+                      <Check className="w-4 h-4 md:w-3.5 md:h-3.5" />
                     </button>
                     <button 
                       type="button"
                       onClick={() => handleReject('reservations', res.id, `${res.student_name} 的预约`)}
-                      className="p-1 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                      className="p-1.5 md:p-1 min-w-[28px] min-h-[28px] md:min-w-0 md:min-h-0 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex items-center justify-center"
                       title="驳回预约"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4 md:w-3.5 md:h-3.5" />
                     </button>
                   </div>
 
                   {/* Tooltip Card */}
-                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50 pointer-events-none">
+                  <div className={`absolute top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50 pointer-events-none ${tooltipAlign === 'right' ? 'right-0 md:left-1/2 md:-translate-x-1/2 md:right-auto' : 'left-0 md:left-1/2 md:-translate-x-1/2'}`}>
                     <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3.5 py-2.5 whitespace-nowrap min-w-[220px] max-w-[calc(100vw-2rem)]">
                       <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5 flex justify-between items-center">
                         <span>预约待审明细</span>
@@ -606,9 +685,11 @@ export default function UnifiedApprovalBanner({
                     exit={{ opacity: 0, scale: 0.8, x: -20, transition: { duration: 0.2 } }}
                     key={`appeal-${appeal.id}`}
                     tabIndex={0}
-                    className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-2.5 py-1 shadow-xs flex items-center shrink-0 cursor-default"
+                    onMouseEnter={handleCapsulePointerEnter}
+                    onFocus={handleCapsulePointerEnter}
+                    className="relative group/tooltip bg-white rounded-lg border border-amber-200 px-2 py-0.5 md:px-2.5 md:py-1 shadow-xs flex items-center shrink-0 cursor-default"
                   >
-                    <div className="flex items-center gap-1.5 text-xs text-neutral-800">
+                    <div className="flex items-center gap-1 text-sm md:text-xs text-neutral-800">
                       <span className="font-semibold text-neutral-900">{appeal.student_name || appeal.student_id}</span>
                       {!isCompact && (
                         <>
@@ -620,30 +701,33 @@ export default function UnifiedApprovalBanner({
                       )}
                     </div>
 
-                    <div className="flex items-center border-l border-amber-100 pl-1.5 ml-2">
+                    <div className="flex items-center border-l border-amber-100 pl-1 ml-1.5 md:pl-1.5 md:ml-2">
                       <button 
                         type="button"
                         onClick={() => handleApprove('appeals', appeal.id, `${appeal.student_name} 的申诉`)}
-                        className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
+                        className="p-1.5 md:p-1 min-w-[28px] min-h-[28px] md:min-w-0 md:min-h-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors flex items-center justify-center"
                         title="通过申诉 (撤销违规)"
                       >
-                        <Check className="w-3.5 h-3.5" />
+                        <Check className="w-4 h-4 md:w-3.5 md:h-3.5" />
                       </button>
                       <button 
                         type="button"
                         onClick={() => handleReject('appeals', appeal.id, `${appeal.student_name} 的申诉`)}
-                        className="p-1 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        className="p-1.5 md:p-1 min-w-[28px] min-h-[28px] md:min-w-0 md:min-h-0 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex items-center justify-center"
                         title="驳回申诉"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-4 h-4 md:w-3.5 md:h-3.5" />
                       </button>
                     </div>
 
                     {/* Tooltip Card */}
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50 pointer-events-none">
+                    <div className={`absolute top-full mt-2 hidden group-hover/tooltip:block group-focus/tooltip:block z-50 pointer-events-none ${tooltipAlign === 'right' ? 'right-0 md:left-1/2 md:-translate-x-1/2 md:right-auto' : 'left-0 md:left-1/2 md:-translate-x-1/2'}`}>
                       <div className="bg-white text-neutral-800 border border-neutral-200 text-xs shadow-xl rounded-xl px-3.5 py-2.5 whitespace-nowrap min-w-[220px] max-w-[calc(100vw-2rem)]">
-                        <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5">
-                          违规申诉明细
+                        <div className="font-semibold mb-2 text-neutral-500 border-b border-neutral-100 pb-1.5 flex justify-between items-center">
+                          <span>违规申诉明细</span>
+                          {appeal.booking_code && (
+                            <span className="text-amber-600 font-mono text-[11px]">{appeal.booking_code}</span>
+                          )}
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <div className="flex justify-between items-center gap-4">
@@ -658,6 +742,18 @@ export default function UnifiedApprovalBanner({
                             <span className="text-neutral-500">关联仪器</span>
                             <span className="text-neutral-900">{appeal.equipment_name || '无'}</span>
                           </div>
+                          {appeal.violation_time && (
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">违规时间</span>
+                              <span className="text-neutral-900 font-mono">{formatDateTime(appeal.violation_time)}</span>
+                            </div>
+                          )}
+                          {appeal.booking_code && (
+                            <div className="flex justify-between items-center gap-4">
+                              <span className="text-neutral-500">预约码</span>
+                              <span className="text-neutral-900 font-mono">{appeal.booking_code}</span>
+                            </div>
+                          )}
                           <div className="flex flex-col gap-1 mt-1 pt-1 border-t border-neutral-100">
                             <span className="text-neutral-500">申诉理由</span>
                             <span className="text-neutral-800 whitespace-pre-wrap max-w-xs">{appealReason}</span>
